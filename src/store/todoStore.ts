@@ -79,6 +79,7 @@ export function createCharacter(input: { name: string; itemLevel?: string; power
 }
 
 export function createTask(input: {
+  id?: string; // ✅ 추가
   title: string;
   period: Period;
   cellType: CellType;
@@ -87,7 +88,7 @@ export function createTask(input: {
   section?: string;
 }): TaskRow {
   return {
-    id: uid("task"),
+    id: input.id ?? uid("task"), // ✅ 고정 id 허용
     title: input.title,
     period: input.period,
     cellType: input.cellType,
@@ -98,42 +99,87 @@ export function createTask(input: {
   };
 }
 
-
 function makeDefaultState(): TodoState {
+  // =========================
+  // 캐릭터 기본값
+  // =========================
   const characters: Character[] = [
-    createCharacter({ name: "캐릭1", itemLevel: "1712.5", power: "2500+" }),
-    createCharacter({ name: "캐릭2", itemLevel: "1711.67", power: "2700+" }),
-    createCharacter({ name: "캐릭3", itemLevel: "1766.67", power: "5800+" }),
-    createCharacter({ name: "캐릭4", itemLevel: "1711.67", power: "2900+" }),
-    createCharacter({ name: "캐릭5", itemLevel: "1710", power: "2400+" }),
-    createCharacter({ name: "캐릭6", itemLevel: "1710", power: "2100+" }),
+    createCharacter({ name: "캐릭1", itemLevel: "1710", power: "2500+" }),
+    createCharacter({ name: "캐릭2", itemLevel: "1710", power: "2500+" }),
+    createCharacter({ name: "캐릭3", itemLevel: "1770", power: "6000+" }),
+    createCharacter({ name: "캐릭4", itemLevel: "1710", power: "2500+" }),
+    createCharacter({ name: "캐릭5", itemLevel: "1710", power: "2500+" }),
+    createCharacter({ name: "캐릭6", itemLevel: "1710", power: "2500+" }),
   ];
 
-  const tasks: TaskRow[] = [
-    createTask({ title: "길드 출석", period: "DAILY", cellType: "CHECK", section: "일일 숙제" }),
-    createTask({ title: "카오스 던전", period: "DAILY", cellType: "COUNTER", max: 1, section: "일일 숙제" }),
-    createTask({ title: "가디언 토벌", period: "DAILY", cellType: "COUNTER", max: 1, section: "일일 숙제" }),
+  // =========================
+  // 숙제 기본값
+  // =========================
+const baseOrder = Date.now();
 
-    createTask({ title: "천상", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
-    createTask({ title: "혈석 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
-    createTask({ title: "클리어메달 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
-    createTask({ title: "해적주화 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
+const tasks: TaskRow[] = [
+  // =========================
+  // ✅ 일일 숙제 (order 명시)
+  // =========================
+  {
+    ...createTask({
+      title: "길드 출석",
+      period: "DAILY",
+      cellType: "CHECK",
+      section: "일일 숙제",
+    }),
+    order: baseOrder + 1,
+  },
 
-    createTask({ title: "2막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
-    createTask({ title: "3막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
-    createTask({ title: "4막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
-    createTask({ title: "종막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
-    createTask({ title: "세르카", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
-    createTask({
-  title: "큐브",
-  period: "NONE",      // ✅ 리셋 안 됨
-  cellType: "TEXT",    // ✅ 메모칸
-  section: "기타",
-}),
+  {
+    ...createTask({
+      id: "MAIN_DAILY",
+      title: "쿠르잔 전선",
+      period: "DAILY",
+      cellType: "COUNTER",
+      max: 1,
+      section: "일일 숙제",
+    }),
+    order: baseOrder + 2,
+  },
+
+  {
+    ...createTask({
+      title: "가디언 토벌",
+      period: "DAILY",
+      cellType: "COUNTER",
+      max: 1,
+      section: "일일 숙제",
+    }),
+    order: baseOrder + 3,
+  },
+
+  // =========================
+  // 주간/기타는 기존대로
+  // =========================
+  createTask({ title: "천상", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
+  createTask({ title: "혈석 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
+  createTask({ title: "클리어메달 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
+  createTask({ title: "해적주화 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
+
+  createTask({ title: "2막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+  createTask({ title: "3막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+  createTask({ title: "4막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+  createTask({ title: "종막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+  createTask({ title: "세르카", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+
+  createTask({
+    title: "큐브",
+    period: "NONE",
+    cellType: "TEXT",
+    section: "기타",
+  }),
+];
 
 
-  ];
-
+  // =========================
+  // 리셋 설정
+  // =========================
   const reset: ResetState = {
     lastDailyResetAt: 0,
     lastWeeklyResetAt: 0,
@@ -141,7 +187,13 @@ function makeDefaultState(): TodoState {
     weeklyResetWeekday: 3,
   };
 
-  const restGauges: RestGauges = Object.fromEntries(characters.map((c) => [c.id, { chaos: 0, guardian: 0 }]));
+  // =========================
+  // 휴식게이지 초기값
+  // chaos = 핵심 콘텐츠 휴식
+  // =========================
+  const restGauges: RestGauges = Object.fromEntries(
+    characters.map((c) => [c.id, { chaos: 0, guardian: 0 }])
+  );
 
   const table: TodoTable = {
     id: uid("tbl"),
@@ -151,8 +203,14 @@ function makeDefaultState(): TodoState {
     restGauges,
   };
 
-  return { tables: [table], activeTableId: table.id, tasks, reset };
+  return {
+    tables: [table],
+    activeTableId: table.id,
+    tasks,
+    reset,
+  };
 }
+
 
 
 function normalizeState(parsed: any): TodoState {
@@ -170,19 +228,19 @@ function normalizeState(parsed: any): TodoState {
     // ✅ (마이그레이션) '기타/큐브' 없으면 자동 추가
     // ✅ (마이그레이션) '기타 / 큐브(귀속 메모)' 없으면 자동 추가
     const hasCube = st.tasks.some(
-    (t) => t.title === "큐브" && t.period === "NONE"
-  );
-  if (!hasCube) {
-    st.tasks = [
-    ...st.tasks,
-    createTask({
-      title: "큐브",
-      period: "NONE",     // ✅ 귀속
-      cellType: "TEXT",   // ✅ 메모
-      section: "기타",
-    }),
-  ];
-}
+      (t) => t.title === "큐브" && t.period === "NONE"
+    );
+    if (!hasCube) {
+      st.tasks = [
+        ...st.tasks,
+        createTask({
+          title: "큐브",
+          period: "NONE",     // ✅ 귀속
+          cellType: "TEXT",   // ✅ 메모
+          section: "기타",
+        }),
+      ];
+    }
 
 
     if (!st.tables.length) return makeDefaultState();
@@ -366,10 +424,10 @@ function getWeeklyResetAnchor(now: Date, weekday: number, hour: number): Date {
  *   count=1 -> -20
  */
 function applyDailyRestUpdate(prev: TodoState): TodoState {
-  const chaosTask = prev.tasks.find((t) => t.period === "DAILY" && t.title === "카오스 던전");
+  // ✅ 핵심 콘텐츠(단일 행) + 가디언
+  const coreTask = prev.tasks.find((t) => t.period === "DAILY" && t.id === "MAIN_DAILY");
   const guardianTask = prev.tasks.find((t) => t.period === "DAILY" && t.title === "가디언 토벌");
 
-  const chaosMax = chaosTask?.cellType === "COUNTER" ? Math.max(1, chaosTask.max ?? 2) : 2;
   const guardianMax = guardianTask?.cellType === "COUNTER" ? Math.max(1, guardianTask.max ?? 1) : 1;
 
   const tables = prev.tables.map((tbl) => {
@@ -378,13 +436,22 @@ function applyDailyRestUpdate(prev: TodoState): TodoState {
     for (const ch of tbl.characters) {
       const current = restGauges[ch.id] ?? { chaos: 0, guardian: 0 };
 
-      let chaosCount = 0;
-      if (chaosTask) {
-        const cell = tbl.values?.[chaosTask.id]?.[ch.id];
-        chaosCount = cell?.type === "COUNTER" ? Number(cell.count ?? 0) : 0;
+      // =========================
+      // ✅ 핵심 콘텐츠(쿠르잔/혼돈 공용) count: 0~1
+      // =========================
+      let coreCount = 0;
+      if (coreTask) {
+        const cell = tbl.values?.[coreTask.id]?.[ch.id];
+        coreCount = cell?.type === "COUNTER" ? Number(cell.count ?? 0) : 0;
       }
-      chaosCount = clamp(chaosCount, 0, chaosMax);
+      coreCount = clamp(coreCount, 0, 1);
 
+      // ✅ 규칙: count=0 -> +20, count=1 -> -40
+      const coreDelta = 20 - 60 * coreCount;
+
+      // =========================
+      // ✅ 가디언(기존 로직 유지)
+      // =========================
       let guardianCount = 0;
       if (guardianTask) {
         const cell = tbl.values?.[guardianTask.id]?.[ch.id];
@@ -392,11 +459,11 @@ function applyDailyRestUpdate(prev: TodoState): TodoState {
       }
       guardianCount = clamp(guardianCount, 0, guardianMax);
 
-      const chaosDelta = (chaosMax - chaosCount) * 10 - chaosCount * 20;
       const guardianDelta = (guardianMax - guardianCount) * 10 - guardianCount * 20;
 
+      // ✅ chaos 휴식을 "핵심 콘텐츠 휴식"으로 재사용
       restGauges[ch.id] = {
-        chaos: clamp((current.chaos ?? 0) + chaosDelta, 0, 200),
+        chaos: clamp((current.chaos ?? 0) + coreDelta, 0, 200),
         guardian: clamp((current.guardian ?? 0) + guardianDelta, 0, 100),
       };
     }
@@ -406,6 +473,7 @@ function applyDailyRestUpdate(prev: TodoState): TodoState {
 
   return { ...prev, tables };
 }
+
 
 export function resetByPeriod(state: TodoState, period: "DAILY" | "WEEKLY", hard: boolean): TodoState {
   const targetTaskIds = state.tasks.filter((t) => t.period === period).map((t) => t.id);
