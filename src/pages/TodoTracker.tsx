@@ -104,7 +104,7 @@ export default function TodoTracker() {
     return loaded ?? DEFAULT_TODO_STATE.make();
   });
 
-   // ✅ 여기! state 훅 다음 줄에 선언
+  // ✅ 여기! state 훅 다음 줄에 선언
   const [dragCharId, setDragCharId] = useState<string | null>(null);
   const [dragTaskId, setDragTaskId] = useState<string | null>(null);
 
@@ -647,16 +647,16 @@ export default function TodoTracker() {
     setState((prev) => setCell(prev, task, ch, { type: "SELECT", value, updatedAt: Date.now() }));
   }
 
-function showExport(json: string) {
-  const w = window.open("", "_blank", "width=600,height=600");
-  if (!w) return;
-  w.document.write(`<textarea style="width:100%;height:100%;">${json}</textarea>`);
-  w.document.close();
-}
+  function showExport(json: string) {
+    const w = window.open("", "_blank", "width=600,height=600");
+    if (!w) return;
+    w.document.write(`<textarea style="width:100%;height:100%;">${json}</textarea>`);
+    w.document.close();
+  }
 
-function doExport() {
-  showExport(exportStateToJson(state));
-}
+  function doExport() {
+    showExport(exportStateToJson(state));
+  }
 
 
   function doImport() {
@@ -793,6 +793,13 @@ function doExport() {
     }
   };
 
+  // ✅ 핵심 콘텐츠(쿠르잔/혼돈) 단일 행 ID
+  const CORE_DAILY_TASK_ID = "MAIN_DAILY";
+
+  // ✅ 핵심 콘텐츠 표시명: 캐릭 iLv에 따라 라벨만 변경
+  function getCoreDailyLabel(ilvl: number) {
+    return ilvl >= 1730 ? "혼돈의 균열" : "쿠르잔 전선";
+  }
 
   // 해당 레이드에서 갈 수 있는 최고 골드 난이도 1개 선택
   function pickBestDiff(ilvl: number, raid: RaidDef): RaidDifficulty | null {
@@ -1244,16 +1251,18 @@ function doExport() {
                                   const max = Math.max(1, task.max ?? 1);
                                   const count = cell?.type === "COUNTER" ? (cell.count ?? 0) : 0;
 
-                                  const isChaos = task.title === "카오스 던전";
+                                  const isCore = task.id === CORE_DAILY_TASK_ID;
                                   const isGuardian = task.title === "가디언 토벌";
 
-                                  const restValue = isChaos
+                                  // 휴식게이지는 기존 chaos 칸을 "핵심 콘텐츠 휴식"으로 재사용
+                                  const restValue = isCore
                                     ? (activeTable.restGauges?.[ch.id]?.chaos ?? 0)
                                     : isGuardian
                                       ? (activeTable.restGauges?.[ch.id]?.guardian ?? 0)
                                       : 0;
 
-                                  const restMax = isChaos ? 200 : isGuardian ? 100 : 0;
+                                  const restMax = isCore ? 200 : isGuardian ? 100 : 0;
+
 
                                   return (
                                     <td
@@ -1263,12 +1272,19 @@ function doExport() {
                                       data-task-id={task.id}
                                       data-ch-id={ch.id}
                                       onClick={() => onCellClick(task, ch)}
-                                      title="클릭 토글"
+                                      title={task.id === CORE_DAILY_TASK_ID ? getCoreDailyLabel(getCharIlvl(ch)) : "클릭 토글"}
                                     >
                                       <div className="cell-inline">
                                         <CounterDots max={max} count={count} />
 
-                                        {(isChaos || isGuardian) && (
+                                        {/* ✅ 핵심 콘텐츠는 캐릭 iLv에 따라 "쿠르잔/혼돈" 라벨만 표시 */}
+                                        {false && task.id === CORE_DAILY_TASK_ID && (
+                                          <div style={{ fontSize: 11, opacity: 0.8, marginLeft: 6 }}>
+                                            {getCoreDailyLabel(getCharIlvl(ch))}
+                                          </div>
+                                        )}
+
+                                        {(isCore || isGuardian) && (
                                           <input
                                             inputMode="numeric"
                                             className="rest-input"
@@ -1285,7 +1301,7 @@ function doExport() {
                                                 const nextRest = {
                                                   ...(tbl.restGauges ?? {}),
                                                   [ch.id]: {
-                                                    chaos: isChaos ? clamped : cur.chaos,
+                                                    chaos: isCore ? clamped : cur.chaos,          // ✅ 핵심 콘텐츠 = chaos칸 재사용
                                                     guardian: isGuardian ? clamped : cur.guardian,
                                                   },
                                                 };
@@ -1294,10 +1310,11 @@ function doExport() {
                                                 return { ...prev, tables: prev.tables.map((t) => (t.id === nextTbl.id ? nextTbl : t)) };
                                               });
                                             }}
-                                            title={isChaos ? "카오스 휴식(0~200)" : "가디언 휴식(0~100)"}
+                                            title={isCore ? "핵심 콘텐츠 휴식(0~200)" : "가디언 휴식(0~100)"}
                                             onClick={(e) => e.stopPropagation()}
                                           />
                                         )}
+
                                       </div>
                                     </td>
                                   );
@@ -1341,7 +1358,7 @@ function doExport() {
           <div>팁</div>
           <ul>
             <li>카운터 셀: 클릭으로 토글</li>
-            <li>카오스/가디언: 카운터 옆 휴식게이지(숫자) 입력 가능</li>
+            <li>핵심 콘텐츠/가디언: 카운터 옆 휴식게이지(숫자) 입력 가능</li>
             <li>일일 초기화: 휴식게이지 갱신 후 일일 체크 초기화</li>
             <li>리셋: 일일 6시 / 주간 수요일 6시 자동 적용(앱 켜둔 상태에서도)</li>
           </ul>
