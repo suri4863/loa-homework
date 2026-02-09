@@ -1,0 +1,629 @@
+/* =========================================================
+   TodoTracker.css (FULL REPLACE)
+   - 6+ 캐릭 절대 안 잘림: todo-table-scroll에서 가로 스크롤
+   - 중앙정렬: 화면보다 작을 때만 가운데
+   - 카드 라운드 유지: todo-table-card
+   - 기존 프로젝트 클래스들(raid popup / gold box / hint 등) 보강 포함
+   ========================================================= */
+
+:root{
+  --bg: #f6f7fb;
+  --card: #ffffff;
+  --soft: #f2f4f8;
+  --soft-2: #f8fafc;
+  --border: #e5e7eb;
+
+  --text: #111827;
+  --muted: #6b7280;
+
+  --primary: #3b82f6;
+  --primary-soft: rgba(59,130,246,0.16);
+
+  --warning: #f59e0b;
+  --shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+body{
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* ---------- Page ---------- */
+.todo-page{
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* ---------- Topbar ---------- */
+.todo-topbar{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  justify-content: space-between;
+
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+
+.todo-title h2{
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+}
+
+.todo-sub{
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.todo-actions{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.btn{
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  padding: 8px 10px;
+  border-radius: 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.btn:hover{ background: var(--soft-2); }
+
+.divider{
+  width: 1px;
+  height: 26px;
+  background: var(--border);
+  margin: 0 2px;
+}
+
+/* ---------- Tabs ---------- */
+.todo-tabs{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  margin-bottom: 10px;
+}
+
+.tab{
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  padding: 7px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.tab:hover{ background: var(--soft-2); }
+
+.tab.active{
+  border-color: rgba(59,130,246,0.45);
+  background: rgba(59,130,246,0.10);
+  color: #1d4ed8;
+  font-weight: 800;
+}
+
+.todo-progress{
+  margin-left: auto;
+  font-size: 13px;
+  color: #374151;
+}
+
+/* =========================================================
+   ✅ 핵심: 스크롤 컨테이너 = todo-table-scroll (여기만 스크롤)
+   ========================================================= */
+.todo-table-scroll{
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+
+  /* 좌/우 여백 동일 */
+  padding: 0 24px 10px;
+  box-sizing: border-box;
+}
+
+/* 내용이 화면보다 작을 때만 중앙정렬 */
+.todo-table-center{
+  display: flex;
+  justify-content: center;
+  min-width: 100%;
+}
+
+/* 카드: 절대 max-width로 자르지 않음 */
+.todo-table-card{
+  display: inline-block;
+  width: max-content;
+  max-width: none;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+/* ---------- Table ---------- */
+.todo-table{
+  width: max-content;
+  table-layout: auto;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.todo-table th,
+.todo-table td{
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  background: var(--card);
+  vertical-align: middle;
+}
+
+.todo-table th:last-child,
+.todo-table td:last-child{
+  border-right: none;
+}
+
+/* sticky header */
+.todo-table thead th{
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--soft);
+  font-weight: 800;
+}
+
+/* sticky left */
+.todo-sticky-left{
+  position: sticky;
+  left: 0;
+  z-index: 12;
+  background: var(--soft);
+  border-right: 1px solid var(--border);
+}
+
+/* Column widths */
+.head-left,
+.task-left{
+  min-width: 320px;
+  width: 320px;
+}
+
+.todo-col-head{
+  min-width: 220px;
+  width: 220px;
+}
+
+/* Rows spacing */
+.task-row td,
+.task-row th{
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+
+/* Sections */
+.section-row td{
+  background: var(--soft);
+  font-weight: 900;
+  color: #334155;
+}
+
+.section-row.section-strong td{
+  background: #eef2f7;
+  color: #111827;
+  font-weight: 700;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.section-left{
+  padding-left: 18px !important;
+  padding-right: 18px !important;
+}
+
+/* Left task cell */
+.task-left{
+  padding-left: 18px !important;
+  padding-right: 14px !important;
+}
+
+/* 너 코드에서 실제로는 td에 task-left가 붙음 */
+.task-left .task-left-inner{
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 6px;
+}
+
+.task-title{
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 800;
+}
+
+/* 레이드 제목 클릭(팝업 트리거) */
+.raid-title-click{
+  cursor: pointer;
+}
+.raid-title-click:hover{
+  text-decoration: underline;
+}
+
+/* Pills */
+.pill{
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  border: 1px solid rgba(107,114,128,0.22);
+  color: #374151;
+  background: #fff;
+}
+
+.pill.daily{
+  color: #b45309;
+  border-color: rgba(245,158,11,0.35);
+  background: rgba(245,158,11,0.10);
+}
+
+.pill.weekly{
+  color: #047857;
+  border-color: rgba(16,185,129,0.35);
+  background: rgba(16,185,129,0.10);
+}
+
+/* Task actions */
+.task-actions{
+  display: inline-flex;
+  gap: 6px;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+.mini{
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  padding: 4px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  height: 28px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.mini:hover{ background: var(--soft-2); }
+
+/* ---------- Character header block ---------- */
+.char-head{
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 10px;
+}
+
+.char-name{
+  font-weight: 900;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.char-meta{
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.char-actions{
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+/* Cells */
+.todo-table td.cell{
+  text-align: center;
+  padding: 12px 10px;
+}
+
+.todo-table td.cell .cell-inline{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+/* Zebra + hover */
+.todo-table tbody tr:nth-child(even) td{ background: var(--soft-2); }
+.todo-table tbody tr:hover td{ background: rgba(59,130,246,0.06); }
+
+/* Check */
+.cell-check-btn{
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.check{
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  border: 2px solid rgba(107,114,128,0.30);
+  background: #fff;
+}
+
+.cell-check-btn .check{
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+}
+
+.check.on{
+  background: var(--primary);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+/* Counter dots */
+.dots{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.dot{
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 2px solid rgba(107,114,128,0.28);
+  background: #fff;
+}
+
+.dot.filled{
+  background: var(--warning);
+  border-color: var(--warning);
+}
+
+/* 숫자 표시 (count/max) */
+.dots-num{
+  font-size: 12px;
+  color: var(--muted);
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+/* Inputs */
+.cell-text,
+.cell-select{
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  outline: none;
+}
+
+.cell-text:focus,
+.cell-select:focus{
+  border-color: rgba(59,130,246,0.65);
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.14);
+}
+
+.rest-input{
+  width: 64px;
+  height: 32px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  text-align: center;
+  outline: none;
+}
+
+.rest-input:focus{
+  border-color: rgba(59,130,246,0.65);
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.14);
+}
+
+/* Scrollbar */
+.todo-table-scroll::-webkit-scrollbar{ height: 10px; }
+.todo-table-scroll::-webkit-scrollbar-track{ background: #eef2f7; }
+.todo-table-scroll::-webkit-scrollbar-thumb{ background: #d1d5db; border-radius: 999px; }
+.todo-table-scroll::-webkit-scrollbar-thumb:hover{ background: #cbd5e1; }
+
+/* =========================================================
+   ✅ 기타(해금/큐브 티켓) UI
+   요청 레이아웃:
+   [ 입력바 ]   [1회사용]
+   [추가][삭제] [3회사용]
+   ========================================================= */
+.ticket-grid{
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+  justify-items: stretch;
+}
+
+.ticket-left{
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: 8px;
+}
+
+.ticket-left-actions{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.ticket-right{
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: 8px;
+  justify-items: stretch;
+}
+
+.ticket-input{
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  text-align: center;
+  outline: none;
+}
+
+.ticket-input:focus{
+  border-color: rgba(59,130,246,0.65);
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.14);
+}
+
+.ticket-btn{
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  padding: 4px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  height: 32px;
+  line-height: 22px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ticket-btn:hover{ background: var(--soft-2); }
+.ticket-btn:disabled{ opacity: .5; cursor: not-allowed; }
+
+.ticket-btn.primary{
+  border-color: rgba(59,130,246,0.35);
+  background: rgba(59,130,246,0.10);
+  color: #1d4ed8;
+  font-weight: 800;
+}
+
+/* ---------- Gold sum (주간 골드) ---------- */
+.goldbox{
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(107,114,128,0.20);
+  background: #fff;
+  min-width: 140px;
+}
+
+.goldbox.muted{
+  opacity: 0.7;
+}
+
+.gold-sum{
+  font-weight: 900;
+}
+
+.gold-detail{
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* ---------- Hint box ---------- */
+.todo-hint{
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+  color: #374151;
+  font-size: 13px;
+}
+
+.todo-hint > div{
+  font-weight: 900;
+  margin-bottom: 6px;
+}
+
+.todo-hint ul{
+  margin: 0;
+  padding-left: 18px;
+}
+
+.todo-hint li{
+  margin: 4px 0;
+  color: #4b5563;
+}
+
+/* ---------- Raid gold popup ---------- */
+.raid-gold-pop{
+  position: fixed;
+  z-index: 9998;
+  width: 240px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+  padding: 10px 10px;
+}
+
+.raid-gold-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.raid-gold-head button{
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 10px;
+  height: 28px;
+  padding: 0 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.raid-gold-head button:hover{
+  background: var(--soft-2);
+}
+
+.raid-gold-body{
+  font-size: 13px;
+  color: #374151;
+  display: grid;
+  gap: 4px;
+}
+
+.todo-col-head[draggable="true"] {
+  cursor: grab;
+}
+.todo-col-head[draggable="true"]:active {
+  cursor: grabbing;
+}

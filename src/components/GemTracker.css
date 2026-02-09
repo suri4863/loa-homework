@@ -1,0 +1,184 @@
+/* =========================
+   Calm Light Theme (Clean)
+   - 행(칸) 높이: 유지 (td padding 유지)
+   - 입력칸만: 더 작게
+   ========================= */
+
+/* ===== Theme tokens ===== */
+:root {
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --panel-soft: #f1f3f6;
+  --border: #e5e7eb;
+
+  --text: #1f2937;
+  --text-muted: #6b7280;
+
+  --primary: #3b82f6;
+  --primary-soft: rgba(59, 130, 246, 0.15);
+}
+
+/* 전체 래퍼 */
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* 스크롤 래퍼 */
+.gem-table-wrap {
+  margin-top: 16px;
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  padding-bottom: 6px;
+}
+
+/* 테이블 */
+.gem-table {
+  width: max-content;
+  min-width: 1100px;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: auto;
+}
+
+/* 공통 셀 (✅ 행 높이 여기서 결정됨: 이 값은 유지) */
+.gem-table th,
+.gem-table td {
+  padding: 12px 14px;                /* ✅ 행(칸) 높이 유지 */
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  vertical-align: middle;
+  background: var(--panel);
+  color: var(--text);
+}
+
+.gem-table th:last-child,
+.gem-table td:last-child {
+  border-right: none;
+}
+
+/* 행 hover */
+.gem-table tbody tr:hover td {
+  background: #f9fafb;
+}
+
+/* 헤더 */
+.gem-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--panel-soft);
+  font-weight: 600;
+  line-height: 1.2;
+  border-bottom: 1px solid var(--border);
+}
+
+/* 캐릭터 컬럼 */
+.col-head {
+  min-width: 190px;
+  text-align: left;
+  background: var(--panel-soft);
+}
+
+/* 좌측 고정 컬럼 */
+.level-head,
+.level-cell {
+  min-width: 120px;
+  width: 120px;
+  text-align: center;
+  white-space: nowrap;
+
+  position: sticky;
+  left: 0;
+  z-index: 6;
+
+  background: var(--panel-soft);
+  border-right: 1px solid var(--border);
+}
+
+/* 헤더 타이틀 */
+.col-title {
+  display: block;
+  font-weight: 700;
+  white-space: normal;
+  word-break: keep-all;
+}
+
+/* 헤더: 제목 위, 버튼 아래 */
+.th-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+/* 수정/삭제 버튼 영역 */
+.head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* ===== 버튼 공통 ===== */
+.ticket-btn,
+.head-actions button {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.ticket-btn:hover,
+.head-actions button:hover {
+  background: #f9fafb;
+}
+
+/* ===== 입력창 (✅ 여기만 줄이면 됨) ===== */
+/* Tailwind/forms가 덮어써도 이게 최종으로 먹도록 구체성 + important */
+.gem-table input.gem-input {
+  width: 100%;
+  min-width: 84px !important;
+
+  height: 28px !important;          /* ✅ 입력칸 높이 줄임 */
+  min-height: 28px !important;
+  padding: 0 8px !important;        /* ✅ 입력칸 내부 여백 줄임 */
+
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+  background: #ffffff !important;
+  color: var(--text) !important;
+
+  font-size: 13px !important;
+  line-height: 28px !important;     /* ✅ 세로 중앙 정렬 */
+  box-sizing: border-box !important;
+  display: block;
+  outline: none;
+}
+
+.gem-table input.gem-input::placeholder {
+  color: var(--text-muted);
+}
+
+.gem-table input.gem-input:focus {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px var(--primary-soft) !important;
+}
+
+/* (선택) 스크롤바 톤 */
+.gem-table-wrap::-webkit-scrollbar { height: 10px; }
+.gem-table-wrap::-webkit-scrollbar-track { background: #f1f3f6; border-radius: 999px; }
+.gem-table-wrap::-webkit-scrollbar-thumb { background: rgba(107,114,128,0.25); border-radius: 999px; }
+.gem-table-wrap::-webkit-scrollbar-thumb:hover { background: rgba(107,114,128,0.35); }
+
+/* ✅ 컬럼 폭 줄이기 (기존 190px → 140px 정도) */
+.col-head{
+  min-width: 130px;   /* 원하는 정도로 130~150 사이로 조절 */
+  width: 130px;       /* ✅ 고정폭으로 더 확실하게 */
+}
