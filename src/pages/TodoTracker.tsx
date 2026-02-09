@@ -647,14 +647,22 @@ export default function TodoTracker() {
     setState((prev) => setCell(prev, task, ch, { type: "SELECT", value, updatedAt: Date.now() }));
   }
 
-  function doExport() {
-    const json = exportStateToJson(state);
-    prompt("아래 내용을 복사해서 백업하세요(JSON).", json);
-  }
+function showExport(json: string) {
+  const w = window.open("", "_blank", "width=600,height=600");
+  if (!w) return;
+  w.document.write(`<textarea style="width:100%;height:100%;">${json}</textarea>`);
+  w.document.close();
+}
+
+function doExport() {
+  showExport(exportStateToJson(state));
+}
+
 
   function doImport() {
     const raw = prompt("백업 JSON을 붙여넣으세요");
     if (!raw) return;
+    const text = raw.trim();
     try {
       const next = importStateFromJson(raw);
       setState(next);
