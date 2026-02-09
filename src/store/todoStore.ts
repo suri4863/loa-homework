@@ -302,14 +302,40 @@ export function setCell(state: TodoState, task: TaskRow, ch: Character, value: C
   return { ...state, tables: state.tables.map((t) => (t.id === nextTable.id ? nextTable : t)) };
 }
 
-export function exportStateToJson(state: TodoState): string {
-  return JSON.stringify(state);
+function sanitizeJsonText(raw: string): string {
+  return raw
+    .replace(/\u2026/g, "...")          // …(한 글자) -> ... 통일
+    .replace(/\.\.\./g, "")            // 화면 생략(...) 제거
+    .replace(/,\s*([}\]])/g, "$1")     // trailing comma 제거
+    .trim();
 }
 
 export function importStateFromJson(raw: string): TodoState {
-  const parsed = JSON.parse(raw);
-  return normalizeState(parsed);
+  const cleaned = sanitizeJsonText(raw);
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    // doImport()의 catch로 잡혀서 "형식 확인" 안내가 뜸
+    throw new Error("Invalid JSON");
+  }
+
+  // ✅ v2 백업 포맷: { version, exportedAt, state }
+  const payload = parsed?.state ?? parsed;
+
+  // ✅ normalizeState가 TodoState로 보정/마이그레이션 수행
+  return normalizeState(payload);
 }
+
+export function exportStateToJson(state: TodoState): string {
+  return JSON.stringify(
+    { version: 1, exportedAt: new Date().toISOString(), state },
+    null,
+    2
+  );
+}
+
 
 /** Reset anchor 계산 */
 function getDailyResetAnchor(now: Date, dailyHour: number): Date {
