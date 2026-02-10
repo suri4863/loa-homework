@@ -104,9 +104,13 @@ export default function TodoTracker() {
     return loaded ?? DEFAULT_TODO_STATE.make();
   });
 
-  // ✅ 여기! state 훅 다음 줄에 선언
   const [dragCharId, setDragCharId] = useState<string | null>(null);
   const [dragTaskId, setDragTaskId] = useState<string | null>(null);
+
+  // ✅ 여기 추가
+  const isTouch =
+    typeof window !== "undefined" &&
+    (("ontouchstart" in window) || navigator.maxTouchPoints > 0);
 
   const [periodTab, setPeriodTab] = useState<Tab>("ALL");
   const tableWrapRef = useRef<HTMLDivElement | null>(null);
@@ -117,6 +121,7 @@ export default function TodoTracker() {
     charId: null,
     value: "",
   });
+
 
   function onToggleAzena(charId: string, checked: boolean) {
     if (!checked) {
@@ -995,12 +1000,17 @@ export default function TodoTracker() {
                         <span>숙제</span>
                       </div>
                     </th>
+
                     {characters.map((ch) => (
                       <th
                         key={ch.id}
                         className="todo-col-head"
-                        onDragOver={(e) => e.preventDefault()}
+                        onDragOver={(e) => {
+                          if (isTouch) return;        // ✅ 모바일은 무시
+                          e.preventDefault();
+                        }}
                         onDrop={() => {
+                          if (isTouch) return;        // ✅ 모바일은 무시
                           if (!dragCharId) return;
                           reorderCharacters(dragCharId, ch.id);
                           setDragCharId(null);
@@ -1009,11 +1019,17 @@ export default function TodoTracker() {
                         <div className="char-head">
                           <div
                             className="char-name"
-                            title="드래그해서 캐릭터 순서 변경"
-                            draggable
-                            onDragStart={() => setDragCharId(ch.id)}
-                            onDragEnd={() => setDragCharId(null)}
-                            style={{ cursor: "grab" }}
+                            title={isTouch ? ch.name : "드래그해서 캐릭터 순서 변경"}
+                            draggable={!isTouch}       // ✅ 모바일 드래그 OFF
+                            onDragStart={() => {
+                              if (isTouch) return;
+                              setDragCharId(ch.id);
+                            }}
+                            onDragEnd={() => {
+                              if (isTouch) return;
+                              setDragCharId(null);
+                            }}
+                            style={{ cursor: isTouch ? "default" : "grab" }}
                           >
                             {ch.name}
                           </div>
@@ -1021,13 +1037,12 @@ export default function TodoTracker() {
                           <div className="char-meta">Lv. {ch.itemLevel || "-"}</div>
                           <div className="char-meta">{ch.power || "-"}</div>
 
+                          {/* 아제나 부분 기존 그대로 */}
                           {(() => {
                             const enabled = Boolean((ch as any).azenaEnabled);
                             const expiresAt = (ch as any).azenaExpiresAt as string | null | undefined;
                             const expired =
-                              enabled && expiresAt
-                                ? new Date(expiresAt).getTime() <= Date.now()
-                                : false;
+                              enabled && expiresAt ? new Date(expiresAt).getTime() <= Date.now() : false;
                             const checked = enabled && !expired;
 
                             return (
@@ -1051,17 +1066,12 @@ export default function TodoTracker() {
                           })()}
 
                           <div className="char-actions">
-                            <button className="mini" onClick={() => editCharacter(ch)}>
-                              수정
-                            </button>
-                            <button className="mini" onClick={() => deleteCharacter(ch)}>
-                              삭제
-                            </button>
+                            <button className="mini" onClick={() => editCharacter(ch)}>수정</button>
+                            <button className="mini" onClick={() => deleteCharacter(ch)}>삭제</button>
                           </div>
                         </div>
                       </th>
                     ))}
-
                   </tr>
                 </thead>
 

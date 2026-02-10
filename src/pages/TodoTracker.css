@@ -149,7 +149,7 @@ body{
 .todo-table-card{
   display: inline-block;
   width: max-content;
-  max-width: none;
+  min-width: max-content;   /* ✅ 내용만큼은 절대 줄지마 */
   border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--card);
@@ -160,6 +160,7 @@ body{
 /* ---------- Table ---------- */
 .todo-table{
   width: max-content;
+  min-width: max-content;   /* ✅ 표도 내용폭 유지 */
   table-layout: auto;
   border-collapse: separate;
   border-spacing: 0;
@@ -207,6 +208,8 @@ body{
   min-width: 220px;
   width: 220px;
 }
+
+.todo-col-head{ flex: none; }
 
 /* Rows spacing */
 .task-row td,
