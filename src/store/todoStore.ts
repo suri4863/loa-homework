@@ -12,6 +12,10 @@ export type Character = {
   name: string;
   itemLevel?: string;
   power?: string;
+
+  // (확장 필드) 아제나 만료 자동해제용
+  azenaEnabled?: boolean;
+  azenaExpiresAt?: string | null;
 };
 
 export type TaskRow = {
@@ -24,7 +28,6 @@ export type TaskRow = {
   section?: string;
   order?: number;
 };
-
 
 export type CellValue =
   | { type: "CHECK"; checked: boolean; updatedAt: number }
@@ -79,7 +82,7 @@ export function createCharacter(input: { name: string; itemLevel?: string; power
 }
 
 export function createTask(input: {
-  id?: string; // ✅ 추가
+  id?: string; // ✅ 고정 id 허용
   title: string;
   period: Period;
   cellType: CellType;
@@ -88,7 +91,7 @@ export function createTask(input: {
   section?: string;
 }): TaskRow {
   return {
-    id: input.id ?? uid("task"), // ✅ 고정 id 허용
+    id: input.id ?? uid("task"),
     title: input.title,
     period: input.period,
     cellType: input.cellType,
@@ -115,67 +118,63 @@ function makeDefaultState(): TodoState {
   // =========================
   // 숙제 기본값
   // =========================
-const baseOrder = Date.now();
+  const baseOrder = Date.now();
 
-const tasks: TaskRow[] = [
-  // =========================
-  // ✅ 일일 숙제 (order 명시)
-  // =========================
-  {
-    ...createTask({
-      title: "길드 출석",
-      period: "DAILY",
-      cellType: "CHECK",
-      section: "일일 숙제",
+  const tasks: TaskRow[] = [
+    // ✅ 일일 숙제 (order 명시)
+    {
+      ...createTask({
+        title: "길드 출석",
+        period: "DAILY",
+        cellType: "CHECK",
+        section: "일일 숙제",
+      }),
+      order: baseOrder + 1,
+    },
+
+    {
+      ...createTask({
+        id: "MAIN_DAILY",
+        title: "쿠르잔 전선",
+        period: "DAILY",
+        cellType: "COUNTER",
+        max: 1,
+        section: "일일 숙제",
+      }),
+      order: baseOrder + 2,
+    },
+
+    {
+      ...createTask({
+        title: "가디언 토벌",
+        period: "DAILY",
+        cellType: "COUNTER",
+        max: 1,
+        section: "일일 숙제",
+      }),
+      order: baseOrder + 3,
+    },
+
+    // 주간
+    createTask({ title: "천상", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
+    createTask({ title: "혈석 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
+    createTask({ title: "클리어메달 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
+    createTask({ title: "해적주화 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
+
+    createTask({ title: "2막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+    createTask({ title: "3막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+    createTask({ title: "4막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+    createTask({ title: "종막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+    createTask({ title: "세르카", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+
+    // 기타(귀속 메모)
+    createTask({
+      title: "큐브",
+      period: "NONE",
+      cellType: "TEXT",
+      section: "기타",
     }),
-    order: baseOrder + 1,
-  },
-
-  {
-    ...createTask({
-      id: "MAIN_DAILY",
-      title: "쿠르잔 전선",
-      period: "DAILY",
-      cellType: "COUNTER",
-      max: 1,
-      section: "일일 숙제",
-    }),
-    order: baseOrder + 2,
-  },
-
-  {
-    ...createTask({
-      title: "가디언 토벌",
-      period: "DAILY",
-      cellType: "COUNTER",
-      max: 1,
-      section: "일일 숙제",
-    }),
-    order: baseOrder + 3,
-  },
-
-  // =========================
-  // 주간/기타는 기존대로
-  // =========================
-  createTask({ title: "천상", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
-  createTask({ title: "혈석 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
-  createTask({ title: "클리어메달 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
-  createTask({ title: "해적주화 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
-
-  createTask({ title: "2막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
-  createTask({ title: "3막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
-  createTask({ title: "4막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
-  createTask({ title: "종막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
-  createTask({ title: "세르카", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
-
-  createTask({
-    title: "큐브",
-    period: "NONE",
-    cellType: "TEXT",
-    section: "기타",
-  }),
-];
-
+  ];
 
   // =========================
   // 리셋 설정
@@ -211,8 +210,6 @@ const tasks: TaskRow[] = [
   };
 }
 
-
-
 function normalizeState(parsed: any): TodoState {
   // ✅ 새 구조면 보정만
   if (Array.isArray(parsed?.tables) && typeof parsed?.activeTableId === "string") {
@@ -225,23 +222,20 @@ function normalizeState(parsed: any): TodoState {
     st.reset.lastWeeklyResetAt = st.reset.lastWeeklyResetAt ?? 0;
 
     st.tasks = Array.isArray(st.tasks) ? st.tasks : [];
-    // ✅ (마이그레이션) '기타/큐브' 없으면 자동 추가
+
     // ✅ (마이그레이션) '기타 / 큐브(귀속 메모)' 없으면 자동 추가
-    const hasCube = st.tasks.some(
-      (t) => t.title === "큐브" && t.period === "NONE"
-    );
+    const hasCube = st.tasks.some((t) => t.title === "큐브" && t.period === "NONE");
     if (!hasCube) {
       st.tasks = [
         ...st.tasks,
         createTask({
           title: "큐브",
-          period: "NONE",     // ✅ 귀속
-          cellType: "TEXT",   // ✅ 메모
+          period: "NONE",
+          cellType: "TEXT",
           section: "기타",
         }),
       ];
     }
-
 
     if (!st.tables.length) return makeDefaultState();
     if (!st.activeTableId || !st.tables.some((t) => t.id === st.activeTableId)) st.activeTableId = st.tables[0].id;
@@ -337,19 +331,49 @@ export const DEFAULT_TODO_STATE = {
   },
 };
 
+// =========================
+// ✅ Table helpers (추가)
+// =========================
 export function getActiveTable(state: TodoState): TodoTable {
   const tables = state?.tables ?? [];
   if (!tables.length) return { id: uid("tbl"), name: "표1", characters: [], values: {}, restGauges: {} };
   return tables.find((t) => t.id === state.activeTableId) ?? tables[0];
 }
 
+export function getTableById(state: TodoState, tableId: string): TodoTable {
+  const tables = state?.tables ?? [];
+  if (!tables.length) return { id: uid("tbl"), name: "표1", characters: [], values: {}, restGauges: {} };
+  return tables.find((t) => t.id === tableId) ?? tables[0];
+}
+
+/** (호환) activeTable 기준 */
 export function getCell(state: TodoState, taskId: string, charId: string): CellValue | null {
   const table = getActiveTable(state);
   return table.values?.[taskId]?.[charId] ?? null;
 }
 
+/** ✅ tableId 기준 */
+export function getCellByTableId(state: TodoState, tableId: string, taskId: string, charId: string): CellValue | null {
+  const table = getTableById(state, tableId);
+  return table.values?.[taskId]?.[charId] ?? null;
+}
+
+/** (호환) activeTable 기준 */
 export function setCell(state: TodoState, task: TaskRow, ch: Character, value: CellValue): TodoState {
   const table = getActiveTable(state);
+
+  const values: GridValues = { ...(table.values ?? {}) };
+  const row = { ...(values[task.id] ?? {}) };
+  row[ch.id] = value;
+  values[task.id] = row;
+
+  const nextTable: TodoTable = { ...table, values };
+  return { ...state, tables: state.tables.map((t) => (t.id === nextTable.id ? nextTable : t)) };
+}
+
+/** ✅ tableId 기준 */
+export function setCellByTableId(state: TodoState, tableId: string, task: TaskRow, ch: Character, value: CellValue): TodoState {
+  const table = getTableById(state, tableId);
 
   const values: GridValues = { ...(table.values ?? {}) };
   const row = { ...(values[task.id] ?? {}) };
@@ -375,7 +399,6 @@ export function importStateFromJson(raw: string): TodoState {
   try {
     parsed = JSON.parse(cleaned);
   } catch {
-    // doImport()의 catch로 잡혀서 "형식 확인" 안내가 뜸
     throw new Error("Invalid JSON");
   }
 
@@ -393,7 +416,6 @@ export function exportStateToJson(state: TodoState): string {
     2
   );
 }
-
 
 /** Reset anchor 계산 */
 function getDailyResetAnchor(now: Date, dailyHour: number): Date {
@@ -415,16 +437,8 @@ function getWeeklyResetAnchor(now: Date, weekday: number, hour: number): Date {
 
 /**
  * ✅ 일일 리셋 시점(리셋 직전 상태) 수행량 기반 휴식게이지 갱신
- * - 카오스(최대 2회):
- *   count=0 -> +20
- *   count=1 -> -10
- *   count=2 -> -40
- * - 가디언(최대 1회):
- *   count=0 -> +10
- *   count=1 -> -20
  */
 function applyDailyRestUpdate(prev: TodoState): TodoState {
-  // ✅ 핵심 콘텐츠(단일 행) + 가디언
   const coreTask = prev.tasks.find((t) => t.period === "DAILY" && t.id === "MAIN_DAILY");
   const guardianTask = prev.tasks.find((t) => t.period === "DAILY" && t.title === "가디언 토벌");
 
@@ -436,9 +450,7 @@ function applyDailyRestUpdate(prev: TodoState): TodoState {
     for (const ch of tbl.characters) {
       const current = restGauges[ch.id] ?? { chaos: 0, guardian: 0 };
 
-      // =========================
-      // ✅ 핵심 콘텐츠(쿠르잔/혼돈 공용) count: 0~1
-      // =========================
+      // 핵심 콘텐츠 count: 0~1
       let coreCount = 0;
       if (coreTask) {
         const cell = tbl.values?.[coreTask.id]?.[ch.id];
@@ -446,12 +458,10 @@ function applyDailyRestUpdate(prev: TodoState): TodoState {
       }
       coreCount = clamp(coreCount, 0, 1);
 
-      // ✅ 규칙: count=0 -> +20, count=1 -> -40
+      // count=0 -> +20, count=1 -> -40
       const coreDelta = 20 - 60 * coreCount;
 
-      // =========================
-      // ✅ 가디언(기존 로직 유지)
-      // =========================
+      // 가디언
       let guardianCount = 0;
       if (guardianTask) {
         const cell = tbl.values?.[guardianTask.id]?.[ch.id];
@@ -461,7 +471,6 @@ function applyDailyRestUpdate(prev: TodoState): TodoState {
 
       const guardianDelta = (guardianMax - guardianCount) * 10 - guardianCount * 20;
 
-      // ✅ chaos 휴식을 "핵심 콘텐츠 휴식"으로 재사용
       restGauges[ch.id] = {
         chaos: clamp((current.chaos ?? 0) + coreDelta, 0, 200),
         guardian: clamp((current.guardian ?? 0) + guardianDelta, 0, 100),
@@ -473,7 +482,6 @@ function applyDailyRestUpdate(prev: TodoState): TodoState {
 
   return { ...prev, tables };
 }
-
 
 export function resetByPeriod(state: TodoState, period: "DAILY" | "WEEKLY", hard: boolean): TodoState {
   const targetTaskIds = state.tasks.filter((t) => t.period === period).map((t) => t.id);
