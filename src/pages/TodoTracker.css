@@ -6,7 +6,7 @@
    - 기존 프로젝트 클래스들(raid popup / gold box / hint 등) 보강 포함
    ========================================================= */
 
-:root{
+:root {
   --bg: #f6f7fb;
   --card: #ffffff;
   --soft: #f2f4f8;
@@ -17,19 +17,19 @@
   --muted: #6b7280;
 
   --primary: #3b82f6;
-  --primary-soft: rgba(59,130,246,0.16);
+  --primary-soft: rgba(59, 130, 246, 0.16);
 
   --warning: #f59e0b;
-  --shadow: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
-body{
+body {
   background: var(--bg);
   color: var(--text);
 }
 
 /* ---------- Page ---------- */
-.todo-page{
+.todo-page {
   width: 100%;
   margin: 0;
   padding: 0;
@@ -37,7 +37,7 @@ body{
 }
 
 /* ---------- Topbar ---------- */
-.todo-topbar{
+.todo-topbar {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
@@ -51,27 +51,27 @@ body{
   box-shadow: var(--shadow);
 }
 
-.todo-title h2{
+.todo-title h2 {
   margin: 0;
   font-size: 16px;
   font-weight: 800;
   letter-spacing: -0.2px;
 }
 
-.todo-sub{
+.todo-sub {
   margin-top: 4px;
   font-size: 12px;
   color: var(--muted);
 }
 
-.todo-actions{
+.todo-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
 }
 
-.btn{
+.btn {
   border: 1px solid var(--border);
   background: var(--card);
   color: var(--text);
@@ -81,9 +81,11 @@ body{
   cursor: pointer;
 }
 
-.btn:hover{ background: var(--soft-2); }
+.btn:hover {
+  background: var(--soft-2);
+}
 
-.divider{
+.divider {
   width: 1px;
   height: 26px;
   background: var(--border);
@@ -91,7 +93,7 @@ body{
 }
 
 /* ---------- Tabs ---------- */
-.todo-tabs{
+.todo-tabs {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -99,7 +101,7 @@ body{
   margin-bottom: 10px;
 }
 
-.tab{
+.tab {
   border: 1px solid var(--border);
   background: var(--card);
   color: var(--text);
@@ -109,16 +111,18 @@ body{
   cursor: pointer;
 }
 
-.tab:hover{ background: var(--soft-2); }
+.tab:hover {
+  background: var(--soft-2);
+}
 
-.tab.active{
-  border-color: rgba(59,130,246,0.45);
-  background: rgba(59,130,246,0.10);
+.tab.active {
+  border-color: rgba(59, 130, 246, 0.45);
+  background: rgba(59, 130, 246, 0.10);
   color: #1d4ed8;
   font-weight: 800;
 }
 
-.todo-progress{
+.todo-progress {
   margin-left: auto;
   font-size: 13px;
   color: #374151;
@@ -127,7 +131,7 @@ body{
 /* =========================================================
    ✅ 핵심: 스크롤 컨테이너 = todo-table-scroll (여기만 스크롤)
    ========================================================= */
-.todo-table-scroll{
+.todo-table-scroll {
   width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
@@ -139,17 +143,18 @@ body{
 }
 
 /* 내용이 화면보다 작을 때만 중앙정렬 */
-.todo-table-center{
+.todo-table-center {
   display: flex;
   justify-content: center;
   min-width: 100%;
 }
 
 /* 카드: 절대 max-width로 자르지 않음 */
-.todo-table-card{
+.todo-table-card {
   display: inline-block;
   width: max-content;
-  min-width: max-content;   /* ✅ 내용만큼은 절대 줄지마 */
+  min-width: max-content;
+  /* ✅ 내용만큼은 절대 줄지마 */
   border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--card);
@@ -158,16 +163,17 @@ body{
 }
 
 /* ---------- Table ---------- */
-.todo-table{
+.todo-table {
   width: max-content;
-  min-width: max-content;   /* ✅ 표도 내용폭 유지 */
+  min-width: max-content;
+  /* ✅ 표도 내용폭 유지 */
   table-layout: auto;
   border-collapse: separate;
   border-spacing: 0;
 }
 
 .todo-table th,
-.todo-table td{
+.todo-table td {
   border-bottom: 1px solid var(--border);
   border-right: 1px solid var(--border);
   background: var(--card);
@@ -175,12 +181,12 @@ body{
 }
 
 .todo-table th:last-child,
-.todo-table td:last-child{
+.todo-table td:last-child {
   border-right: none;
 }
 
 /* sticky header */
-.todo-table thead th{
+.todo-table thead th {
   position: sticky;
   top: 0;
   z-index: 10;
@@ -189,7 +195,7 @@ body{
 }
 
 /* sticky left */
-.todo-sticky-left{
+.todo-sticky-left {
   position: sticky;
   left: 0;
   z-index: 12;
@@ -199,33 +205,35 @@ body{
 
 /* Column widths */
 .head-left,
-.task-left{
+.task-left {
   min-width: 320px;
   width: 320px;
 }
 
-.todo-col-head{
+.todo-col-head {
   min-width: 220px;
   width: 220px;
 }
 
-.todo-col-head{ flex: none; }
+.todo-col-head {
+  flex: none;
+}
 
 /* Rows spacing */
 .task-row td,
-.task-row th{
+.task-row th {
   padding-top: 14px;
   padding-bottom: 14px;
 }
 
 /* Sections */
-.section-row td{
+.section-row td {
   background: var(--soft);
   font-weight: 900;
   color: #334155;
 }
 
-.section-row.section-strong td{
+.section-row.section-strong td {
   background: #eef2f7;
   color: #111827;
   font-weight: 700;
@@ -233,19 +241,19 @@ body{
   border-bottom: 1px solid var(--border);
 }
 
-.section-left{
+.section-left {
   padding-left: 18px !important;
   padding-right: 18px !important;
 }
 
 /* Left task cell */
-.task-left{
+.task-left {
   padding-left: 18px !important;
   padding-right: 14px !important;
 }
 
 /* 너 코드에서 실제로는 td에 task-left가 붙음 */
-.task-left .task-left-inner{
+.task-left .task-left-inner {
   display: grid;
   grid-template-columns: 1fr auto auto;
   align-items: center;
@@ -253,7 +261,7 @@ body{
   row-gap: 6px;
 }
 
-.task-title{
+.task-title {
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -262,44 +270,45 @@ body{
 }
 
 /* 레이드 제목 클릭(팝업 트리거) */
-.raid-title-click{
+.raid-title-click {
   cursor: pointer;
 }
-.raid-title-click:hover{
+
+.raid-title-click:hover {
   text-decoration: underline;
 }
 
 /* Pills */
-.pill{
+.pill {
   padding: 3px 10px;
   border-radius: 999px;
   font-size: 11px;
-  border: 1px solid rgba(107,114,128,0.22);
+  border: 1px solid rgba(107, 114, 128, 0.22);
   color: #374151;
   background: #fff;
 }
 
-.pill.daily{
+.pill.daily {
   color: #b45309;
-  border-color: rgba(245,158,11,0.35);
-  background: rgba(245,158,11,0.10);
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.10);
 }
 
-.pill.weekly{
+.pill.weekly {
   color: #047857;
-  border-color: rgba(16,185,129,0.35);
-  background: rgba(16,185,129,0.10);
+  border-color: rgba(16, 185, 129, 0.35);
+  background: rgba(16, 185, 129, 0.10);
 }
 
 /* Task actions */
-.task-actions{
+.task-actions {
   display: inline-flex;
   gap: 6px;
   justify-content: flex-end;
   white-space: nowrap;
 }
 
-.mini{
+.mini {
   border: 1px solid var(--border);
   background: #fff;
   color: var(--text);
@@ -311,17 +320,19 @@ body{
   cursor: pointer;
 }
 
-.mini:hover{ background: var(--soft-2); }
+.mini:hover {
+  background: var(--soft-2);
+}
 
 /* ---------- Character header block ---------- */
-.char-head{
+.char-head {
   display: flex;
   flex-direction: column;
   gap: 4px;
   padding: 10px 10px;
 }
 
-.char-name{
+.char-name {
   font-weight: 900;
   font-size: 13px;
   white-space: nowrap;
@@ -329,25 +340,25 @@ body{
   text-overflow: ellipsis;
 }
 
-.char-meta{
+.char-meta {
   font-size: 12px;
   color: var(--muted);
   white-space: nowrap;
 }
 
-.char-actions{
+.char-actions {
   display: flex;
   gap: 6px;
   margin-top: 6px;
 }
 
 /* Cells */
-.todo-table td.cell{
+.todo-table td.cell {
   text-align: center;
   padding: 12px 10px;
 }
 
-.todo-table td.cell .cell-inline{
+.todo-table td.cell .cell-inline {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -355,61 +366,66 @@ body{
 }
 
 /* Zebra + hover */
-.todo-table tbody tr:nth-child(even) td{ background: var(--soft-2); }
-.todo-table tbody tr:hover td{ background: rgba(59,130,246,0.06); }
+.todo-table tbody tr:nth-child(even) td {
+  background: var(--soft-2);
+}
+
+.todo-table tbody tr:hover td {
+  background: rgba(59, 130, 246, 0.06);
+}
 
 /* Check */
-.cell-check-btn{
+.cell-check-btn {
   background: transparent;
   border: 0;
   padding: 0;
   cursor: pointer;
 }
 
-.check{
+.check {
   display: inline-block;
   width: 18px;
   height: 18px;
   border-radius: 6px;
-  border: 2px solid rgba(107,114,128,0.30);
+  border: 2px solid rgba(107, 114, 128, 0.30);
   background: #fff;
 }
 
-.cell-check-btn .check{
+.cell-check-btn .check {
   width: 26px;
   height: 26px;
   border-radius: 7px;
 }
 
-.check.on{
+.check.on {
   background: var(--primary);
   border-color: var(--primary);
   box-shadow: 0 0 0 3px var(--primary-soft);
 }
 
 /* Counter dots */
-.dots{
+.dots {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
 }
 
-.dot{
+.dot {
   width: 26px;
   height: 26px;
   border-radius: 6px;
-  border: 2px solid rgba(107,114,128,0.28);
+  border: 2px solid rgba(107, 114, 128, 0.28);
   background: #fff;
 }
 
-.dot.filled{
+.dot.filled {
   background: var(--warning);
   border-color: var(--warning);
 }
 
 /* 숫자 표시 (count/max) */
-.dots-num{
+.dots-num {
   font-size: 12px;
   color: var(--muted);
   margin-left: 6px;
@@ -418,7 +434,7 @@ body{
 
 /* Inputs */
 .cell-text,
-.cell-select{
+.cell-select {
   width: 100%;
   height: 34px;
   padding: 0 10px;
@@ -430,12 +446,12 @@ body{
 }
 
 .cell-text:focus,
-.cell-select:focus{
-  border-color: rgba(59,130,246,0.65);
-  box-shadow: 0 0 0 3px rgba(59,130,246,0.14);
+.cell-select:focus {
+  border-color: rgba(59, 130, 246, 0.65);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.14);
 }
 
-.rest-input{
+.rest-input {
   width: 64px;
   height: 32px;
   border-radius: 10px;
@@ -446,16 +462,28 @@ body{
   outline: none;
 }
 
-.rest-input:focus{
-  border-color: rgba(59,130,246,0.65);
-  box-shadow: 0 0 0 3px rgba(59,130,246,0.14);
+.rest-input:focus {
+  border-color: rgba(59, 130, 246, 0.65);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.14);
 }
 
 /* Scrollbar */
-.todo-table-scroll::-webkit-scrollbar{ height: 10px; }
-.todo-table-scroll::-webkit-scrollbar-track{ background: #eef2f7; }
-.todo-table-scroll::-webkit-scrollbar-thumb{ background: #d1d5db; border-radius: 999px; }
-.todo-table-scroll::-webkit-scrollbar-thumb:hover{ background: #cbd5e1; }
+.todo-table-scroll::-webkit-scrollbar {
+  height: 10px;
+}
+
+.todo-table-scroll::-webkit-scrollbar-track {
+  background: #eef2f7;
+}
+
+.todo-table-scroll::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 999px;
+}
+
+.todo-table-scroll::-webkit-scrollbar-thumb:hover {
+  background: #cbd5e1;
+}
 
 /* =========================================================
    ✅ 기타(해금/큐브 티켓) UI
@@ -463,7 +491,7 @@ body{
    [ 입력바 ]   [1회사용]
    [추가][삭제] [3회사용]
    ========================================================= */
-.ticket-grid{
+.ticket-grid {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 10px;
@@ -471,26 +499,26 @@ body{
   justify-items: stretch;
 }
 
-.ticket-left{
+.ticket-left {
   display: grid;
   grid-template-rows: auto auto;
   gap: 8px;
 }
 
-.ticket-left-actions{
+.ticket-left-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
 
-.ticket-right{
+.ticket-right {
   display: grid;
   grid-template-rows: auto auto;
   gap: 8px;
   justify-items: stretch;
 }
 
-.ticket-input{
+.ticket-input {
   width: 100%;
   height: 34px;
   padding: 0 10px;
@@ -502,12 +530,12 @@ body{
   outline: none;
 }
 
-.ticket-input:focus{
-  border-color: rgba(59,130,246,0.65);
-  box-shadow: 0 0 0 3px rgba(59,130,246,0.14);
+.ticket-input:focus {
+  border-color: rgba(59, 130, 246, 0.65);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.14);
 }
 
-.ticket-btn{
+.ticket-btn {
   border: 1px solid var(--border);
   background: #fff;
   color: var(--text);
@@ -520,44 +548,50 @@ body{
   white-space: nowrap;
 }
 
-.ticket-btn:hover{ background: var(--soft-2); }
-.ticket-btn:disabled{ opacity: .5; cursor: not-allowed; }
+.ticket-btn:hover {
+  background: var(--soft-2);
+}
 
-.ticket-btn.primary{
-  border-color: rgba(59,130,246,0.35);
-  background: rgba(59,130,246,0.10);
+.ticket-btn:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.ticket-btn.primary {
+  border-color: rgba(59, 130, 246, 0.35);
+  background: rgba(59, 130, 246, 0.10);
   color: #1d4ed8;
   font-weight: 800;
 }
 
 /* ---------- Gold sum (주간 골드) ---------- */
-.goldbox{
+.goldbox {
   display: inline-flex;
   flex-direction: column;
   gap: 4px;
   padding: 10px 12px;
   border-radius: 12px;
-  border: 1px solid rgba(107,114,128,0.20);
+  border: 1px solid rgba(107, 114, 128, 0.20);
   background: #fff;
   min-width: 140px;
 }
 
-.goldbox.muted{
+.goldbox.muted {
   opacity: 0.7;
 }
 
-.gold-sum{
+.gold-sum {
   font-weight: 900;
 }
 
-.gold-detail{
+.gold-detail {
   font-size: 12px;
   color: var(--muted);
   white-space: nowrap;
 }
 
 /* ---------- Hint box ---------- */
-.todo-hint{
+.todo-hint {
   margin-top: 12px;
   padding: 12px 14px;
   border: 1px solid var(--border);
@@ -568,34 +602,34 @@ body{
   font-size: 13px;
 }
 
-.todo-hint > div{
+.todo-hint>div {
   font-weight: 900;
   margin-bottom: 6px;
 }
 
-.todo-hint ul{
+.todo-hint ul {
   margin: 0;
   padding-left: 18px;
 }
 
-.todo-hint li{
+.todo-hint li {
   margin: 4px 0;
   color: #4b5563;
 }
 
 /* ---------- Raid gold popup ---------- */
-.raid-gold-pop{
+.raid-gold-pop {
   position: fixed;
   z-index: 9998;
   width: 240px;
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--card);
-  box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
   padding: 10px 10px;
 }
 
-.raid-gold-head{
+.raid-gold-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -603,7 +637,7 @@ body{
   margin-bottom: 6px;
 }
 
-.raid-gold-head button{
+.raid-gold-head button {
   border: 1px solid var(--border);
   background: #fff;
   border-radius: 10px;
@@ -613,11 +647,11 @@ body{
   font-size: 12px;
 }
 
-.raid-gold-head button:hover{
+.raid-gold-head button:hover {
   background: var(--soft-2);
 }
 
-.raid-gold-body{
+.raid-gold-body {
   font-size: 13px;
   color: #374151;
   display: grid;
@@ -627,6 +661,216 @@ body{
 .todo-col-head[draggable="true"] {
   cursor: grab;
 }
+
 .todo-col-head[draggable="true"]:active {
   cursor: grabbing;
+}
+
+/*계산기*/
+/* ===== BidPopover 스타일(필수) ===== */
+.bid-popover-wrap {
+  display: inline-block;
+}
+
+.bid-popover {
+  position: fixed;
+  z-index: 99999;
+  width: 340px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  padding: 12px;
+}
+
+.bid-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.bid-popover-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.bid-popover-close {
+  border: 0;
+  background: transparent;
+  padding: 4px 6px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.bid-popover-close:hover {
+  background: #f3f4f6;
+}
+
+.bid-popover-body {
+  display: grid;
+  gap: 10px;
+}
+
+.bid-field {
+  display: grid;
+  gap: 6px;
+}
+
+.bid-label {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.bid-input {
+  width: 100%;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 10px 12px;
+  outline: none;
+}
+
+.bid-input:focus {
+  border-color: #9ca3af;
+}
+
+.bid-row {
+  display: flex;
+  gap: 8px;
+}
+
+.bid-chip {
+  flex: 1;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 8px 0;
+  background: #fff;
+  cursor: pointer;
+}
+
+.bid-chip:hover {
+  background: #f9fafb;
+}
+
+.bid-chip.active {
+  background: #111827;
+  color: #fff;
+  border-color: #111827;
+}
+
+.bid-box {
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.bid-line {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.bid-line span {
+  color: #6b7280;
+}
+
+.bid-copy {
+  width: 100%;
+  border: 0;
+  border-radius: 16px;
+  padding: 12px 14px;
+  background: #111827;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.bid-copy:hover {
+  filter: brightness(1.05);
+}
+
+/*표 2개*/
+.tt-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.tt-grid.one {
+  grid-template-columns: 1fr;
+}
+
+.tt-grid.two {
+  grid-template-columns: 1fr 1fr;
+}
+
+.tt-pane-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 6px 2px 10px;
+}
+
+.tt-pane-title {
+  font-weight: 800;
+}
+
+.tt-pane-sub {
+  font-size: 12px;
+  opacity: .7;
+}
+
+
+/* 표 영역(요일별 + 표 그리드) 폭을 한 덩어리로 관리 */
+.todo-table-area {
+  width: fit-content;
+  /* 내용(표)의 폭에 맞춤 */
+  max-width: 100%;
+  margin: 0 auto;
+  /* 가운데 정렬 */
+}
+
+/* 그리드는 기본적으로 100% 잡아주면 wrapper 폭 안에서 꽉 참 */
+.todo-table-grid {
+  width: 100%;
+}
+
+.accountDailyBox{
+  width: 400px;
+  margin-left: 25px;    /* ← 이 값만 조절하면 됨 */
+  margin-bottom: 12px;
+
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 12px 16px;
+}
+
+
+.accountDailyTitle {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.accountDailyItems {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.accountDailyItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  /* ← 기존 13px → 15px */
+  font-weight: 600;
+  /* 가독성 업 */
+}
+.accountDailyItem input[type="checkbox"]{
+  transform: scale(1.25);   /* 1.2~1.3 사이 추천 */
+  margin-right: 6px;
+  cursor: pointer;
 }
