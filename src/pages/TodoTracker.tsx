@@ -20,8 +20,9 @@ import {
   setCellByTableId,
 } from "../store/todoStore";
 
-// ✅ 계정 공용 요일별 콘텐츠 (06:00 리셋 기준)
-const ACCOUNT_DAILY_KEY = "loa-account-daily:v1";
+// ✅ 계정 요일별 콘텐츠 (06:00 리셋 기준)
+const getAccountDailyKey = (tableId: string) => `loa-account-daily:v1:${tableId}`;
+
 
 // 0=일,1=월,...6=토
 const WEEKLY_ACCOUNT_CONTENT: Record<number, { id: string; label: string }[]> = {
@@ -156,15 +157,20 @@ export default function TodoTracker() {
 
   const [accountChecks, setAccountChecks] = useState<Record<string, boolean>>({});
 
+  const accountKey = useMemo(
+    () => getAccountDailyKey(state.activeTableId),
+    [state.activeTableId]
+  );
   // ✅ 저장된 체크 불러오기 + 날짜키(06:00 기준) 바뀌면 자동 초기화
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(ACCOUNT_DAILY_KEY);
+      const raw = localStorage.getItem(accountKey);
       if (!raw) {
         setAccountChecks({});
         return;
       }
       const parsed = JSON.parse(raw) as { dateKey?: string; checks?: Record<string, boolean> };
+
       if (parsed?.dateKey === loaDateKey && parsed.checks) {
         setAccountChecks(parsed.checks);
       } else {
@@ -173,19 +179,21 @@ export default function TodoTracker() {
     } catch {
       setAccountChecks({});
     }
-  }, [loaDateKey]);
+  }, [accountKey, loaDateKey]);
+
 
   // ✅ 체크 변경 시 저장
   useEffect(() => {
     try {
       localStorage.setItem(
-        ACCOUNT_DAILY_KEY,
+        accountKey,
         JSON.stringify({ dateKey: loaDateKey, checks: accountChecks })
       );
     } catch {
       // ignore
     }
-  }, [loaDateKey, accountChecks]);
+  }, [accountKey, loaDateKey, accountChecks]);
+
 
   const [dragCharId, setDragCharId] = useState<string | null>(null);
   const [dragTaskId, setDragTaskId] = useState<string | null>(null);
@@ -861,10 +869,6 @@ export default function TodoTracker() {
             </button>
           )}
         </div>
-
-        <div style={{ flex: "1 1 auto", minHeight: 0, overflow: "auto" }}>
-        </div>
-
         <div style={{ flex: "1 1 auto", minHeight: 0, overflow: "auto" }}>
           <div className="todo-table-scroll" style={{ height: "100%" }} ref={isActivePane ? tableWrapRef : undefined as any}>
             <div className="todo-table-center">
@@ -1423,14 +1427,17 @@ export default function TodoTracker() {
 
           {/* ✅ 두 표 동시 렌더 */}
           <div
-            className="todo-table-grid"
             style={{
               display: "grid",
               gridTemplateColumns: secondaryTableId ? "1fr 1fr" : "1fr",
               gap: 12,
               alignItems: "stretch",
               minHeight: 0,
+
+              // ✅ 핵심: 이 그리드가 남은 공간을 먹도록
+              flex: "1 1 auto",
             }}
+            className="todo-two-table-grid"
           >
             {renderTodoTable(state.activeTableId, "왼쪽(편집)")}
             {secondaryTableId && renderTodoTable(secondaryTableId, "오른쪽")}
