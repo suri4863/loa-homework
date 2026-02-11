@@ -144,11 +144,12 @@ export default function TodoTracker() {
   const resetHour = state.reset?.dailyResetHour ?? 6;
 
   // 06:00 경계 넘어가면 리렌더 트리거(최대 30초 지연)
-  const [, forceTick] = useState(0);
+  const [tick, forceTick] = useState(0);
   useEffect(() => {
     const t = setInterval(() => forceTick((x) => x + 1), 30_000);
     return () => clearInterval(t);
   }, []);
+
 
   const loaGameDate = useMemo(() => getLoaGameDate(resetHour), [resetHour]);
   const loaDateKey = useMemo(() => formatLocalDateKey(loaGameDate), [loaGameDate]);
@@ -161,6 +162,174 @@ export default function TodoTracker() {
     () => getAccountDailyKey(state.activeTableId),
     [state.activeTableId]
   );
+
+  //생명의 기운(생기)
+  const LIFE_MAX = 10500;
+  const LIFE_STEP = 30;
+  const LIFE_STEP_MS = 10 * 60 * 1000; // 10분
+
+  type LifeEnergyBase = { value: number; updatedAt: number };
+
+  function clampInt(n: number, min: number, max: number) {
+    return Math.max(min, Math.min(max, n));
+  }
+
+  function calcLifeEnergyNow(base: LifeEnergyBase | null, nowMs: number) {
+    if (!base) return { now: 0, gained: 0 };
+
+    const elapsed = Math.max(0, nowMs - base.updatedAt);
+    const steps = Math.floor(elapsed / LIFE_STEP_MS);
+    const gained = steps * LIFE_STEP;
+    const now = clampInt(base.value + gained, 0, LIFE_MAX);
+
+    return { now, gained };
+  }
+
+  function calcTimeToFull(base: LifeEnergyBase | null, nowMs: number) {
+    if (!base) return null;
+
+    const { now } = calcLifeEnergyNow(base, nowMs);
+    if (now >= LIFE_MAX) return 0; // 이미 풀충
+
+    const remainingEnergy = LIFE_MAX - now;
+
+    // 남은 스텝 수 (30 단위)
+    const stepsNeeded = Math.ceil(remainingEnergy / LIFE_STEP);
+
+    // 마지막 기준시점 이후 "현재 스텝 진행도" 고려
+    const elapsed = Math.max(0, nowMs - base.updatedAt);
+    const remainderMs = elapsed % LIFE_STEP_MS;
+
+    // 다음 스텝까지 남은 시간
+    const firstStepMs = remainderMs === 0 ? LIFE_STEP_MS : LIFE_STEP_MS - remainderMs;
+
+    // 총 남은 시간
+    const totalMs =
+      firstStepMs + (stepsNeeded - 1) * LIFE_STEP_MS;
+
+    return totalMs;
+  }
+  // 풀충 시간
+  function formatMsToHHMM(ms: number | null) {
+    if (ms == null) return "";
+
+    if (ms <= 0) return "풀충 상태";
+
+    const totalMinutes = Math.ceil(ms / 60000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+
+    if (hours > 0) return `${hours}시간 ${minutes}분`;
+    return `${minutes}분`;
+  }
+
+  // 풀충 날짜
+  function formatEtaKorean(timeToFullMs: number | null) {
+    if (timeToFullMs == null) return "-";
+    if (timeToFullMs <= 0) return "이미 풀충";
+
+    const eta = new Date(Date.now() + timeToFullMs);
+
+    const hh = eta.getHours().toString().padStart(2, "0");
+    const mm = eta.getMinutes().toString().padStart(2, "0");
+
+    const today = new Date();
+    const isToday =
+      eta.getFullYear() === today.getFullYear() &&
+      eta.getMonth() === today.getMonth() &&
+      eta.getDate() === today.getDate();
+
+    return isToday ? `오늘 ${hh}:${mm}` : `${eta.getMonth() + 1}/${eta.getDate()} ${hh}:${mm}`;
+  }
+
+  function formatEtaFullKorean(timeToFullMs: number | null) {
+    if (timeToFullMs == null) return "-";
+    if (timeToFullMs <= 0) return "이미 풀충";
+
+    const eta = new Date(Date.now() + timeToFullMs);
+
+    const month = eta.getMonth() + 1;
+    const date = eta.getDate();
+
+    const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
+    const weekday = weekdays[eta.getDay()];
+
+    let hours = eta.getHours();
+    const minutes = eta.getMinutes().toString().padStart(2, "0");
+
+    const isAM = hours < 12;
+    const ampm = isAM ? "오전" : "오후";
+
+    // 12시간제로 변환
+    hours = hours % 12;
+    if (hours === 0) hours = 12;
+
+    return `${month}월 ${date}일(${weekday}) ${ampm} ${hours}:${minutes}`;
+  }
+
+  const activeTable = useMemo(() => getActiveTable(state), [state]);
+  const activeCharacters = activeTable.characters;
+
+  // 생기
+  const activeTableId = activeTable.id;
+  const lifeKey = useMemo(() => `loa-life-energy:v1:${activeTableId}`, [activeTableId]);
+
+  // ✅ 최초 렌더에서 바로 로드 (새로고침 유지 핵심)
+  const [lifeBase, setLifeBase] = useState<LifeEnergyBase | null>(() => {
+    try {
+      const raw = localStorage.getItem(`loa-life-energy:v1:${activeTableId}`);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as LifeEnergyBase;
+      if (typeof parsed?.value === "number" && typeof parsed?.updatedAt === "number") return parsed;
+      return null;
+    } catch {
+      return null;
+    }
+  });
+
+  // ✅ 표 바뀔 때(계정 바뀔 때) 재로드
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(lifeKey);
+      if (!raw) {
+        setLifeBase(null);
+        return;
+      }
+      const parsed = JSON.parse(raw) as LifeEnergyBase;
+      if (typeof parsed?.value === "number" && typeof parsed?.updatedAt === "number") {
+        setLifeBase(parsed);
+      } else {
+        setLifeBase(null);
+      }
+    } catch {
+      setLifeBase(null);
+    }
+  }, [lifeKey]);
+
+  // ✅ lifeBase 변경 시 저장/삭제
+  useEffect(() => {
+    try {
+      if (lifeBase == null) {
+        localStorage.removeItem(lifeKey);
+      } else {
+        localStorage.setItem(lifeKey, JSON.stringify(lifeBase));
+      }
+    } catch {
+      // ignore
+    }
+  }, [lifeKey, lifeBase]);
+
+  // 표시용
+  const lifeView = useMemo(() => {
+    const nowMs = Date.now();
+    return {
+      ...calcLifeEnergyNow(lifeBase, nowMs),
+      timeToFull: calcTimeToFull(lifeBase, nowMs),
+    };
+  }, [lifeBase, tick]);
+
+
+
   // ✅ 저장된 체크 불러오기 + 날짜키(06:00 기준) 바뀌면 자동 초기화
   useEffect(() => {
     try {
@@ -358,6 +527,7 @@ export default function TodoTracker() {
       tables: prev.tables.map((t) => (t.id === cur.id ? { ...t, name } : t)),
     }));
   }
+
 
   function deleteTable() {
     if (state.tables.length <= 1) {
@@ -644,8 +814,6 @@ export default function TodoTracker() {
   type RaidPopup = { title: string; x: number; y: number } | null;
   const [raidGoldPopup, setRaidGoldPopup] = useState<RaidPopup>(null);
 
-  const activeTable = useMemo(() => getActiveTable(state), [state]);
-  const activeCharacters = activeTable.characters;
 
   const tasks = useMemo(() => {
     if (periodTab === "ALL") return state.tasks;
@@ -1404,26 +1572,90 @@ export default function TodoTracker() {
         {/* ✅ 표 영역 wrapper: 요일별 + 표 그리드를 한 컨테이너로 묶기 */}
         <div className="todo-table-area">
           {/* ✅ 요일별 콘텐츠(계정 공용) - 전체/일일 탭에서 */}
-          {(periodTab === "ALL" || periodTab === "DAILY") && todayAccountContents.length > 0 && (
+          {(periodTab === "ALL" || periodTab === "DAILY") && (
             <div className="accountDailyBox">
-              <div className="accountDailyTitle">요일별 콘텐츠(계정)</div>
+              <div className="accountDailyTitle">계정 콘텐츠</div>
 
-              <div className="accountDailyItems">
-                {todayAccountContents.map((c) => (
-                  <label key={c.id} className="accountDailyItem">
-                    <input
-                      type="checkbox"
-                      checked={!!accountChecks[c.id]}
-                      onChange={(e) =>
-                        setAccountChecks((prev) => ({ ...prev, [c.id]: e.target.checked }))
+              {/* ✅ 생명의 기운(항상 표시) */}
+              <div className="lifeBox">
+                <div className="lifeTop">
+                  <b>생명의 기운 </b>
+                  <span className="lifeNum">
+                    {lifeView.now.toLocaleString()} / {LIFE_MAX.toLocaleString()}
+                  </span>
+                </div>
+                {/*<div className="lifeRemain">
+                  풀충까지 남은 시간: {formatMsToHHMM(lifeView.timeToFull)}
+                </div>*/}
+                <div className="lifeEta">
+                  풀충 예상: {formatEtaFullKorean(lifeView.timeToFull)}
+                </div>
+
+
+
+
+                <div className="lifeBar">
+                  <div
+                    className="lifeFill"
+                    style={{ width: `${(lifeView.now / LIFE_MAX) * 100}%` }}
+                  />
+                </div>
+
+                <div className="lifeInputRow">
+                  <span className="lifeHint">지금 생기 값 입력 </span>
+                  <input
+                    className="lifeInput"
+                    type="number"
+                    min={0}
+                    max={LIFE_MAX}
+                    value={lifeBase?.value ?? ""}
+                    placeholder="예: 5000"
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === "") {
+                        setLifeBase(null);
+                        return;
                       }
-                    />
-                    <span>{c.label}</span>
-                  </label>
-                ))}
+                      const num = clampInt(parseInt(v, 10) || 0, 0, LIFE_MAX);
+                      setLifeBase({ value: num, updatedAt: Date.now() });
+                    }}
+                  />
+                  <button
+                    className="mini"
+                    onClick={() => {
+                      if (!lifeBase) return;
+                      // “지금 값이 기준”으로 타임스탬프만 갱신하고 싶을 때
+                      setLifeBase({ value: lifeBase.value, updatedAt: Date.now() });
+                    }}
+                    disabled={!lifeBase}
+                  >
+                    지금 기준
+                  </button>
+                </div>
               </div>
+
+              {/* ✅ 요일별(카게/필보) - 오늘 목록이 있으면 체크박스, 없으면 안내문 */}
+              {todayAccountContents.length > 0 ? (
+                <div className="accountDailyItems">
+                  {todayAccountContents.map((c) => (
+                    <label key={c.id} className="accountDailyItem">
+                      <input
+                        type="checkbox"
+                        checked={!!accountChecks[c.id]}
+                        onChange={(e) =>
+                          setAccountChecks((prev) => ({ ...prev, [c.id]: e.target.checked }))
+                        }
+                      />
+                      <span>{c.label}</span>
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <div className="accountDailyEmpty">오늘은 카게/필보 없음</div>
+              )}
             </div>
           )}
+
 
           {/* ✅ 두 표 동시 렌더 */}
           <div
