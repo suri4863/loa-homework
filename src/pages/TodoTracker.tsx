@@ -143,30 +143,68 @@ export default function TodoTracker() {
   // ✅ 로아 6시(또는 설정된) 기준으로 요일별 콘텐츠 처리
   const resetHour = state.reset?.dailyResetHour ?? 6;
 
+  // 06:00 경계 넘어가면 리렌더 트리거(최대 30초 지연)
+  const [tick, forceTick] = useState(0);
   // ✅ 오른쪽에 같이 볼 표(기존 표 선택)
   const [secondaryTableId, setSecondaryTableId] = useState<string>("");
 
-  // 06:00 경계 넘어가면 리렌더 트리거(최대 30초 지연)
-  const [tick, forceTick] = useState(0);
   useEffect(() => {
     const t = setInterval(() => forceTick((x) => x + 1), 30_000);
     return () => clearInterval(t);
-  }, []); 
+  }, []);
+
 
   const loaGameDate = useMemo(() => getLoaGameDate(resetHour), [resetHour]);
   const loaDateKey = useMemo(() => formatLocalDateKey(loaGameDate), [loaGameDate]);
   const loaWeekday = useMemo(() => loaGameDate.getDay(), [loaGameDate]);
   const todayAccountContents = useMemo(() => WEEKLY_ACCOUNT_CONTENT[loaWeekday] ?? [], [loaWeekday]);
 
-  const watchedTableIds = useMemo(() => {
-    const ids = [state.activeTableId, secondaryTableId].filter(Boolean) as string[];
-    return Array.from(new Set(ids));
-  }, [state.activeTableId, secondaryTableId]);
+  
+// ✅ 계정 콘텐츠 체크(카게/필보): tableId별로 저장/로드 (06:00 리셋 기준)
+const [accountChecksByTable, setAccountChecksByTable] = useState<Record<string, Record<string, boolean>>>({});
 
-  const [accountChecksByTable, setAccountChecksByTable] = useState<Record<string, Record<string, boolean>>>({});
+function readAccountChecks(tableId: string): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(getAccountDailyKey(tableId));
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as { dateKey?: string; checks?: Record<string, boolean> };
+    if (parsed?.dateKey === loaDateKey && parsed?.checks) return parsed.checks;
+    return {};
+  } catch {
+    return {};
+  }
+}
 
+function writeAccountChecks(tableId: string, checks: Record<string, boolean>) {
+  try {
+    localStorage.setItem(getAccountDailyKey(tableId), JSON.stringify({ dateKey: loaDateKey, checks }));
+  } catch {
+    // ignore
+  }
+}
 
-  //생명의 기운(생기)
+// 현재 화면에 보이는 tableId(왼쪽/오른쪽)의 체크를 로드
+useEffect(() => {
+  const ids = [state.activeTableId, secondaryTableId].filter(Boolean) as string[];
+  setAccountChecksByTable((prev) => {
+    const next = { ...prev };
+    for (const id of ids) next[id] = readAccountChecks(id);
+    return next;
+  });
+}, [loaDateKey, state.activeTableId, secondaryTableId]);
+
+function onToggleAccountCheck(tableId: string, id: string, checked: boolean) {
+  setAccountChecksByTable((prev) => {
+    const current = prev[tableId] ?? {};
+    const nextChecks = { ...current, [id]: checked };
+    const next = { ...prev, [tableId]: nextChecks };
+    // ✅ 클릭 순간 즉시 저장
+    writeAccountChecks(tableId, nextChecks);
+    return next;
+  });
+}
+
+//생명의 기운(생기)(생기)
   const LIFE_MAX = 10500;
   const LIFE_STEP = 30;
   const LIFE_STEP_MS = 10 * 60 * 1000; // 10분
@@ -274,128 +312,133 @@ export default function TodoTracker() {
   const activeCharacters = activeTable.characters;
 
   // 생기
-  const getLifeKey = (tableId: string) => `loa-life-energy:v1:${tableId}`;
+  function AccountDailyPanel({ tableId }: { tableId: string }) {
+  const lifeKey = useMemo(() => `loa-life-energy:v1:${tableId}`, [tableId]);
 
-  const [lifeBaseByTable, setLifeBaseByTable] = useState<Record<string, LifeEnergyBase | null>>({});
-
-  // ✅ 표(계정)별 생기 로드
-  useEffect(() => {
-    setLifeBaseByTable((prev) => {
-      let changed = false;
-      const next: Record<string, LifeEnergyBase | null> = { ...prev };
-
-      for (const tableId of watchedTableIds) {
-        try {
-          const raw = localStorage.getItem(getLifeKey(tableId));
-          if (!raw) {
-            if (next[tableId] !== null && tableId in next) {
-              next[tableId] = null;
-              changed = true;
-            } else if (!(tableId in next)) {
-              next[tableId] = null;
-              changed = true;
-            }
-            continue;
-          }
-          const parsed = JSON.parse(raw) as LifeEnergyBase;
-          const ok = typeof parsed?.value === "number" && typeof parsed?.updatedAt === "number";
-          const val = ok ? parsed : null;
-
-          const prevVal = next[tableId] ?? null;
-          const same = prevVal?.value === val?.value && prevVal?.updatedAt === val?.updatedAt;
-
-          if (!same) {
-            next[tableId] = val;
-            changed = true;
-          } else if (!(tableId in next)) {
-            next[tableId] = prevVal;
-            changed = true;
-          }
-        } catch {
-          if (next[tableId] !== null || !(tableId in next)) {
-            next[tableId] = null;
-            changed = true;
-          }
-        }
-      }
-
-      return changed ? next : prev;
-    });
-  }, [watchedTableIds]);
-
-  // ✅ 생기 변경 시 저장/삭제
-  useEffect(() => {
-    for (const tableId of watchedTableIds) {
-      try {
-        const base = lifeBaseByTable[tableId] ?? null;
-        const key = getLifeKey(tableId);
-
-        if (base == null) localStorage.removeItem(key);
-        else localStorage.setItem(key, JSON.stringify(base));
-      } catch {
-        // ignore
-      }
+  // ✅ 최초 렌더에서 바로 로드 (새로고침 유지)
+  const [lifeBase, setLifeBase] = useState<LifeEnergyBase | null>(() => {
+    try {
+      const raw = localStorage.getItem(`loa-life-energy:v1:${tableId}`);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as LifeEnergyBase;
+      if (typeof parsed?.value === "number" && typeof parsed?.updatedAt === "number") return parsed;
+      return null;
+    } catch {
+      return null;
     }
-  }, [watchedTableIds, lifeBaseByTable]);
+  });
 
-
-  // ✅ 저장된 체크 불러오기 + 날짜키(06:00 기준) 바뀌면 자동 초기화
+  // ✅ tableId 바뀔 때 재로드
   useEffect(() => {
-    setAccountChecksByTable((prev) => {
-      let changed = false;
-      const next: Record<string, Record<string, boolean>> = { ...prev };
-
-      for (const tableId of watchedTableIds) {
-        try {
-          const raw = localStorage.getItem(getAccountDailyKey(tableId));
-          const parsed = raw ? (JSON.parse(raw) as { dateKey?: string; checks?: Record<string, boolean> }) : null;
-
-          const checks =
-            parsed?.dateKey === loaDateKey && parsed.checks ? parsed.checks : {};
-
-          const prevChecks = next[tableId] ?? {};
-          const same =
-            Object.keys(prevChecks).length === Object.keys(checks).length &&
-            Object.keys(checks).every((k) => prevChecks[k] === checks[k]);
-
-          if (!same) {
-            next[tableId] = checks;
-            changed = true;
-          } else if (!(tableId in next)) {
-            next[tableId] = prevChecks;
-            changed = true;
-          }
-        } catch {
-          if (next[tableId] && Object.keys(next[tableId]).length > 0) {
-            next[tableId] = {};
-            changed = true;
-          } else if (!(tableId in next)) {
-            next[tableId] = {};
-            changed = true;
-          }
-        }
+    try {
+      const raw = localStorage.getItem(lifeKey);
+      if (!raw) {
+        setLifeBase(null);
+        return;
       }
-
-      return changed ? next : prev;
-    });
-  }, [watchedTableIds, loaDateKey]);
-
-  // ✅ 체크 변경 시 저장
-  useEffect(() => {
-    for (const tableId of watchedTableIds) {
-      try {
-        const checks = accountChecksByTable[tableId] ?? {};
-        localStorage.setItem(
-          getAccountDailyKey(tableId),
-          JSON.stringify({ dateKey: loaDateKey, checks })
-        );
-      } catch {
-        // ignore
+      const parsed = JSON.parse(raw) as LifeEnergyBase;
+      if (typeof parsed?.value === "number" && typeof parsed?.updatedAt === "number") {
+        setLifeBase(parsed);
+      } else {
+        setLifeBase(null);
       }
+    } catch {
+      setLifeBase(null);
     }
-  }, [watchedTableIds, loaDateKey, accountChecksByTable]);
+  }, [lifeKey]);
 
+  // ✅ 저장
+  useEffect(() => {
+    try {
+      if (!lifeBase) {
+        localStorage.removeItem(lifeKey);
+      } else {
+        localStorage.setItem(lifeKey, JSON.stringify(lifeBase));
+      }
+    } catch {
+      // ignore
+    }
+  }, [lifeKey, lifeBase]);
 
+  // 표시용
+  const lifeView = useMemo(() => {
+    const nowMs = Date.now();
+    return {
+      ...calcLifeEnergyNow(lifeBase, nowMs),
+      timeToFull: calcTimeToFull(lifeBase, nowMs),
+    };
+  }, [lifeBase, tick]);
+
+  return (
+    <div className="accountDailyBox">
+      <div className="accountDailyTitle">계정 콘텐츠</div>
+
+      {/* ✅ 생명의 기운(항상 표시) */}
+      <div className="lifeBox">
+        <div className="lifeTop">
+          <b>생명의 기운 </b>
+          <span className="lifeNum">
+            {lifeView.now.toLocaleString()} / {LIFE_MAX.toLocaleString()}
+          </span>
+        </div>
+        <div className="lifeEta">풀충 예상: {formatEtaFullKorean(lifeView.timeToFull)}</div>
+
+        <div className="lifeBar">
+          <div className="lifeFill" style={{ width: `${(lifeView.now / LIFE_MAX) * 100}%` }} />
+        </div>
+
+        <div className="lifeInputRow">
+          <span className="lifeHint">지금 생기 값 입력 </span>
+          <input
+            className="lifeInput"
+            type="number"
+            min={0}
+            max={LIFE_MAX}
+            value={lifeBase?.value ?? ""}
+            placeholder="예: 5000"
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === "") {
+                setLifeBase(null);
+                return;
+              }
+              const num = clampInt(parseInt(v, 10) || 0, 0, LIFE_MAX);
+              setLifeBase({ value: num, updatedAt: Date.now() });
+            }}
+          />
+          <button
+            className="mini"
+            onClick={() => {
+              if (!lifeBase) return;
+              setLifeBase({ value: lifeBase.value, updatedAt: Date.now() });
+            }}
+            disabled={!lifeBase}
+          >
+            지금 기준
+          </button>
+        </div>
+      </div>
+
+      {/* ✅ 요일별(카게/필보) */}
+      {todayAccountContents.length > 0 ? (
+        <div className="accountDailyItems">
+          {todayAccountContents.map((c) => (
+            <label key={c.id} className="accountDailyItem">
+              <input
+                type="checkbox"
+                checked={!!(accountChecksByTable[tableId]?.[c.id])}
+                onChange={(e) => onToggleAccountCheck(tableId, c.id, e.target.checked)}
+              />
+              <span>{c.label}</span>
+            </label>
+          ))}
+        </div>
+      ) : (
+        <div className="accountDailyEmpty">오늘은 카게/필보 없음</div>
+      )}
+    </div>
+  );
+}
 
   const [dragCharId, setDragCharId] = useState<string | null>(null);
   const [dragTaskId, setDragTaskId] = useState<string | null>(null);
@@ -1042,96 +1085,7 @@ export default function TodoTracker() {
     );
   }
 
-  
-  function renderAccountDailyBox(tableId: string, title: string) {
-    const base = lifeBaseByTable[tableId] ?? null;
-    const nowMs = Date.now();
-    const lifeView = {
-      ...calcLifeEnergyNow(base, nowMs),
-      timeToFull: calcTimeToFull(base, nowMs),
-    };
-
-    const checks = accountChecksByTable[tableId] ?? {};
-
-    return (
-      <div className="accountDailyBox">
-        <div className="accountDailyTitle">{title}</div>
-
-        {/* ✅ 생명의 기운(항상 표시) */}
-        <div className="lifeBox">
-          <div className="lifeTop">
-            <b>생명의 기운 </b>
-            <span className="lifeNum">
-              {lifeView.now.toLocaleString()} / {LIFE_MAX.toLocaleString()}
-            </span>
-          </div>
-
-          <div className="lifeEta">풀충 예상: {formatEtaFullKorean(lifeView.timeToFull)}</div>
-
-          <div className="lifeBar">
-            <div className="lifeFill" style={{ width: `${(lifeView.now / LIFE_MAX) * 100}%` }} />
-          </div>
-
-          <div className="lifeInputRow">
-            <span className="lifeHint">지금 생기 값 입력 </span>
-            <input
-              className="lifeInput"
-              type="number"
-              min={0}
-              max={LIFE_MAX}
-              value={base?.value ?? ""}
-              placeholder="예: 5000"
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v === "") {
-                  setLifeBaseByTable((prev) => ({ ...prev, [tableId]: null }));
-                  return;
-                }
-                const num = clampInt(parseInt(v, 10) || 0, 0, LIFE_MAX);
-                setLifeBaseByTable((prev) => ({ ...prev, [tableId]: { value: num, updatedAt: Date.now() } }));
-              }}
-            />
-            <button
-              className="mini"
-              onClick={() => {
-                const cur = lifeBaseByTable[tableId] ?? null;
-                if (!cur) return;
-                setLifeBaseByTable((prev) => ({ ...prev, [tableId]: { value: cur.value, updatedAt: Date.now() } }));
-              }}
-              disabled={!base}
-            >
-              지금 기준
-            </button>
-          </div>
-        </div>
-
-        {/* ✅ 요일별(카게/필보) */}
-        {todayAccountContents.length > 0 ? (
-          <div className="accountDailyItems">
-            {todayAccountContents.map((c) => (
-              <label key={c.id} className="accountDailyItem">
-                <input
-                  type="checkbox"
-                  checked={!!checks[c.id]}
-                  onChange={(e) =>
-                    setAccountChecksByTable((prev) => ({
-                      ...prev,
-                      [tableId]: { ...(prev[tableId] ?? {}), [c.id]: e.target.checked },
-                    }))
-                  }
-                />
-                <span>{c.label}</span>
-              </label>
-            ))}
-          </div>
-        ) : (
-          <div className="accountDailyEmpty">오늘은 카게/필보 없음</div>
-        )}
-      </div>
-    );
-  }
-
-function renderTodoTable(tableId: string, paneLabel: string) {
+  function renderTodoTable(tableId: string, paneLabel: string) {
     const table = getTableById(state, tableId);
     const characters = table.characters;
     const isActivePane = tableId === state.activeTableId;
@@ -1150,7 +1104,7 @@ function renderTodoTable(tableId: string, paneLabel: string) {
             <button
               className="btn"
               onClick={() => setSecondaryTableId("")}
-              style={{ position: "absolute", left: 480, top: -50 }}
+              style={{ position: "absolute", left: 500, top: -50 }}
             >
               닫기
             </button>
@@ -1691,27 +1645,25 @@ function renderTodoTable(tableId: string, paneLabel: string) {
         {/* ✅ 표 영역 wrapper: 요일별 + 표 그리드를 한 컨테이너로 묶기 */}
         <div className="todo-table-area">
           {/* ✅ 요일별 콘텐츠(계정 공용) - 전체/일일 탭에서 */}
-          {(periodTab === "ALL" || periodTab === "DAILY") && (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: secondaryTableId ? "1fr 1fr" : "1fr",
-                gap: 12,
-              }}
-              className="accountDailyGrid"
-            >
-              {renderAccountDailyBox(
-                state.activeTableId,
-                `계정 콘텐츠 · ${getTableById(state, state.activeTableId).name}`
-              )}
-              {secondaryTableId &&
-                renderAccountDailyBox(
-                  secondaryTableId,
-                  `계정 콘텐츠 · ${getTableById(state, secondaryTableId).name}`
-                )}
-            </div>
-          )}
-
+{(periodTab === "ALL" || periodTab === "DAILY") && (
+  secondaryTableId ? (
+    <div
+      className="accountDailyGrid"
+      style={{
+        display: "grid",
+        gridTemplateColumns: "1fr 1fr",
+        gap: 12,
+        alignItems: "start",
+        marginBottom: 8,
+      }}
+    >
+      <AccountDailyPanel tableId={state.activeTableId} />
+      <AccountDailyPanel tableId={secondaryTableId} />
+    </div>
+  ) : (
+    <AccountDailyPanel tableId={state.activeTableId} />
+  )
+)}
 
           {/* ✅ 두 표 동시 렌더 */}
           <div

@@ -889,7 +889,7 @@ body {
 }
 
 .lifeBar{
-  height: 10px;
+  height: 15px;
   border-radius: 999px;
   background: #e5e7eb;
   overflow: hidden;
@@ -910,12 +910,12 @@ body {
 }
 
 .lifeHint{
-  font-size: 12px;
+  font-size: 14px;
   color: #6b7280;
 }
 
 .lifeInput{
-  width: 100%;
+  width: 80%;
   height: 32px;
   border-radius: 10px;
   border: 1px solid #e5e7eb;
@@ -948,6 +948,8 @@ body {
 }
 
 .accountDailyItems {
+  margin-top: 12px;
+  margin-left: 6px;
   display: flex;
   gap: 14px;
   flex-wrap: wrap;
@@ -970,6 +972,7 @@ body {
 
 .lifeEta{
   margin-top: 2px;
+  margin-bottom: 2px;
   font-size: 14px;
   color: #6b7280;
 }
