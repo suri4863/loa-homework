@@ -974,3 +974,42 @@ body {
   color: #6b7280;
 }
 
+
+/* ===============================
+   계정 콘텐츠(생기/카게/필보) 위치/정렬 보정
+   =============================== */
+
+/* 계정 콘텐츠가 표 그리드와 같은 폭/정렬로 보이게 */
+.todo-table-area .accountDailyGrid{
+  width: 100%;
+  /* 두 칼럼일 때 위쪽 정렬(박스 높이 달라도 상단 라인 맞춤) */
+  align-items: start;
+  /* 표 그리드랑 간격 살짝 */
+  margin: 8px 0 4px;
+}
+
+/* 박스가 칼럼 안에서 이상하게 가운데로 뜨는 느낌 방지 */
+.todo-table-area .accountDailyBox{
+  justify-self: stretch;   /* 칼럼 폭 꽉 채움 */
+  align-self: start;       /* 위로 붙임 */
+}
+
+/* ✅ “오른쪽 계정 콘텐츠”만 살짝 오른쪽 칼럼 시작점에 딱 붙이고 싶으면 */
+.todo-table-area .accountDailyGrid > .accountDailyBox:nth-child(2){
+  /* 필요하면 아래 중 하나만 켜서 취향대로 */
+  justify-self: stretch;   /* (기본) 오른쪽 칼럼 폭 꽉 */
+  /* justify-self: start; */  /* 오른쪽 칼럼 안에서도 왼쪽에 딱 붙임 */
+  /* justify-self: end; */    /* 오른쪽 칼럼 안에서도 오른쪽에 딱 붙임 */
+
+  transform: translateX(45px);  /* 숫자 조절 */
+}
+
+/* 박스 내부 패딩/타이틀 라인 간격이 크면 전체가 내려가 보여서 살짝 타이트하게 */
+.todo-table-area .accountDailyTitle{
+  margin-bottom: 6px;
+}
+
+/* 생기 입력줄이 커서 박스가 높아지는 느낌이면 살짝 줄이기(선택) */
+.todo-table-area .lifeInputRow{
+  margin-top: 8px;
+}
