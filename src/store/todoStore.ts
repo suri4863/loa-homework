@@ -435,6 +435,12 @@ function getWeeklyResetAnchor(now: Date, weekday: number, hour: number): Date {
   return d;
 }
 
+function addDays(d: Date, days: number): Date {
+  const x = new Date(d);
+  x.setDate(x.getDate() + days);
+  return x;
+}
+
 /**
  * ✅ 일일 리셋 시점(리셋 직전 상태) 수행량 기반 휴식게이지 갱신
  */
@@ -442,15 +448,13 @@ function applyDailyRestUpdate(prev: TodoState): TodoState {
   const coreTask = prev.tasks.find((t) => t.period === "DAILY" && t.id === "MAIN_DAILY");
   const guardianTask = prev.tasks.find((t) => t.period === "DAILY" && t.title === "가디언 토벌");
 
-  const guardianMax = guardianTask?.cellType === "COUNTER" ? Math.max(1, guardianTask.max ?? 1) : 1;
-
   const tables = prev.tables.map((tbl) => {
     const restGauges: RestGauges = { ...(tbl.restGauges ?? {}) };
 
     for (const ch of tbl.characters) {
       const current = restGauges[ch.id] ?? { chaos: 0, guardian: 0 };
 
-      // 핵심 콘텐츠 count: 0~1
+      // ===== 핵심 콘텐츠 (0~1) =====
       let coreCount = 0;
       if (coreTask) {
         const cell = tbl.values?.[coreTask.id]?.[ch.id];
@@ -458,23 +462,35 @@ function applyDailyRestUpdate(prev: TodoState): TodoState {
       }
       coreCount = clamp(coreCount, 0, 1);
 
-      // count=0 -> +20, count=1 -> -40
-      const coreDelta = 20 - 60 * coreCount;
+      const curChaos = clamp(Number(current.chaos ?? 0), 0, 200);
+      let nextChaos = curChaos;
 
-      // 가디언
+      if (coreCount === 0) {
+        nextChaos = clamp(curChaos + 20, 0, 200);
+      } else {
+        // ✅ 임계값 40 이상일 때만 -40
+        nextChaos = clamp(curChaos - (curChaos >= 40 ? 40 : 0), 0, 200);
+      }
+
+      // ===== 가디언 (0~1) =====
       let guardianCount = 0;
       if (guardianTask) {
         const cell = tbl.values?.[guardianTask.id]?.[ch.id];
         guardianCount = cell?.type === "COUNTER" ? Number(cell.count ?? 0) : 0;
       }
-      guardianCount = clamp(guardianCount, 0, guardianMax);
+      guardianCount = clamp(guardianCount, 0, 1);
 
-      const guardianDelta = (guardianMax - guardianCount) * 10 - guardianCount * 20;
+      const curGuardian = clamp(Number(current.guardian ?? 0), 0, 100);
+      let nextGuardian = curGuardian;
 
-      restGauges[ch.id] = {
-        chaos: clamp((current.chaos ?? 0) + coreDelta, 0, 200),
-        guardian: clamp((current.guardian ?? 0) + guardianDelta, 0, 100),
-      };
+      if (guardianCount === 0) {
+        nextGuardian = clamp(curGuardian + 10, 0, 100);
+      } else {
+        // ✅ 임계값 20 이상일 때만 -20
+        nextGuardian = clamp(curGuardian - (curGuardian >= 20 ? 20 : 0), 0, 100);
+      }
+
+      restGauges[ch.id] = { chaos: nextChaos, guardian: nextGuardian };
     }
 
     return { ...tbl, restGauges };
@@ -482,6 +498,7 @@ function applyDailyRestUpdate(prev: TodoState): TodoState {
 
   return { ...prev, tables };
 }
+
 
 export function resetByPeriod(state: TodoState, period: "DAILY" | "WEEKLY", hard: boolean): TodoState {
   const targetTaskIds = state.tasks.filter((t) => t.period === period).map((t) => t.id);
@@ -523,15 +540,40 @@ export function applyAutoResetIfNeeded(state: TodoState): TodoState {
 
   let next = state;
 
-  if ((next.reset.lastDailyResetAt ?? 0) < dailyAnchor.getTime()) {
-    next = applyDailyRestUpdate(next);
-    next = resetByPeriod(next, "DAILY", false);
-    next = { ...next, reset: { ...next.reset, lastDailyResetAt: dailyAnchor.getTime() } };
-  }
+  const lastDaily = next.reset.lastDailyResetAt ?? 0;
 
-  if ((next.reset.lastWeeklyResetAt ?? 0) < weeklyAnchor.getTime()) {
-    next = resetByPeriod(next, "WEEKLY", false);
+  // ⚠️ 초기 설치/첫 실행처럼 lastDailyResetAt이 없으면,
+  // 과거를 “무한 누적”해버리니까 현재 앵커로 초기화만 해두는 게 안전함.
+  if (lastDaily === 0) {
+    next = { ...next, reset: { ...next.reset, lastDailyResetAt: dailyAnchor.getTime() } };
+  } else {
+    let cursor = getDailyResetAnchor(new Date(lastDaily), next.reset.dailyResetHour);
+
+    // cursor(마지막 적용 앵커) < dailyAnchor(현재 최신 앵커) 인 동안 하루씩 반복 적용
+    while (cursor.getTime() < dailyAnchor.getTime()) {
+      next = applyDailyRestUpdate(next);
+      next = resetByPeriod(next, "DAILY", false);
+
+      cursor = addDays(cursor, 1);
+      next = { ...next, reset: { ...next.reset, lastDailyResetAt: cursor.getTime() } };
+    }
+  }
+  const lastWeekly = next.reset.lastWeeklyResetAt ?? 0;
+
+  if (lastWeekly === 0) {
     next = { ...next, reset: { ...next.reset, lastWeeklyResetAt: weeklyAnchor.getTime() } };
+  } else {
+    let wcursor = getWeeklyResetAnchor(
+      new Date(lastWeekly),
+      next.reset.weeklyResetWeekday,
+      next.reset.dailyResetHour
+    );
+
+    while (wcursor.getTime() < weeklyAnchor.getTime()) {
+      next = resetByPeriod(next, "WEEKLY", false);
+      wcursor = addDays(wcursor, 7);
+      next = { ...next, reset: { ...next.reset, lastWeeklyResetAt: wcursor.getTime() } };
+    }
   }
 
   return next;
