@@ -1183,20 +1183,32 @@ export default function TodoTracker() {
                                     <span>아제나</span>
                                   </label>
 
-                                  {checked && expiresAt && (
-                                    <div style={{ fontSize: 11, opacity: 0.8 }}>~ {formatKoreanDateTime(expiresAt)}</div>
-                                  )}
+                                  <div
+                                    style={{
+                                      fontSize: 11,
+                                      opacity: 0.8,
+                                      visibility: checked && expiresAt ? "visible" : "hidden", // ✅ 공간은 유지, 글자만 숨김
+                                      height: 14,  // ✅ 한 줄 높이 고정(필요시 13~16 조절)
+                                      lineHeight: "14px",
+                                    }}
+                                  >
+                                    ~ {checked && expiresAt ? formatKoreanDateTime(expiresAt) : "0000년 00월 00일(월) 00:00"}
+                                  </div>
+
                                 </div>
                               );
                             })()}
 
                             {/* 캐릭 수정/삭제는 active 표에서만 */}
-                            {isActivePane && (
-                              <div className="char-actions">
-                                <button className="mini" onClick={() => editCharacter(ch)}>수정</button>
-                                <button className="mini" onClick={() => deleteCharacter(ch)}>삭제</button>
-                              </div>
-                            )}
+                            <div className="char-actions">
+                              {isActivePane && (
+                                <>
+                                  <button className="mini" onClick={() => editCharacter(ch)}>수정</button>
+                                  <button className="mini" onClick={() => deleteCharacter(ch)}>삭제</button>
+                                </>
+                              )}
+                            </div>
+
                           </div>
                         </th>
                       ))}
@@ -1222,7 +1234,7 @@ export default function TodoTracker() {
                               </td>
                             </tr>
 
-                            
+
 
                             {rows.map((task) => {
                               if (task.title === "큐브") return null;

@@ -367,10 +367,12 @@ body {
   white-space: nowrap;
 }
 
-.char-actions {
-  display: flex;
-  gap: 6px;
-  margin-top: 6px;
+.char-actions{
+  display:flex;
+  gap:6px;
+  margin-top:6px;
+  height: 28px;        /* ✅ min-height 말고 height로 고정 */
+  align-items: center;
 }
 
 /* Cells */
@@ -1021,3 +1023,4 @@ body {
 .task-sub{
   font-size: 0px;
 }
+
