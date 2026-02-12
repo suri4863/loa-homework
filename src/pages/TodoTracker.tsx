@@ -159,52 +159,52 @@ export default function TodoTracker() {
   const loaWeekday = useMemo(() => loaGameDate.getDay(), [loaGameDate]);
   const todayAccountContents = useMemo(() => WEEKLY_ACCOUNT_CONTENT[loaWeekday] ?? [], [loaWeekday]);
 
-  
-// ✅ 계정 콘텐츠 체크(카게/필보): tableId별로 저장/로드 (06:00 리셋 기준)
-const [accountChecksByTable, setAccountChecksByTable] = useState<Record<string, Record<string, boolean>>>({});
 
-function readAccountChecks(tableId: string): Record<string, boolean> {
-  try {
-    const raw = localStorage.getItem(getAccountDailyKey(tableId));
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as { dateKey?: string; checks?: Record<string, boolean> };
-    if (parsed?.dateKey === loaDateKey && parsed?.checks) return parsed.checks;
-    return {};
-  } catch {
-    return {};
+  // ✅ 계정 콘텐츠 체크(카게/필보): tableId별로 저장/로드 (06:00 리셋 기준)
+  const [accountChecksByTable, setAccountChecksByTable] = useState<Record<string, Record<string, boolean>>>({});
+
+  function readAccountChecks(tableId: string): Record<string, boolean> {
+    try {
+      const raw = localStorage.getItem(getAccountDailyKey(tableId));
+      if (!raw) return {};
+      const parsed = JSON.parse(raw) as { dateKey?: string; checks?: Record<string, boolean> };
+      if (parsed?.dateKey === loaDateKey && parsed?.checks) return parsed.checks;
+      return {};
+    } catch {
+      return {};
+    }
   }
-}
 
-function writeAccountChecks(tableId: string, checks: Record<string, boolean>) {
-  try {
-    localStorage.setItem(getAccountDailyKey(tableId), JSON.stringify({ dateKey: loaDateKey, checks }));
-  } catch {
-    // ignore
+  function writeAccountChecks(tableId: string, checks: Record<string, boolean>) {
+    try {
+      localStorage.setItem(getAccountDailyKey(tableId), JSON.stringify({ dateKey: loaDateKey, checks }));
+    } catch {
+      // ignore
+    }
   }
-}
 
-// 현재 화면에 보이는 tableId(왼쪽/오른쪽)의 체크를 로드
-useEffect(() => {
-  const ids = [state.activeTableId, secondaryTableId].filter(Boolean) as string[];
-  setAccountChecksByTable((prev) => {
-    const next = { ...prev };
-    for (const id of ids) next[id] = readAccountChecks(id);
-    return next;
-  });
-}, [loaDateKey, state.activeTableId, secondaryTableId]);
+  // 현재 화면에 보이는 tableId(왼쪽/오른쪽)의 체크를 로드
+  useEffect(() => {
+    const ids = [state.activeTableId, secondaryTableId].filter(Boolean) as string[];
+    setAccountChecksByTable((prev) => {
+      const next = { ...prev };
+      for (const id of ids) next[id] = readAccountChecks(id);
+      return next;
+    });
+  }, [loaDateKey, state.activeTableId, secondaryTableId]);
 
-function onToggleAccountCheck(tableId: string, id: string, checked: boolean) {
-  setAccountChecksByTable((prev) => {
-    const current = prev[tableId] ?? {};
-    const nextChecks = { ...current, [id]: checked };
-    const next = { ...prev, [tableId]: nextChecks };
-    // ✅ 클릭 순간 즉시 저장
-    writeAccountChecks(tableId, nextChecks);
-    return next;
-  });
-}
+  function onToggleAccountCheck(tableId: string, id: string, checked: boolean) {
+    setAccountChecksByTable((prev) => {
+      const current = prev[tableId] ?? {};
+      const nextChecks = { ...current, [id]: checked };
+      const next = { ...prev, [tableId]: nextChecks };
+      // ✅ 클릭 순간 즉시 저장
+      writeAccountChecks(tableId, nextChecks);
+      return next;
+    });
+  }
 
-//생명의 기운(생기)(생기)
+  //생명의 기운(생기)(생기)
   const LIFE_MAX = 10500;
   const LIFE_STEP = 30;
   const LIFE_STEP_MS = 10 * 60 * 1000; // 10분
@@ -313,132 +313,133 @@ function onToggleAccountCheck(tableId: string, id: string, checked: boolean) {
 
   // 생기
   function AccountDailyPanel({ tableId }: { tableId: string }) {
-  const lifeKey = useMemo(() => `loa-life-energy:v1:${tableId}`, [tableId]);
+    const lifeKey = useMemo(() => `loa-life-energy:v1:${tableId}`, [tableId]);
 
-  // ✅ 최초 렌더에서 바로 로드 (새로고침 유지)
-  const [lifeBase, setLifeBase] = useState<LifeEnergyBase | null>(() => {
-    try {
-      const raw = localStorage.getItem(`loa-life-energy:v1:${tableId}`);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw) as LifeEnergyBase;
-      if (typeof parsed?.value === "number" && typeof parsed?.updatedAt === "number") return parsed;
-      return null;
-    } catch {
-      return null;
-    }
-  });
+    // ✅ 최초 렌더에서 바로 로드 (새로고침 유지)
+    const [lifeBase, setLifeBase] = useState<LifeEnergyBase | null>(() => {
+      try {
+        const raw = localStorage.getItem(`loa-life-energy:v1:${tableId}`);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as LifeEnergyBase;
+        if (typeof parsed?.value === "number" && typeof parsed?.updatedAt === "number") return parsed;
+        return null;
+      } catch {
+        return null;
+      }
+    });
 
-  // ✅ tableId 바뀔 때 재로드
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(lifeKey);
-      if (!raw) {
+    // ✅ tableId 바뀔 때 재로드
+    useEffect(() => {
+      try {
+        const raw = localStorage.getItem(lifeKey);
+        if (!raw) {
+          setLifeBase(null);
+          return;
+        }
+        const parsed = JSON.parse(raw) as LifeEnergyBase;
+        if (typeof parsed?.value === "number" && typeof parsed?.updatedAt === "number") {
+          setLifeBase(parsed);
+        } else {
+          setLifeBase(null);
+        }
+      } catch {
         setLifeBase(null);
-        return;
       }
-      const parsed = JSON.parse(raw) as LifeEnergyBase;
-      if (typeof parsed?.value === "number" && typeof parsed?.updatedAt === "number") {
-        setLifeBase(parsed);
-      } else {
-        setLifeBase(null);
+    }, [lifeKey]);
+
+    // ✅ 저장
+    useEffect(() => {
+      try {
+        if (!lifeBase) {
+          localStorage.removeItem(lifeKey);
+        } else {
+          localStorage.setItem(lifeKey, JSON.stringify(lifeBase));
+        }
+      } catch {
+        // ignore
       }
-    } catch {
-      setLifeBase(null);
-    }
-  }, [lifeKey]);
+    }, [lifeKey, lifeBase]);
 
-  // ✅ 저장
-  useEffect(() => {
-    try {
-      if (!lifeBase) {
-        localStorage.removeItem(lifeKey);
-      } else {
-        localStorage.setItem(lifeKey, JSON.stringify(lifeBase));
-      }
-    } catch {
-      // ignore
-    }
-  }, [lifeKey, lifeBase]);
+    // 표시용
+    const lifeView = useMemo(() => {
+      const nowMs = Date.now();
+      return {
+        ...calcLifeEnergyNow(lifeBase, nowMs),
+        timeToFull: calcTimeToFull(lifeBase, nowMs),
+      };
+    }, [lifeBase, tick]);
 
-  // 표시용
-  const lifeView = useMemo(() => {
-    const nowMs = Date.now();
-    return {
-      ...calcLifeEnergyNow(lifeBase, nowMs),
-      timeToFull: calcTimeToFull(lifeBase, nowMs),
-    };
-  }, [lifeBase, tick]);
+    return (
+      <div className="accountDailyBox">
+        <div className="accountDailyTitle">계정 콘텐츠</div>
 
-  return (
-    <div className="accountDailyBox">
-      <div className="accountDailyTitle">계정 콘텐츠</div>
+        {/* ✅ 생명의 기운(항상 표시) */}
+        <div className="lifeBox">
+          <div className="lifeTop">
+            <b>생명의 기운 </b>
+            <span className="lifeNum">
+              {lifeView.now.toLocaleString()} / {LIFE_MAX.toLocaleString()}
+            </span>
+          </div>
+          <div className="lifeEta">풀충 예상: {formatEtaFullKorean(lifeView.timeToFull)}</div>
 
-      {/* ✅ 생명의 기운(항상 표시) */}
-      <div className="lifeBox">
-        <div className="lifeTop">
-          <b>생명의 기운 </b>
-          <span className="lifeNum">
-            {lifeView.now.toLocaleString()} / {LIFE_MAX.toLocaleString()}
-          </span>
+          <div className="lifeBar">
+            <div className="lifeFill" style={{ width: `${(lifeView.now / LIFE_MAX) * 100}%` }} />
+          </div>
+
+          <div className="lifeInputRow">
+            <span className="lifeHint">지금 생기 값 입력 </span>
+            <input
+              className="lifeInput"
+              type="number"
+              min={0}
+              max={LIFE_MAX}
+              value={lifeBase?.value ?? ""}
+              placeholder="예: 5000"
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "") {
+                  setLifeBase(null);
+                  return;
+                }
+                const num = clampInt(parseInt(v, 10) || 0, 0, LIFE_MAX);
+                setLifeBase({ value: num, updatedAt: Date.now() });
+              }}
+            />
+            <button
+              className="mini"
+              onClick={() => {
+                if (!lifeBase) return;
+                setLifeBase({ value: lifeBase.value, updatedAt: Date.now() });
+              }}
+              disabled={!lifeBase}
+            >
+              지금 기준
+            </button>
+          </div>
         </div>
-        <div className="lifeEta">풀충 예상: {formatEtaFullKorean(lifeView.timeToFull)}</div>
 
-        <div className="lifeBar">
-          <div className="lifeFill" style={{ width: `${(lifeView.now / LIFE_MAX) * 100}%` }} />
-        </div>
-
-        <div className="lifeInputRow">
-          <span className="lifeHint">지금 생기 값 입력 </span>
-          <input
-            className="lifeInput"
-            type="number"
-            min={0}
-            max={LIFE_MAX}
-            value={lifeBase?.value ?? ""}
-            placeholder="예: 5000"
-            onChange={(e) => {
-              const v = e.target.value;
-              if (v === "") {
-                setLifeBase(null);
-                return;
-              }
-              const num = clampInt(parseInt(v, 10) || 0, 0, LIFE_MAX);
-              setLifeBase({ value: num, updatedAt: Date.now() });
-            }}
-          />
-          <button
-            className="mini"
-            onClick={() => {
-              if (!lifeBase) return;
-              setLifeBase({ value: lifeBase.value, updatedAt: Date.now() });
-            }}
-            disabled={!lifeBase}
-          >
-            지금 기준
-          </button>
-        </div>
+        {/* ✅ 요일별(카게/필보) */}
+        {todayAccountContents.length > 0 ? (
+          <div className="accountDailyItems">
+            {todayAccountContents.map((c) => (
+              <label key={c.id} className="accountDailyItem">
+                <input
+                  type="checkbox"
+                  checked={!!(accountChecksByTable[tableId]?.[c.id])}
+                  onChange={(e) => onToggleAccountCheck(tableId, c.id, e.target.checked)}
+                />
+                <span>{c.label}</span>
+                <div className="accountDailyEmpty">잊지말고 신년운세 하기!</div>
+              </label>
+            ))}
+          </div>
+        ) : (
+          <div className="accountDailyEmpty">카게/필보 없음 잊지말고 신년운세 하기!</div>
+        )}
       </div>
-
-      {/* ✅ 요일별(카게/필보) */}
-      {todayAccountContents.length > 0 ? (
-        <div className="accountDailyItems">
-          {todayAccountContents.map((c) => (
-            <label key={c.id} className="accountDailyItem">
-              <input
-                type="checkbox"
-                checked={!!(accountChecksByTable[tableId]?.[c.id])}
-                onChange={(e) => onToggleAccountCheck(tableId, c.id, e.target.checked)}
-              />
-              <span>{c.label}</span>
-            </label>
-          ))}
-        </div>
-      ) : (
-        <div className="accountDailyEmpty">오늘은 카게/필보 없음</div>
-      )}
-    </div>
-  );
-}
+    );
+  }
 
   const [dragCharId, setDragCharId] = useState<string | null>(null);
   const [dragTaskId, setDragTaskId] = useState<string | null>(null);
@@ -913,6 +914,11 @@ function onToggleAccountCheck(tableId: string, id: string, checked: boolean) {
 
     return Array.from(map.entries());
   }, [tasks]);
+  const SECTION_ORDER: Record<string, number> = {
+    "일일 숙제": 1,
+    "주간 레이드": 2,
+    "주간 교환": 3,
+  };
 
   function reorderTaskWithinSection(fromTaskId: string, toTaskId: string) {
     if (fromTaskId === toTaskId) return;
@@ -1198,270 +1204,278 @@ function onToggleAccountCheck(tableId: string, id: string, checked: boolean) {
                   </thead>
 
                   <tbody>
-                    {groupedTasks.map(([section, rows]) => {
-                      return (
-                        <React.Fragment key={section}>
-                          <tr
-                            className={`section-row ${section === "일일 숙제" || section === "주간 교환" || section === "주간 레이드" ? "section-strong" : ""
-                              }`}
-                          >
-                            <td className="todo-sticky-left section-left" colSpan={1 + characters.length}>
-                              {section}
-                            </td>
-                          </tr>
-
-                          {section === "주간 레이드" && (
-                            <tr className="task-row gold-sum-row">
-                              <td className="todo-sticky-left task-left">
-                                <div className="task-left-inner">
-                                  <div className="task-title">주간 클리어 골드(추천 Top3)</div>
-                                  <div className="task-sub">아이템레벨 기준 · 레이드별 최고 난이도만 적용</div>
-                                </div>
+                    {[...groupedTasks]
+                      .sort(([a], [b]) => {
+                        const oa = SECTION_ORDER[a] ?? 999;
+                        const ob = SECTION_ORDER[b] ?? 999;
+                        return oa - ob || a.localeCompare(b, "ko");
+                      })
+                      .map(([section, rows]) => {
+                        return (
+                          <React.Fragment key={section}>
+                            <tr
+                              className={`section-row ${section === "일일 숙제" || section === "주간 교환" || section === "주간 레이드" ? "section-strong" : ""
+                                }`}
+                            >
+                              <td className="todo-sticky-left section-left" colSpan={1 + characters.length}>
+                                {section}
                               </td>
+                            </tr>
 
-                              {characters.map((ch) => {
-                                const ilvl = parseIlvl(ch.itemLevel);
+                            
 
-                                if (!Number.isFinite(ilvl)) {
-                                  return (
-                                    <td key={ch.id} className="cell">
-                                      <div className="goldbox muted">Lv 입력 필요</div>
-                                    </td>
-                                  );
-                                }
+                            {rows.map((task) => {
+                              if (task.title === "큐브") return null;
 
-                                const r = calcWeeklyTop3Gold(ilvl);
-                                const detail = r.top3
-                                  .map((x) => `${x.raid} ${x.diff}(${x.gold.toLocaleString()})`)
-                                  .join(" + ");
+                              const min = TASK_MIN_ILVL[task.title];
 
-                                return (
-                                  <td key={ch.id} className="cell">
-                                    <div className="goldbox" title={detail}>
-                                      <div className="gold-sum">{r.sum.toLocaleString()} G</div>
-                                      <div className="gold-detail">{r.top3.map((x) => x.raid).join(" / ")}</div>
+                              if (typeof min === "number") {
+                                const anyEligible = characters.some((ch) => getCharIlvl(ch) >= min);
+                                if (!anyEligible) return null;
+                              }
+
+                              return (
+                                <tr
+                                  key={task.id}
+                                  className="task-row"
+                                  onDragOver={(e) => e.preventDefault()}
+                                  onDrop={() => {
+                                    // 숙제 순서 변경은 전역(템플릿)이라 active에서만 허용
+                                    if (!isActivePane) return;
+                                    if (!dragTaskId) return;
+                                    reorderTaskWithinSection(dragTaskId, task.id);
+                                    setDragTaskId(null);
+                                  }}
+                                >
+                                  <td className="todo-sticky-left task-left">
+                                    <div className="task-left-inner">
+                                      <div
+                                        className="task-title raid-title-click"
+                                        draggable={isActivePane}
+                                        onDragStart={() => isActivePane && setDragTaskId(task.id)}
+                                        onDragEnd={() => isActivePane && setDragTaskId(null)}
+                                        style={{ cursor: isActivePane ? "grab" : "default" }}
+                                        onClick={(e) => {
+                                          if (!RAID_CLEAR_GOLD[task.title]) return;
+                                          setRaidGoldPopup({ title: task.title, x: e.clientX, y: e.clientY });
+                                        }}
+                                      >
+                                        {task.title}
+                                      </div>
+
+                                      <div
+                                        className={`pill ${task.period === "DAILY" ? "daily" : task.period === "WEEKLY" ? "weekly" : ""
+                                          }`}
+                                      >
+                                        {LEVEL_PERIODS[task.period]}
+                                      </div>
+
+                                      {/* 숙제 수정/삭제는 active에서만 */}
+                                      {isActivePane && (
+                                        <div className="task-actions">
+                                          <button className="mini" onClick={() => editTask(task)}>수정</button>
+                                          <button className="mini" onClick={() => deleteTask(task)}>삭제</button>
+                                        </div>
+                                      )}
                                     </div>
                                   </td>
-                                );
-                              })}
-                            </tr>
-                          )}
 
-                          {rows.map((task) => {
-                            if (task.title === "큐브") return null;
+                                  {characters.map((ch) => {
+                                    const cell = getCellByTableId(state, tableId, task.id, ch.id);
 
-                            const min = TASK_MIN_ILVL[task.title];
+                                    if (typeof min === "number") {
+                                      const eligible = getCharIlvl(ch) >= min;
+                                      if (!eligible) return <td key={ch.id} className="cell" />;
+                                    }
 
-                            if (typeof min === "number") {
-                              const anyEligible = characters.some((ch) => getCharIlvl(ch) >= min);
-                              if (!anyEligible) return null;
-                            }
+                                    if (task.cellType === "TEXT") {
+                                      const isCubeTicket = task.title.includes("해금");
 
-                            return (
-                              <tr
-                                key={task.id}
-                                className="task-row"
-                                onDragOver={(e) => e.preventDefault()}
-                                onDrop={() => {
-                                  // 숙제 순서 변경은 전역(템플릿)이라 active에서만 허용
-                                  if (!isActivePane) return;
-                                  if (!dragTaskId) return;
-                                  reorderTaskWithinSection(dragTaskId, task.id);
-                                  setDragTaskId(null);
-                                }}
-                              >
-                                <td className="todo-sticky-left task-left">
-                                  <div className="task-left-inner">
-                                    <div
-                                      className="task-title raid-title-click"
-                                      draggable={isActivePane}
-                                      onDragStart={() => isActivePane && setDragTaskId(task.id)}
-                                      onDragEnd={() => isActivePane && setDragTaskId(null)}
-                                      style={{ cursor: isActivePane ? "grab" : "default" }}
-                                      onClick={(e) => {
-                                        if (!RAID_CLEAR_GOLD[task.title]) return;
-                                        setRaidGoldPopup({ title: task.title, x: e.clientX, y: e.clientY });
-                                      }}
-                                    >
-                                      {task.title}
-                                    </div>
+                                      if (isCubeTicket) {
+                                        const raw = cell?.type === "TEXT" ? cell.text : "";
+                                        const n = raw === "" ? 0 : Number(String(raw).replace(/[^0-9]/g, ""));
+                                        const value = Number.isFinite(n) ? n : 0;
 
-                                    <div
-                                      className={`pill ${task.period === "DAILY" ? "daily" : task.period === "WEEKLY" ? "weekly" : ""
-                                        }`}
-                                    >
-                                      {LEVEL_PERIODS[task.period]}
-                                    </div>
+                                        const setValue = (next: number) => onTextChange(tableId, task, ch, String(Math.max(0, next)));
+                                        const useOnce = () => setValue(value - 1);
+                                        const useTriple = () => setValue(value - 3);
 
-                                    {/* 숙제 수정/삭제는 active에서만 */}
-                                    {isActivePane && (
-                                      <div className="task-actions">
-                                        <button className="mini" onClick={() => editTask(task)}>수정</button>
-                                        <button className="mini" onClick={() => deleteTask(task)}>삭제</button>
-                                      </div>
-                                    )}
-                                  </div>
-                                </td>
+                                        return (
+                                          <td key={ch.id} className="cell">
+                                            <div className="ticket-grid">
+                                              <div className="ticket-left">
+                                                <input
+                                                  inputMode="numeric"
+                                                  className="ticket-input"
+                                                  value={raw}
+                                                  onChange={(e) => {
+                                                    const onlyNum = e.target.value.replace(/[^0-9]/g, "");
+                                                    onTextChange(tableId, task, ch, onlyNum);
+                                                  }}
+                                                  placeholder="0"
+                                                />
 
-                                {characters.map((ch) => {
-                                  const cell = getCellByTableId(state, tableId, task.id, ch.id);
+                                                <div className="ticket-left-actions">
+                                                  <button type="button" className="ticket-btn" onClick={() => setValue(value + 1)}>추가</button>
+                                                  <button type="button" className="ticket-btn" onClick={() => setValue(value - 1)} disabled={value < 1}>
+                                                    삭제
+                                                  </button>
+                                                </div>
+                                              </div>
 
-                                  if (typeof min === "number") {
-                                    const eligible = getCharIlvl(ch) >= min;
-                                    if (!eligible) return <td key={ch.id} className="cell" />;
-                                  }
-
-                                  if (task.cellType === "TEXT") {
-                                    const isCubeTicket = task.title.includes("해금");
-
-                                    if (isCubeTicket) {
-                                      const raw = cell?.type === "TEXT" ? cell.text : "";
-                                      const n = raw === "" ? 0 : Number(String(raw).replace(/[^0-9]/g, ""));
-                                      const value = Number.isFinite(n) ? n : 0;
-
-                                      const setValue = (next: number) => onTextChange(tableId, task, ch, String(Math.max(0, next)));
-                                      const useOnce = () => setValue(value - 1);
-                                      const useTriple = () => setValue(value - 3);
+                                              <div className="ticket-right">
+                                                <button type="button" className="ticket-btn primary" onClick={useOnce} disabled={value < 1}>1회사용</button>
+                                                <button type="button" className="ticket-btn primary" onClick={useTriple} disabled={value < 3}>3회사용</button>
+                                              </div>
+                                            </div>
+                                          </td>
+                                        );
+                                      }
 
                                       return (
                                         <td key={ch.id} className="cell">
-                                          <div className="ticket-grid">
-                                            <div className="ticket-left">
+                                          <input
+                                            className="cell-text"
+                                            value={cell?.type === "TEXT" ? cell.text : ""}
+                                            onChange={(e) => onTextChange(tableId, task, ch, e.target.value)}
+                                          />
+                                        </td>
+                                      );
+                                    }
+
+                                    if (task.cellType === "SELECT") {
+                                      const opts = task.options ?? ["완료", "미완"];
+                                      return (
+                                        <td key={ch.id} className="cell">
+                                          <select
+                                            className="cell-select"
+                                            value={cell?.type === "SELECT" ? cell.value : ""}
+                                            onChange={(e) => onSelectChange(tableId, task, ch, e.target.value)}
+                                          >
+                                            <option value="">-</option>
+                                            {opts.map((o) => (
+                                              <option key={o} value={o}>{o}</option>
+                                            ))}
+                                          </select>
+                                        </td>
+                                      );
+                                    }
+
+                                    if (task.cellType === "COUNTER") {
+                                      const max = Math.max(1, task.max ?? 1);
+                                      const count = cell?.type === "COUNTER" ? (cell.count ?? 0) : 0;
+
+                                      const isCore = task.id === CORE_DAILY_TASK_ID;
+                                      const isGuardian = task.title === "가디언 토벌";
+
+                                      const restValue = isCore
+                                        ? (table.restGauges?.[ch.id]?.chaos ?? 0)
+                                        : isGuardian
+                                          ? (table.restGauges?.[ch.id]?.guardian ?? 0)
+                                          : 0;
+
+                                      const restMax = isCore ? 200 : isGuardian ? 100 : 0;
+
+                                      return (
+                                        <td
+                                          key={ch.id}
+                                          className="cell"
+                                          data-counter="1"
+                                          data-task-id={task.id}
+                                          data-ch-id={ch.id}
+                                          onClick={() => onCellClick(tableId, task, ch)}
+                                          title={task.id === CORE_DAILY_TASK_ID ? getCoreDailyLabel(getCharIlvl(ch)) : "클릭 토글"}
+                                        >
+                                          <div className="cell-inline">
+                                            <CounterDots max={max} count={count} />
+
+                                            {(isCore || isGuardian) && (
                                               <input
                                                 inputMode="numeric"
-                                                className="ticket-input"
-                                                value={raw}
+                                                className="rest-input"
+                                                value={String(restValue)}
                                                 onChange={(e) => {
-                                                  const onlyNum = e.target.value.replace(/[^0-9]/g, "");
-                                                  onTextChange(tableId, task, ch, onlyNum);
+                                                  const raw = e.target.value.replace(/[^0-9]/g, "");
+                                                  const n = raw === "" ? 0 : Number(raw);
+                                                  const clamped = clamp(Number.isFinite(n) ? n : 0, 0, restMax);
+
+                                                  setRestGaugeInTable(tableId, ch.id, {
+                                                    chaos: isCore ? clamped : undefined,
+                                                    guardian: isGuardian ? clamped : undefined,
+                                                  });
                                                 }}
-                                                placeholder="0"
+                                                title={isCore ? "핵심 콘텐츠 휴식(0~200)" : "가디언 휴식(0~100)"}
+                                                onClick={(e) => e.stopPropagation()}
                                               />
-
-                                              <div className="ticket-left-actions">
-                                                <button type="button" className="ticket-btn" onClick={() => setValue(value + 1)}>추가</button>
-                                                <button type="button" className="ticket-btn" onClick={() => setValue(value - 1)} disabled={value < 1}>
-                                                  삭제
-                                                </button>
-                                              </div>
-                                            </div>
-
-                                            <div className="ticket-right">
-                                              <button type="button" className="ticket-btn primary" onClick={useOnce} disabled={value < 1}>1회사용</button>
-                                              <button type="button" className="ticket-btn primary" onClick={useTriple} disabled={value < 3}>3회사용</button>
-                                            </div>
+                                            )}
                                           </div>
                                         </td>
                                       );
                                     }
 
-                                    return (
-                                      <td key={ch.id} className="cell">
-                                        <input
-                                          className="cell-text"
-                                          value={cell?.type === "TEXT" ? cell.text : ""}
-                                          onChange={(e) => onTextChange(tableId, task, ch, e.target.value)}
-                                        />
-                                      </td>
-                                    );
-                                  }
-
-                                  if (task.cellType === "SELECT") {
-                                    const opts = task.options ?? ["완료", "미완"];
-                                    return (
-                                      <td key={ch.id} className="cell">
-                                        <select
-                                          className="cell-select"
-                                          value={cell?.type === "SELECT" ? cell.value : ""}
-                                          onChange={(e) => onSelectChange(tableId, task, ch, e.target.value)}
-                                        >
-                                          <option value="">-</option>
-                                          {opts.map((o) => (
-                                            <option key={o} value={o}>{o}</option>
-                                          ))}
-                                        </select>
-                                      </td>
-                                    );
-                                  }
-
-                                  if (task.cellType === "COUNTER") {
-                                    const max = Math.max(1, task.max ?? 1);
-                                    const count = cell?.type === "COUNTER" ? (cell.count ?? 0) : 0;
-
-                                    const isCore = task.id === CORE_DAILY_TASK_ID;
-                                    const isGuardian = task.title === "가디언 토벌";
-
-                                    const restValue = isCore
-                                      ? (table.restGauges?.[ch.id]?.chaos ?? 0)
-                                      : isGuardian
-                                        ? (table.restGauges?.[ch.id]?.guardian ?? 0)
-                                        : 0;
-
-                                    const restMax = isCore ? 200 : isGuardian ? 100 : 0;
-
-                                    return (
-                                      <td
-                                        key={ch.id}
-                                        className="cell"
-                                        data-counter="1"
-                                        data-task-id={task.id}
-                                        data-ch-id={ch.id}
-                                        onClick={() => onCellClick(tableId, task, ch)}
-                                        title={task.id === CORE_DAILY_TASK_ID ? getCoreDailyLabel(getCharIlvl(ch)) : "클릭 토글"}
-                                      >
-                                        <div className="cell-inline">
-                                          <CounterDots max={max} count={count} />
-
-                                          {(isCore || isGuardian) && (
-                                            <input
-                                              inputMode="numeric"
-                                              className="rest-input"
-                                              value={String(restValue)}
-                                              onChange={(e) => {
-                                                const raw = e.target.value.replace(/[^0-9]/g, "");
-                                                const n = raw === "" ? 0 : Number(raw);
-                                                const clamped = clamp(Number.isFinite(n) ? n : 0, 0, restMax);
-
-                                                setRestGaugeInTable(tableId, ch.id, {
-                                                  chaos: isCore ? clamped : undefined,
-                                                  guardian: isGuardian ? clamped : undefined,
-                                                });
-                                              }}
-                                              title={isCore ? "핵심 콘텐츠 휴식(0~200)" : "가디언 휴식(0~100)"}
-                                              onClick={(e) => e.stopPropagation()}
-                                            />
-                                          )}
-                                        </div>
-                                      </td>
-                                    );
-                                  }
-
-                                  // ✅ 주간 레이드: 캐릭터별 Top3 레이드만 체크 버튼 렌더링
-                                  if (section === "주간 레이드" && isWeeklyRaidTaskTitle(task.title)) {
-                                    const ilvl = getCharIlvl(ch);
-                                    const top3Set = getWeeklyTop3RaidNameSet(ilvl);
-                                    if (!top3Set.has(task.title)) {
-                                      return <td key={ch.id} className="cell" />;
+                                    // ✅ 주간 레이드: 캐릭터별 Top3 레이드만 체크 버튼 렌더링
+                                    if (section === "주간 레이드" && isWeeklyRaidTaskTitle(task.title)) {
+                                      const ilvl = getCharIlvl(ch);
+                                      const top3Set = getWeeklyTop3RaidNameSet(ilvl);
+                                      if (!top3Set.has(task.title)) {
+                                        return <td key={ch.id} className="cell" />;
+                                      }
                                     }
+
+                                    // CHECK
+                                    const checked = cell?.type === "CHECK" ? cell.checked : false;
+
+                                    return (
+                                      <td key={ch.id} className="cell">
+                                        <button type="button" className="cell-check-btn" onClick={() => onCellClick(tableId, task, ch)} title="완료 체크">
+                                          <span className={`check ${checked ? "on" : ""}`} />
+                                        </button>
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              );
+                            })}
+
+                            {section === "주간 레이드" && (
+                              <tr className="task-row gold-sum-row">
+                                <td className="todo-sticky-left task-left">
+                                  <div className="task-left-inner">
+                                    <div className="task-title">주간 클리어 골드(추천 Top3)</div>
+                                    <div className="task-sub">아이템레벨 기준 · 레이드별 최고 난이도만 적용</div>
+                                  </div>
+                                </td>
+
+                                {characters.map((ch) => {
+                                  const ilvl = parseIlvl(ch.itemLevel);
+
+                                  if (!Number.isFinite(ilvl)) {
+                                    return (
+                                      <td key={ch.id} className="cell">
+                                        <div className="goldbox muted">Lv 입력 필요</div>
+                                      </td>
+                                    );
                                   }
 
-                                  // CHECK
-                                  const checked = cell?.type === "CHECK" ? cell.checked : false;
+                                  const r = calcWeeklyTop3Gold(ilvl);
+                                  const detail = r.top3
+                                    .map((x) => `${x.raid} ${x.diff}(${x.gold.toLocaleString()})`)
+                                    .join(" + ");
 
                                   return (
                                     <td key={ch.id} className="cell">
-                                      <button type="button" className="cell-check-btn" onClick={() => onCellClick(tableId, task, ch)} title="완료 체크">
-                                        <span className={`check ${checked ? "on" : ""}`} />
-                                      </button>
+                                      <div className="goldbox" title={detail}>
+                                        <div className="gold-sum">{r.sum.toLocaleString()} G</div>
+                                        <div className="gold-detail">{r.top3.map((x) => x.raid).join(" / ")}</div>
+                                      </div>
                                     </td>
                                   );
                                 })}
                               </tr>
-                            );
-                          })}
-                        </React.Fragment>
-                      );
-                    })}
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
                   </tbody>
                 </table>
               </div>
@@ -1645,25 +1659,25 @@ function onToggleAccountCheck(tableId: string, id: string, checked: boolean) {
         {/* ✅ 표 영역 wrapper: 요일별 + 표 그리드를 한 컨테이너로 묶기 */}
         <div className="todo-table-area">
           {/* ✅ 요일별 콘텐츠(계정 공용) - 전체/일일 탭에서 */}
-{(periodTab === "ALL" || periodTab === "DAILY") && (
-  secondaryTableId ? (
-    <div
-      className="accountDailyGrid"
-      style={{
-        display: "grid",
-        gridTemplateColumns: "1fr 1fr",
-        gap: 12,
-        alignItems: "start",
-        marginBottom: 8,
-      }}
-    >
-      <AccountDailyPanel tableId={state.activeTableId} />
-      <AccountDailyPanel tableId={secondaryTableId} />
-    </div>
-  ) : (
-    <AccountDailyPanel tableId={state.activeTableId} />
-  )
-)}
+          {(periodTab === "ALL" || periodTab === "DAILY") && (
+            secondaryTableId ? (
+              <div
+                className="accountDailyGrid"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 12,
+                  alignItems: "start",
+                  marginBottom: 8,
+                }}
+              >
+                <AccountDailyPanel tableId={state.activeTableId} />
+                <AccountDailyPanel tableId={secondaryTableId} />
+              </div>
+            ) : (
+              <AccountDailyPanel tableId={state.activeTableId} />
+            )
+          )}
 
           {/* ✅ 두 표 동시 렌더 */}
           <div

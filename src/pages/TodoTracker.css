@@ -889,7 +889,7 @@ body {
 }
 
 .lifeBar{
-  height: 15px;
+  height: 14px;
   border-radius: 999px;
   background: #e5e7eb;
   overflow: hidden;
@@ -898,7 +898,7 @@ body {
 
 .lifeFill{
   height: 100%;
-  background: #22c55e;
+  background: #51c07a;
   width: 0%;
 }
 
@@ -1015,4 +1015,9 @@ body {
 /* 생기 입력줄이 커서 박스가 높아지는 느낌이면 살짝 줄이기(선택) */
 .todo-table-area .lifeInputRow{
   margin-top: 8px;
+}
+
+
+.task-sub{
+  font-size: 0px;
 }
