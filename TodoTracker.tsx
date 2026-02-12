@@ -1,0 +1,1742 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import "./TodoTracker.css";
+
+import type { TodoState, Character, TaskRow, TodoTable, RestGauges, CellValue, GridValues } from "../store/todoStore";
+import BidPopover from "../components/BidPopover";
+
+import {
+  DEFAULT_TODO_STATE,
+  LEVEL_PERIODS,
+  applyAutoResetIfNeeded,
+  runDailyResetNow,
+  createCharacter,
+  createTask,
+  exportStateToJson,
+  importStateFromJson,
+  resetByPeriod,
+  getActiveTable,
+  getTableById,
+  getCellByTableId,
+  setCellByTableId,
+} from "../store/todoStore";
+
+// ✅ 계정 요일별 콘텐츠 (06:00 리셋 기준)
+const getAccountDailyKey = (tableId: string) => `loa-account-daily:v1:${tableId}`;
+
+
+// 0=일,1=월,...6=토
+const WEEKLY_ACCOUNT_CONTENT: Record<number, { id: string; label: string }[]> = {
+  0: [
+    { id: "CAGE", label: "카게" },
+    { id: "FBOSS", label: "필보" },
+  ],
+  1: [{ id: "CAGE", label: "카게" }],
+  2: [{ id: "FBOSS", label: "필보" }],
+  3: [], // 수요일 없음
+  4: [{ id: "CAGE", label: "카게" }],
+  5: [{ id: "FBOSS", label: "필보" }],
+  6: [{ id: "CAGE", label: "카게" }],
+};
+
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+function formatLocalDateKey(d: Date) {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+/** ✅ 로아 기준 '게임 날짜' (매일 resetHour시 시작) */
+function getLoaGameDate(resetHour: number) {
+  const now = new Date();
+  const gameDate = new Date(now);
+  if (now.getHours() < resetHour) {
+    gameDate.setDate(gameDate.getDate() - 1);
+  }
+  return gameDate;
+}
+
+
+type Tab = "DAILY" | "WEEKLY" | "NONE" | "ALL";
+
+function uid(prefix: string) {
+  return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
+}
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+/* =======================
+   아제나 만료 유틸
+======================= */
+function toDatetimeLocalValue(d: Date) {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(
+    d.getMinutes()
+  )}`;
+}
+
+function fromDatetimeLocalValue(v: string) {
+  const d = new Date(v);
+  return Number.isFinite(d.getTime()) ? d.toISOString() : null;
+}
+
+function formatKoreanDateTime(iso: string) {
+  const d = new Date(iso);
+  const dow = ["일", "월", "화", "수", "목", "금", "토"][d.getDay()];
+  return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 (${dow}) ${String(d.getHours()).padStart(
+    2,
+    "0"
+  )}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function clearExpiredAzena(prev: TodoState): TodoState {
+  const now = Date.now();
+
+  const nextTables = prev.tables.map((tbl) => {
+    const nextChars = tbl.characters.map((c: any) => {
+      const enabled = Boolean(c.azenaEnabled);
+      const expiresAt = c.azenaExpiresAt as string | null | undefined;
+      if (!enabled || !expiresAt) return c;
+
+      const t = new Date(expiresAt).getTime();
+      if (Number.isFinite(t) && t <= now) {
+        return { ...c, azenaEnabled: false, azenaExpiresAt: null };
+      }
+      return c;
+    });
+
+    const changed =
+      nextChars.length !== tbl.characters.length || nextChars.some((c, i) => c !== (tbl.characters as any[])[i]);
+
+    return changed ? ({ ...tbl, characters: nextChars } as TodoTable) : tbl;
+  });
+
+  const tablesChanged = nextTables.some((t, i) => t !== prev.tables[i]);
+  return tablesChanged ? { ...prev, tables: nextTables } : prev;
+}
+
+function getNextAzenaExpiryMs(state: TodoState): number | null {
+  const now = Date.now();
+  const times: number[] = [];
+
+  for (const tbl of state.tables) {
+    for (const c of tbl.characters as any[]) {
+      if (c.azenaEnabled && c.azenaExpiresAt) {
+        const t = new Date(c.azenaExpiresAt).getTime();
+        if (Number.isFinite(t) && t > now) times.push(t);
+      }
+    }
+  }
+
+  if (!times.length) return null;
+  times.sort((a, b) => a - b);
+  return times[0];
+}
+
+export default function TodoTracker() {
+  const [state, setState] = useState<TodoState>(() => {
+    const loaded = DEFAULT_TODO_STATE.load();
+    return loaded ?? DEFAULT_TODO_STATE.make();
+  });
+  // ✅ 로아 6시(또는 설정된) 기준으로 요일별 콘텐츠 처리
+  const resetHour = state.reset?.dailyResetHour ?? 6;
+
+  // 06:00 경계 넘어가면 리렌더 트리거(최대 30초 지연)
+  const [tick, forceTick] = useState(0);
+  // ✅ 오른쪽에 같이 볼 표(기존 표 선택)
+  const [secondaryTableId, setSecondaryTableId] = useState<string>("");
+
+  useEffect(() => {
+    const t = setInterval(() => forceTick((x) => x + 1), 30_000);
+    return () => clearInterval(t);
+  }, []);
+
+
+  const loaGameDate = useMemo(() => getLoaGameDate(resetHour), [resetHour]);
+  const loaDateKey = useMemo(() => formatLocalDateKey(loaGameDate), [loaGameDate]);
+  const loaWeekday = useMemo(() => loaGameDate.getDay(), [loaGameDate]);
+  const todayAccountContents = useMemo(() => WEEKLY_ACCOUNT_CONTENT[loaWeekday] ?? [], [loaWeekday]);
+
+
+  // ✅ 계정 콘텐츠 체크(카게/필보): tableId별로 저장/로드 (06:00 리셋 기준)
+  const [accountChecksByTable, setAccountChecksByTable] = useState<Record<string, Record<string, boolean>>>({});
+
+  function readAccountChecks(tableId: string): Record<string, boolean> {
+    try {
+      const raw = localStorage.getItem(getAccountDailyKey(tableId));
+      if (!raw) return {};
+      const parsed = JSON.parse(raw) as { dateKey?: string; checks?: Record<string, boolean> };
+      if (parsed?.dateKey === loaDateKey && parsed?.checks) return parsed.checks;
+      return {};
+    } catch {
+      return {};
+    }
+  }
+
+  function writeAccountChecks(tableId: string, checks: Record<string, boolean>) {
+    try {
+      localStorage.setItem(getAccountDailyKey(tableId), JSON.stringify({ dateKey: loaDateKey, checks }));
+    } catch {
+      // ignore
+    }
+  }
+
+  // 현재 화면에 보이는 tableId(왼쪽/오른쪽)의 체크를 로드
+  useEffect(() => {
+    const ids = [state.activeTableId, secondaryTableId].filter(Boolean) as string[];
+    setAccountChecksByTable((prev) => {
+      const next = { ...prev };
+      for (const id of ids) next[id] = readAccountChecks(id);
+      return next;
+    });
+  }, [loaDateKey, state.activeTableId, secondaryTableId]);
+
+  function onToggleAccountCheck(tableId: string, id: string, checked: boolean) {
+    setAccountChecksByTable((prev) => {
+      const current = prev[tableId] ?? {};
+      const nextChecks = { ...current, [id]: checked };
+      const next = { ...prev, [tableId]: nextChecks };
+      // ✅ 클릭 순간 즉시 저장
+      writeAccountChecks(tableId, nextChecks);
+      return next;
+    });
+  }
+
+  //생명의 기운(생기)(생기)
+  const LIFE_MAX = 10500;
+  const LIFE_STEP = 30;
+  const LIFE_STEP_MS = 10 * 60 * 1000; // 10분
+
+  type LifeEnergyBase = { value: number; updatedAt: number };
+
+  function clampInt(n: number, min: number, max: number) {
+    return Math.max(min, Math.min(max, n));
+  }
+
+  function calcLifeEnergyNow(base: LifeEnergyBase | null, nowMs: number) {
+    if (!base) return { now: 0, gained: 0 };
+
+    const elapsed = Math.max(0, nowMs - base.updatedAt);
+    const steps = Math.floor(elapsed / LIFE_STEP_MS);
+    const gained = steps * LIFE_STEP;
+    const now = clampInt(base.value + gained, 0, LIFE_MAX);
+
+    return { now, gained };
+  }
+
+  function calcTimeToFull(base: LifeEnergyBase | null, nowMs: number) {
+    if (!base) return null;
+
+    const { now } = calcLifeEnergyNow(base, nowMs);
+    if (now >= LIFE_MAX) return 0; // 이미 풀충
+
+    const remainingEnergy = LIFE_MAX - now;
+
+    // 남은 스텝 수 (30 단위)
+    const stepsNeeded = Math.ceil(remainingEnergy / LIFE_STEP);
+
+    // 마지막 기준시점 이후 "현재 스텝 진행도" 고려
+    const elapsed = Math.max(0, nowMs - base.updatedAt);
+    const remainderMs = elapsed % LIFE_STEP_MS;
+
+    // 다음 스텝까지 남은 시간
+    const firstStepMs = remainderMs === 0 ? LIFE_STEP_MS : LIFE_STEP_MS - remainderMs;
+
+    // 총 남은 시간
+    const totalMs =
+      firstStepMs + (stepsNeeded - 1) * LIFE_STEP_MS;
+
+    return totalMs;
+  }
+  // 풀충 시간
+  function formatMsToHHMM(ms: number | null) {
+    if (ms == null) return "";
+
+    if (ms <= 0) return "풀충 상태";
+
+    const totalMinutes = Math.ceil(ms / 60000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+
+    if (hours > 0) return `${hours}시간 ${minutes}분`;
+    return `${minutes}분`;
+  }
+
+  // 풀충 날짜
+  function formatEtaKorean(timeToFullMs: number | null) {
+    if (timeToFullMs == null) return "-";
+    if (timeToFullMs <= 0) return "이미 풀충";
+
+    const eta = new Date(Date.now() + timeToFullMs);
+
+    const hh = eta.getHours().toString().padStart(2, "0");
+    const mm = eta.getMinutes().toString().padStart(2, "0");
+
+    const today = new Date();
+    const isToday =
+      eta.getFullYear() === today.getFullYear() &&
+      eta.getMonth() === today.getMonth() &&
+      eta.getDate() === today.getDate();
+
+    return isToday ? `오늘 ${hh}:${mm}` : `${eta.getMonth() + 1}/${eta.getDate()} ${hh}:${mm}`;
+  }
+
+  function formatEtaFullKorean(timeToFullMs: number | null) {
+    if (timeToFullMs == null) return "-";
+    if (timeToFullMs <= 0) return "이미 풀충";
+
+    const eta = new Date(Date.now() + timeToFullMs);
+
+    const month = eta.getMonth() + 1;
+    const date = eta.getDate();
+
+    const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
+    const weekday = weekdays[eta.getDay()];
+
+    let hours = eta.getHours();
+    const minutes = eta.getMinutes().toString().padStart(2, "0");
+
+    const isAM = hours < 12;
+    const ampm = isAM ? "오전" : "오후";
+
+    // 12시간제로 변환
+    hours = hours % 12;
+    if (hours === 0) hours = 12;
+
+    return `${month}월 ${date}일(${weekday}) ${ampm} ${hours}:${minutes}`;
+  }
+
+  const activeTable = useMemo(() => getActiveTable(state), [state]);
+  const activeCharacters = activeTable.characters;
+
+  // 생기
+  function AccountDailyPanel({ tableId }: { tableId: string }) {
+    const lifeKey = useMemo(() => `loa-life-energy:v1:${tableId}`, [tableId]);
+
+    // ✅ 최초 렌더에서 바로 로드 (새로고침 유지)
+    const [lifeBase, setLifeBase] = useState<LifeEnergyBase | null>(() => {
+      try {
+        const raw = localStorage.getItem(`loa-life-energy:v1:${tableId}`);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as LifeEnergyBase;
+        if (typeof parsed?.value === "number" && typeof parsed?.updatedAt === "number") return parsed;
+        return null;
+      } catch {
+        return null;
+      }
+    });
+
+    // ✅ tableId 바뀔 때 재로드
+    useEffect(() => {
+      try {
+        const raw = localStorage.getItem(lifeKey);
+        if (!raw) {
+          setLifeBase(null);
+          return;
+        }
+        const parsed = JSON.parse(raw) as LifeEnergyBase;
+        if (typeof parsed?.value === "number" && typeof parsed?.updatedAt === "number") {
+          setLifeBase(parsed);
+        } else {
+          setLifeBase(null);
+        }
+      } catch {
+        setLifeBase(null);
+      }
+    }, [lifeKey]);
+
+    // ✅ 저장
+    useEffect(() => {
+      try {
+        if (!lifeBase) {
+          localStorage.removeItem(lifeKey);
+        } else {
+          localStorage.setItem(lifeKey, JSON.stringify(lifeBase));
+        }
+      } catch {
+        // ignore
+      }
+    }, [lifeKey, lifeBase]);
+
+    // 표시용
+    const lifeView = useMemo(() => {
+      const nowMs = Date.now();
+      return {
+        ...calcLifeEnergyNow(lifeBase, nowMs),
+        timeToFull: calcTimeToFull(lifeBase, nowMs),
+      };
+    }, [lifeBase, tick]);
+
+    return (
+      <div className="accountDailyBox">
+        <div className="accountDailyTitle">계정 콘텐츠</div>
+
+        {/* ✅ 생명의 기운(항상 표시) */}
+        <div className="lifeBox">
+          <div className="lifeTop">
+            <b>생명의 기운 </b>
+            <span className="lifeNum">
+              {lifeView.now.toLocaleString()} / {LIFE_MAX.toLocaleString()}
+            </span>
+          </div>
+          <div className="lifeEta">풀충 예상: {formatEtaFullKorean(lifeView.timeToFull)}</div>
+
+          <div className="lifeBar">
+            <div className="lifeFill" style={{ width: `${(lifeView.now / LIFE_MAX) * 100}%` }} />
+          </div>
+
+          <div className="lifeInputRow">
+            <span className="lifeHint">지금 생기 값 입력 </span>
+            <input
+              className="lifeInput"
+              type="number"
+              min={0}
+              max={LIFE_MAX}
+              value={lifeBase?.value ?? ""}
+              placeholder="예: 5000"
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "") {
+                  setLifeBase(null);
+                  return;
+                }
+                const num = clampInt(parseInt(v, 10) || 0, 0, LIFE_MAX);
+                setLifeBase({ value: num, updatedAt: Date.now() });
+              }}
+            />
+            <button
+              className="mini"
+              onClick={() => {
+                if (!lifeBase) return;
+                setLifeBase({ value: lifeBase.value, updatedAt: Date.now() });
+              }}
+              disabled={!lifeBase}
+            >
+              지금 기준
+            </button>
+          </div>
+        </div>
+
+        {/* ✅ 요일별(카게/필보) */}
+        {todayAccountContents.length > 0 ? (
+          <div className="accountDailyItems">
+            {todayAccountContents.map((c) => (
+              <label key={c.id} className="accountDailyItem">
+                <input
+                  type="checkbox"
+                  checked={!!(accountChecksByTable[tableId]?.[c.id])}
+                  onChange={(e) => onToggleAccountCheck(tableId, c.id, e.target.checked)}
+                />
+                <span>{c.label}</span>
+                <div className="accountDailyEmpty">잊지말고 신년운세 하기!</div>
+              </label>
+            ))}
+          </div>
+        ) : (
+          <div className="accountDailyEmpty">카게/필보 없음 잊지말고 신년운세 하기!</div>
+        )}
+      </div>
+    );
+  }
+
+  const [dragCharId, setDragCharId] = useState<string | null>(null);
+  const [dragTaskId, setDragTaskId] = useState<string | null>(null);
+
+  // ✅ 터치 환경 감지
+  const isTouch =
+    typeof window !== "undefined" && ("ontouchstart" in window || (navigator as any).maxTouchPoints > 0);
+
+  const [periodTab, setPeriodTab] = useState<Tab>("ALL");
+  const tableWrapRef = useRef<HTMLDivElement | null>(null);
+
+  // =========================
+  // 아제나 모달 (표ID 포함)
+  // =========================
+  type AzenaModalState = { open: boolean; tableId: string | null; charId: string | null; value: string };
+  const [azenaModal, setAzenaModal] = useState<AzenaModalState>({
+    open: false,
+    tableId: null,
+    charId: null,
+    value: "",
+  });
+
+  function onToggleAzena(tableId: string, charId: string, checked: boolean) {
+    if (!checked) {
+      // 수동 해제
+      setState((prev) => {
+        const cleared = clearExpiredAzena(prev);
+        const table = getTableById(cleared, tableId);
+
+        const nextChars = table.characters.map((c: any) =>
+          c.id === charId ? ({ ...c, azenaEnabled: false, azenaExpiresAt: null } as any) : c
+        );
+
+        const nextTable: TodoTable = { ...table, characters: nextChars };
+        return {
+          ...cleared,
+          tables: cleared.tables.map((t) => (t.id === nextTable.id ? nextTable : t)),
+        };
+      });
+      return;
+    }
+
+    // 체크하려는 경우: 만료시각 입력 모달
+    setAzenaModal({
+      open: true,
+      tableId,
+      charId,
+      value: toDatetimeLocalValue(new Date(Date.now() + 28 * 24 * 60 * 60 * 1000)),
+    });
+  }
+
+  function confirmAzena() {
+    const iso = fromDatetimeLocalValue(azenaModal.value);
+    if (!iso || !azenaModal.charId || !azenaModal.tableId) {
+      setAzenaModal({ open: false, tableId: null, charId: null, value: "" });
+      return;
+    }
+
+    setState((prev) => {
+      const cleared = clearExpiredAzena(prev);
+      const table = getTableById(cleared, azenaModal.tableId!);
+
+      const nextChars = table.characters.map((c: any) =>
+        c.id === azenaModal.charId ? ({ ...c, azenaEnabled: true, azenaExpiresAt: iso } as any) : c
+      );
+
+      const nextTable: TodoTable = { ...table, characters: nextChars };
+      return {
+        ...cleared,
+        tables: cleared.tables.map((t) => (t.id === nextTable.id ? nextTable : t)),
+      };
+    });
+
+    setAzenaModal({ open: false, tableId: null, charId: null, value: "" });
+  }
+
+  function cancelAzena() {
+    setAzenaModal({ open: false, tableId: null, charId: null, value: "" });
+  }
+
+  // ✅ 아제나 만료: 앱 켜져있을 때 정확히 그 시각에 자동 해제 + 포커스 복귀 보정
+  useEffect(() => {
+    // 즉시 한 번 정리
+    setState((prev) => clearExpiredAzena(prev));
+
+    const next = getNextAzenaExpiryMs(state);
+    if (!next) return;
+
+    const id = window.setTimeout(() => {
+      setState((prev) => clearExpiredAzena(prev));
+    }, Math.max(0, next - Date.now()));
+
+    return () => window.clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.tables, state.activeTableId]);
+
+  useEffect(() => {
+    const sync = () => setState((prev) => clearExpiredAzena(prev));
+    window.addEventListener("focus", sync);
+    document.addEventListener("visibilitychange", sync);
+    return () => {
+      window.removeEventListener("focus", sync);
+      document.removeEventListener("visibilitychange", sync);
+    };
+  }, []);
+
+  // ✅ 앱 시작 시 1회 자동 리셋 체크
+  useEffect(() => {
+    setState((prev) => clearExpiredAzena(applyAutoResetIfNeeded(prev)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ✅ 앱 켜둔 채로 6시 넘어가도 반영되게 1분마다 체크
+  useEffect(() => {
+    const id = setInterval(() => {
+      setState((prev) => clearExpiredAzena(applyAutoResetIfNeeded(prev)));
+    }, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // ✅ 자동 저장
+  useEffect(() => {
+    DEFAULT_TODO_STATE.save(state);
+  }, [state]);
+
+  // =========================
+  // 표(페이지) 관리
+  // =========================
+  function setActiveTableId(id: string) {
+    setState((prev) => ({ ...prev, activeTableId: id }));
+  }
+
+  function addTable() {
+    const name = prompt("새 표 이름(예: 본캐/부캐/2원정대)")?.trim();
+    if (!name) return;
+
+    const tbl: TodoTable = {
+      id: uid("tbl"),
+      name,
+      characters: [],
+      values: {},
+      restGauges: {},
+    };
+
+    setState((prev) => ({
+      ...prev,
+      tables: [...prev.tables, tbl],
+      activeTableId: tbl.id,
+    }));
+  }
+
+  function renameTable() {
+    const cur = getActiveTable(state);
+    const name = prompt("표 이름 변경", cur.name)?.trim();
+    if (!name || name === cur.name) return;
+
+    setState((prev) => ({
+      ...prev,
+      tables: prev.tables.map((t) => (t.id === cur.id ? { ...t, name } : t)),
+    }));
+  }
+
+
+  function deleteTable() {
+    if (state.tables.length <= 1) {
+      alert("표는 최소 1개는 있어야 해요.");
+      return;
+    }
+    const activeTable = getActiveTable(state);
+    if (!confirm(`'${activeTable.name}' 표를 삭제할까요? (표 안의 데이터도 삭제됨)`)) return;
+
+    setState((prev) => {
+      const nextTables = prev.tables.filter((t) => t.id !== prev.activeTableId);
+      const nextActive = nextTables[0].id;
+
+      // secondary가 삭제된 표를 가리키면 닫기
+      if (secondaryTableId && !nextTables.some((t) => t.id === secondaryTableId)) {
+        setSecondaryTableId("");
+      }
+
+      return { ...prev, tables: nextTables, activeTableId: nextActive };
+    });
+  }
+
+  // =========================
+  // 캐릭터 CRUD (activeTable 기준)
+  // =========================
+  function addCharacter() {
+    const name = prompt("캐릭터 이름")?.trim();
+    if (!name) return;
+    const itemLevel = prompt("아이템레벨 (예: 1712.5)", "")?.trim() ?? "";
+    const power = prompt("전투력 (예: 2500+)", "")?.trim() ?? "";
+
+    const next: Character = createCharacter({ name, itemLevel, power });
+
+    setState((prev) => {
+      const table = getActiveTable(prev);
+
+      const restGauges: RestGauges = { ...(table.restGauges ?? {}) };
+      restGauges[next.id] = { chaos: 0, guardian: 0 };
+
+      const nextTable: TodoTable = {
+        ...table,
+        characters: [...table.characters, next],
+        restGauges,
+      };
+
+      return {
+        ...prev,
+        tables: prev.tables.map((t) => (t.id === nextTable.id ? nextTable : t)),
+      };
+    });
+  }
+
+  function editCharacter(ch: Character) {
+    const name = prompt("캐릭터 이름", ch.name)?.trim();
+    if (!name) return;
+    const itemLevel = prompt("아이템레벨", ch.itemLevel ?? "")?.trim() ?? "";
+    const power = prompt("전투력", ch.power ?? "")?.trim() ?? "";
+
+    setState((prev) => {
+      const table = getActiveTable(prev);
+
+      const nextChars = table.characters.map((c) => (c.id === ch.id ? { ...c, name, itemLevel, power } : c));
+      const nextTable: TodoTable = { ...table, characters: nextChars };
+
+      return { ...prev, tables: prev.tables.map((t) => (t.id === nextTable.id ? nextTable : t)) };
+    });
+  }
+
+  function deleteCharacter(ch: Character) {
+    if (!confirm(`'${ch.name}' 캐릭터를 삭제할까요? (해당 캐릭터의 체크 데이터도 제거됨)`)) return;
+
+    setState((prev) => {
+      const table = getActiveTable(prev);
+
+      const nextChars = table.characters.filter((c) => c.id !== ch.id);
+
+      const values = { ...(table.values ?? {}) };
+      for (const taskId of Object.keys(values)) {
+        const row = { ...(values[taskId] ?? {}) };
+        delete row[ch.id];
+        values[taskId] = row;
+      }
+
+      const restGauges = { ...(table.restGauges ?? {}) };
+      delete restGauges[ch.id];
+
+      const nextTable: TodoTable = { ...table, characters: nextChars, values, restGauges };
+
+      return { ...prev, tables: prev.tables.map((t) => (t.id === nextTable.id ? nextTable : t)) };
+    });
+  }
+
+  // =========================
+  // 숙제 CRUD (템플릿 공유: state.tasks)
+  // =========================
+  function addTask(period: "DAILY" | "WEEKLY" | "NONE") {
+    const label = period === "DAILY" ? "일일" : period === "WEEKLY" ? "주간" : "기타";
+    const title = prompt(`${label} 숙제 이름`)?.trim();
+    if (!title) return;
+
+    const defaultType = period === "NONE" ? "TEXT" : "CHECK";
+    const cellType = (prompt("셀 타입: CHECK / COUNTER / TEXT / SELECT", defaultType) ?? defaultType)
+      .trim()
+      .toUpperCase();
+
+    let max: number | undefined = undefined;
+    let options: string[] | undefined = undefined;
+
+    if (cellType === "COUNTER") {
+      const m = prompt("카운터 최대치(예: 2)")?.trim();
+      max = m ? Math.max(1, Number(m)) : 2;
+    } else if (cellType === "SELECT") {
+      const raw = prompt("선택 옵션을 콤마로 입력 (예: 상,중,하)", "상,중,하")?.trim() ?? "";
+      options = raw.split(",").map((s) => s.trim()).filter(Boolean);
+      if (!options.length) options = ["완료", "미완"];
+    }
+
+    const sectionDefault =
+      period === "DAILY" ? "일일 숙제" : period === "WEEKLY" ? "주간 레이드" : "기타";
+
+    const section = prompt("섹션 이름(예: 일일 숙제 / 주간 레이드 / 기타)", sectionDefault)?.trim() || sectionDefault;
+
+    const t = createTask({
+      title,
+      period: period as any,
+      cellType: cellType as any,
+      max,
+      options,
+      section,
+    });
+
+    setState((prev) => ({ ...prev, tasks: [...prev.tasks, t] }));
+  }
+
+  function editTask(task: TaskRow) {
+    const title = prompt("숙제 이름", task.title)?.trim();
+    if (!title) return;
+    const section = prompt("섹션", task.section ?? "숙제")?.trim() || "숙제";
+
+    let max = task.max;
+    let options = task.options;
+
+    if (task.cellType === "COUNTER") {
+      const m = prompt("카운터 최대치", String(task.max ?? 2))?.trim();
+      max = m ? Math.max(1, Number(m)) : 2;
+    }
+    if (task.cellType === "SELECT") {
+      const raw = prompt("옵션(콤마 구분)", (task.options ?? []).join(","))?.trim() ?? "";
+      options = raw.split(",").map((s) => s.trim()).filter(Boolean);
+      if (!options.length) options = ["완료", "미완"];
+    }
+
+    setState((prev) => ({
+      ...prev,
+      tasks: prev.tasks.map((t) => (t.id === task.id ? { ...t, title, section, max, options } : t)),
+    }));
+  }
+
+  function deleteTask(task: TaskRow) {
+    if (!confirm(`'${task.title}' 숙제를 삭제할까요? (모든 표의 해당 숙제 데이터도 삭제됨)`)) return;
+
+    setState((prev) => {
+      const nextTasks = prev.tasks.filter((t) => t.id !== task.id);
+
+      const nextTables = prev.tables.map((tbl) => {
+        const values = { ...(tbl.values ?? {}) };
+        delete values[task.id];
+        return { ...tbl, values };
+      });
+
+      return { ...prev, tasks: nextTasks, tables: nextTables };
+    });
+  }
+
+  // =========================
+  // 셀 동작 (tableId 기준)
+  // =========================
+  function onCellClick(tableId: string, task: TaskRow, ch: Character) {
+    setState((prev) => {
+      const cell = getCellByTableId(prev, tableId, task.id, ch.id);
+
+      if (task.cellType === "CHECK") {
+        const nextChecked = !(cell?.type === "CHECK" ? cell.checked : false);
+        return setCellByTableId(prev, tableId, task, ch, {
+          type: "CHECK",
+          checked: nextChecked,
+          updatedAt: Date.now(),
+        });
+      }
+
+      if (task.cellType === "COUNTER") {
+        const max = Math.max(1, task.max ?? 1);
+        const cur = cell?.type === "COUNTER" ? (cell.count ?? 0) : 0;
+        const next = cur >= max ? 0 : cur + 1;
+
+        return setCellByTableId(prev, tableId, task, ch, {
+          type: "COUNTER",
+          count: next,
+          updatedAt: Date.now(),
+        });
+      }
+
+      return prev;
+    });
+  }
+
+  function onTextChange(tableId: string, task: TaskRow, ch: Character, text: string) {
+    setState((prev) => setCellByTableId(prev, tableId, task, ch, { type: "TEXT", text, updatedAt: Date.now() }));
+  }
+
+  function onSelectChange(tableId: string, task: TaskRow, ch: Character, value: string) {
+    setState((prev) => setCellByTableId(prev, tableId, task, ch, { type: "SELECT", value, updatedAt: Date.now() }));
+  }
+
+  function showExport(json: string) {
+    const w = window.open("", "_blank", "width=600,height=600");
+    if (!w) return;
+    w.document.write(`<textarea style="width:100%;height:100%;">${json}</textarea>`);
+    w.document.close();
+  }
+
+  function doExport() {
+    showExport(exportStateToJson(state));
+  }
+
+  function doImport() {
+    const raw = prompt("백업 JSON을 붙여넣으세요");
+    if (!raw) return;
+    try {
+      const next = importStateFromJson(raw);
+      setState(next);
+      alert("가져오기 완료!");
+    } catch {
+      alert("가져오기 실패: JSON 형식을 확인해주세요.");
+    }
+  }
+
+  function manualReset(period: "DAILY" | "WEEKLY") {
+    if (!confirm(`${period === "DAILY" ? "일일" : "주간"} 데이터를 초기화할까요?`)) return;
+
+    if (period === "DAILY") {
+      setState((prev) => runDailyResetNow(prev, true));
+      return;
+    }
+    setState((prev) => resetByPeriod(prev, "WEEKLY", true));
+  }
+
+  function reorderCharacters(tableId: string, fromId: string, toId: string) {
+    if (fromId === toId) return;
+
+    setState((prev) => {
+      const table = getTableById(prev, tableId);
+      const list = [...table.characters];
+
+      const fromIdx = list.findIndex((c) => c.id === fromId);
+      const toIdx = list.findIndex((c) => c.id === toId);
+      if (fromIdx < 0 || toIdx < 0) return prev;
+
+      const [moved] = list.splice(fromIdx, 1);
+      list.splice(toIdx, 0, moved);
+
+      const nextTable: TodoTable = { ...table, characters: list };
+      return {
+        ...prev,
+        tables: prev.tables.map((t) => (t.id === nextTable.id ? nextTable : t)),
+      };
+    });
+  }
+
+  // =========================
+  // 주간 레이드 골드 계산용 데이터 & 유틸
+  // =========================
+  type RaidGold = { normal?: number; hard?: number; nightmare?: number };
+
+  const RAID_CLEAR_GOLD: Record<string, RaidGold> = {
+    "1막": { normal: 11500, hard: 18000 },
+    "2막": { normal: 16500, hard: 23000 },
+    "3막": { normal: 21000, hard: 27000 },
+    "4막": { normal: 33000, hard: 42000 },
+    "종막": { normal: 40000, hard: 52000 },
+    "세르카": { normal: 35000, hard: 44000, nightmare: 54000 },
+  };
+
+  type RaidPopup = { title: string; x: number; y: number } | null;
+  const [raidGoldPopup, setRaidGoldPopup] = useState<RaidPopup>(null);
+
+
+  const tasks = useMemo(() => {
+    if (periodTab === "ALL") return state.tasks;
+    return state.tasks.filter((t) => t.period === periodTab);
+  }, [periodTab, state.tasks]);
+
+  const groupedTasks = useMemo(() => {
+    const map = new Map<string, TaskRow[]>();
+
+    for (const t of tasks) {
+      const key = t.section ?? "숙제";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(t);
+    }
+
+    for (const [, arr] of map.entries()) {
+      arr.sort((a, b) => {
+        const ao = a.order ?? Number.MAX_SAFE_INTEGER;
+        const bo = b.order ?? Number.MAX_SAFE_INTEGER;
+        if (ao !== bo) return ao - bo;
+        return (a.title ?? "").localeCompare(b.title ?? "");
+      });
+    }
+
+    return Array.from(map.entries());
+  }, [tasks]);
+  const SECTION_ORDER: Record<string, number> = {
+    "일일 숙제": 1,
+    "주간 레이드": 2,
+    "주간 교환": 3,
+  };
+
+  function reorderTaskWithinSection(fromTaskId: string, toTaskId: string) {
+    if (fromTaskId === toTaskId) return;
+
+    setState((prev) => {
+      const from = prev.tasks.find((t) => t.id === fromTaskId);
+      const to = prev.tasks.find((t) => t.id === toTaskId);
+      if (!from || !to) return prev;
+
+      const fromSec = from.section ?? "숙제";
+      const toSec = to.section ?? "숙제";
+      if (fromSec !== toSec) return prev;
+
+      const secTasks = prev.tasks
+        .filter((t) => (t.section ?? "숙제") === fromSec)
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+      const fromIdx = secTasks.findIndex((t) => t.id === fromTaskId);
+      const toIdx = secTasks.findIndex((t) => t.id === toTaskId);
+      if (fromIdx < 0 || toIdx < 0) return prev;
+
+      const nextSecTasks = [...secTasks];
+      const [moved] = nextSecTasks.splice(fromIdx, 1);
+      nextSecTasks.splice(toIdx, 0, moved);
+
+      const base = Date.now();
+      const orderMap = new Map<string, number>();
+      nextSecTasks.forEach((t, i) => orderMap.set(t.id, base + i));
+
+      return {
+        ...prev,
+        tasks: prev.tasks.map((t) => (orderMap.has(t.id) ? { ...t, order: orderMap.get(t.id)! } : t)),
+      };
+    });
+  }
+
+  const totalProgress = useMemo(() => {
+    let done = 0;
+    let all = 0;
+
+    for (const task of tasks) {
+      if (task.cellType === "TEXT" || task.cellType === "SELECT") continue;
+
+      for (const ch of activeCharacters) {
+        all += 1;
+        const cell = getCellByTableId(state, state.activeTableId, task.id, ch.id);
+        if (!cell) continue;
+
+        if (cell.type === "CHECK") {
+          if (cell.checked) done += 1;
+        } else if (cell.type === "COUNTER") {
+          const max = Math.max(1, task.max ?? 1);
+          if ((cell.count ?? 0) >= max) done += 1;
+        }
+      }
+    }
+    return { done, all };
+  }, [activeCharacters, state, tasks]);
+
+  // =========================
+  // 레이드 Top3 계산
+  // =========================
+  type RaidDifficulty = { name: "노말" | "하드" | "나이트메어"; minIlvl: number; gold: number };
+  type RaidDef = { key: string; name: string; diffs: RaidDifficulty[] };
+
+  const RAID_CATALOG: RaidDef[] = [
+    { key: "ACT1", name: "1막", diffs: [{ name: "노말", minIlvl: 1660, gold: 11500 }, { name: "하드", minIlvl: 1680, gold: 18000 }] },
+    { key: "ACT2", name: "2막", diffs: [{ name: "노말", minIlvl: 1670, gold: 18000 }, { name: "하드", minIlvl: 1690, gold: 23000 }] },
+    { key: "ACT3", name: "3막", diffs: [{ name: "노말", minIlvl: 1680, gold: 21000 }, { name: "하드", minIlvl: 1700, gold: 27000 }] },
+    { key: "ACT4", name: "4막", diffs: [{ name: "노말", minIlvl: 1700, gold: 33000 }, { name: "하드", minIlvl: 1720, gold: 42000 }] },
+    { key: "FINAL", name: "종막", diffs: [{ name: "노말", minIlvl: 1710, gold: 40000 }, { name: "하드", minIlvl: 1730, gold: 52000 }] },
+    { key: "SERKA", name: "세르카", diffs: [{ name: "노말", minIlvl: 1710, gold: 35000 }, { name: "하드", minIlvl: 1730, gold: 44000 }, { name: "나이트메어", minIlvl: 1740, gold: 54000 }] },
+  ];
+
+  function parseIlvl(raw?: string): number {
+    if (!raw) return NaN;
+    const n = Number(String(raw).replace(/,/g, "").trim());
+    return Number.isFinite(n) ? n : NaN;
+  }
+
+  const TASK_MIN_ILVL: Record<string, number> = {
+    "할의 모래시계": 1730,
+    "1막": 1660,
+    "2막": 1670,
+    "3막": 1680,
+    "4막": 1700,
+    "종막": 1710,
+    "세르카": 1710,
+    "1해금": 1640,
+    "2해금": 1680,
+    "3해금": 1700,
+    "4해금": 1720,
+  };
+
+  const getCharIlvl = (ch: any) => {
+    const v = ch.itemLevel ?? ch.item_level ?? ch.ilvl ?? ch.iLvl ?? ch.level ?? ch.levelLabel ?? ch.nameLevel;
+    try {
+      const n = typeof v === "number" ? v : parseIlvl(String(v ?? ""));
+      return Number.isFinite(n) ? n : 0;
+    } catch {
+      const n = Number(String(v ?? "").replace(/[^0-9.]/g, ""));
+      return Number.isFinite(n) ? n : 0;
+    }
+  };
+
+  const CORE_DAILY_TASK_ID = "MAIN_DAILY";
+  function getCoreDailyLabel(ilvl: number) {
+    return ilvl >= 1730 ? "혼돈의 균열" : "쿠르잔 전선";
+  }
+
+  function pickBestDiff(ilvl: number, raid: RaidDef): RaidDifficulty | null {
+    const available = raid.diffs.filter((d) => ilvl >= d.minIlvl);
+    if (!available.length) return null;
+    return available.reduce((best, cur) => (cur.gold > best.gold ? cur : best));
+  }
+
+  function calcWeeklyTop3Gold(ilvl: number) {
+    const candidates = RAID_CATALOG.map((raid) => {
+      const best = pickBestDiff(ilvl, raid);
+      return best ? { raid: raid.name, diff: best.name, gold: best.gold } : null;
+    }).filter(Boolean) as { raid: string; diff: string; gold: number }[];
+
+    candidates.sort((a, b) => b.gold - a.gold);
+    const top3 = candidates.slice(0, 3);
+    const sum = top3.reduce((acc, cur) => acc + cur.gold, 0);
+    return { sum, top3, all: candidates };
+  }
+
+  function getWeeklyTop3RaidNameSet(ilvl: number): Set<string> {
+    if (!Number.isFinite(ilvl) || ilvl <= 0) return new Set();
+    const r = calcWeeklyTop3Gold(ilvl);
+    return new Set(r.top3.map((x) => x.raid));
+  }
+
+  function isWeeklyRaidTaskTitle(title: string) {
+    return Boolean(RAID_CLEAR_GOLD[title]);
+  }
+
+  // =========================
+  // 2-표 렌더링 (핵심)
+  // =========================
+  function setRestGaugeInTable(tableId: string, chId: string, next: { chaos?: number; guardian?: number }) {
+    setState((prev) => {
+      const tbl = getTableById(prev, tableId);
+      const cur = tbl.restGauges?.[chId] ?? { chaos: 0, guardian: 0 };
+
+      const nextRest = {
+        ...(tbl.restGauges ?? {}),
+        [chId]: {
+          chaos: next.chaos ?? cur.chaos,
+          guardian: next.guardian ?? cur.guardian,
+        },
+      };
+
+      const nextTbl: TodoTable = { ...tbl, restGauges: nextRest };
+      return { ...prev, tables: prev.tables.map((t) => (t.id === nextTbl.id ? nextTbl : t)) };
+    });
+  }
+
+  function CounterDots({ max, count }: { max: number; count: number }) {
+    const dots = Array.from({ length: max }, (_, i) => i + 1);
+
+    return (
+      <div className="dots">
+        {dots.map((n) => (
+          <span key={n} className={`dot ${n <= count ? "filled" : ""}`} />
+        ))}
+        {max > 1 && <span className="dots-num">{count}/{max}</span>}
+      </div>
+    );
+  }
+
+  function renderTodoTable(tableId: string, paneLabel: string) {
+    const table = getTableById(state, tableId);
+    const characters = table.characters;
+    const isActivePane = tableId === state.activeTableId;
+
+    return (
+      <div
+        className="tablePane"
+        style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}
+      >
+        <div className="paneHeader" style={{ position: "relative", paddingRight: 70 }}>
+          <div className="paneTitle">
+            {paneLabel} · {table.name}
+          </div>
+
+          {!isActivePane && (
+            <button
+              className="btn"
+              onClick={() => setSecondaryTableId("")}
+              style={{ position: "absolute", left: 500, top: -50 }}
+            >
+              닫기
+            </button>
+          )}
+        </div>
+        <div style={{ flex: "1 1 auto", minHeight: 0, overflow: "auto" }}>
+          <div className="todo-table-scroll" style={{ height: "100%" }} ref={isActivePane ? tableWrapRef : undefined as any}>
+            <div className="todo-table-center">
+              <div className="todo-table-card" style={{ height: "100%" }}>
+                <table className="todo-table">
+                  <thead>
+                    <tr>
+                      <th className="todo-sticky-left head-left">
+                        <div className="head-left-top">
+                          <span>숙제</span>
+                        </div>
+                      </th>
+
+                      {characters.map((ch) => (
+                        <th
+                          key={ch.id}
+                          className="todo-col-head"
+                          onDragOver={(e) => {
+                            if (isTouch) return;
+                            e.preventDefault();
+                          }}
+                          onDrop={() => {
+                            if (isTouch) return;
+                            if (!dragCharId) return;
+                            reorderCharacters(tableId, dragCharId, ch.id);
+                            setDragCharId(null);
+                          }}
+                        >
+                          <div className="char-head">
+                            <div
+                              className="char-name"
+                              title={isTouch ? ch.name : "드래그해서 캐릭터 순서 변경"}
+                              draggable={!isTouch}
+                              onDragStart={() => {
+                                if (isTouch) return;
+                                setDragCharId(ch.id);
+                              }}
+                              onDragEnd={() => {
+                                if (isTouch) return;
+                                setDragCharId(null);
+                              }}
+                              style={{ cursor: isTouch ? "default" : "grab" }}
+                            >
+                              {ch.name}
+                            </div>
+
+                            <div className="char-meta">Lv. {ch.itemLevel || "-"}</div>
+                            <div className="char-meta">{ch.power || "-"}</div>
+
+                            {/* 아제나 */}
+                            {(() => {
+                              const enabled = Boolean((ch as any).azenaEnabled);
+                              const expiresAt = (ch as any).azenaExpiresAt as string | null | undefined;
+                              const expired = enabled && expiresAt ? new Date(expiresAt).getTime() <= Date.now() : false;
+                              const checked = enabled && !expired;
+
+                              return (
+                                <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+                                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={(e) => onToggleAzena(tableId, ch.id, e.target.checked)}
+                                    />
+                                    <span>아제나</span>
+                                  </label>
+
+                                  {checked && expiresAt && (
+                                    <div style={{ fontSize: 11, opacity: 0.8 }}>~ {formatKoreanDateTime(expiresAt)}</div>
+                                  )}
+                                </div>
+                              );
+                            })()}
+
+                            {/* 캐릭 수정/삭제는 active 표에서만 */}
+                            {isActivePane && (
+                              <div className="char-actions">
+                                <button className="mini" onClick={() => editCharacter(ch)}>수정</button>
+                                <button className="mini" onClick={() => deleteCharacter(ch)}>삭제</button>
+                              </div>
+                            )}
+                          </div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {[...groupedTasks]
+                      .sort(([a], [b]) => {
+                        const oa = SECTION_ORDER[a] ?? 999;
+                        const ob = SECTION_ORDER[b] ?? 999;
+                        return oa - ob || a.localeCompare(b, "ko");
+                      })
+                      .map(([section, rows]) => {
+                        return (
+                          <React.Fragment key={section}>
+                            <tr
+                              className={`section-row ${section === "일일 숙제" || section === "주간 교환" || section === "주간 레이드" ? "section-strong" : ""
+                                }`}
+                            >
+                              <td className="todo-sticky-left section-left" colSpan={1 + characters.length}>
+                                {section}
+                              </td>
+                            </tr>
+
+                            
+
+                            {rows.map((task) => {
+                              if (task.title === "큐브") return null;
+
+                              const min = TASK_MIN_ILVL[task.title];
+
+                              if (typeof min === "number") {
+                                const anyEligible = characters.some((ch) => getCharIlvl(ch) >= min);
+                                if (!anyEligible) return null;
+                              }
+
+                              return (
+                                <tr
+                                  key={task.id}
+                                  className="task-row"
+                                  onDragOver={(e) => e.preventDefault()}
+                                  onDrop={() => {
+                                    // 숙제 순서 변경은 전역(템플릿)이라 active에서만 허용
+                                    if (!isActivePane) return;
+                                    if (!dragTaskId) return;
+                                    reorderTaskWithinSection(dragTaskId, task.id);
+                                    setDragTaskId(null);
+                                  }}
+                                >
+                                  <td className="todo-sticky-left task-left">
+                                    <div className="task-left-inner">
+                                      <div
+                                        className="task-title raid-title-click"
+                                        draggable={isActivePane}
+                                        onDragStart={() => isActivePane && setDragTaskId(task.id)}
+                                        onDragEnd={() => isActivePane && setDragTaskId(null)}
+                                        style={{ cursor: isActivePane ? "grab" : "default" }}
+                                        onClick={(e) => {
+                                          if (!RAID_CLEAR_GOLD[task.title]) return;
+                                          setRaidGoldPopup({ title: task.title, x: e.clientX, y: e.clientY });
+                                        }}
+                                      >
+                                        {task.title}
+                                      </div>
+
+                                      <div
+                                        className={`pill ${task.period === "DAILY" ? "daily" : task.period === "WEEKLY" ? "weekly" : ""
+                                          }`}
+                                      >
+                                        {LEVEL_PERIODS[task.period]}
+                                      </div>
+
+                                      {/* 숙제 수정/삭제는 active에서만 */}
+                                      {isActivePane && (
+                                        <div className="task-actions">
+                                          <button className="mini" onClick={() => editTask(task)}>수정</button>
+                                          <button className="mini" onClick={() => deleteTask(task)}>삭제</button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </td>
+
+                                  {characters.map((ch) => {
+                                    const cell = getCellByTableId(state, tableId, task.id, ch.id);
+
+                                    if (typeof min === "number") {
+                                      const eligible = getCharIlvl(ch) >= min;
+                                      if (!eligible) return <td key={ch.id} className="cell" />;
+                                    }
+
+                                    if (task.cellType === "TEXT") {
+                                      const isCubeTicket = task.title.includes("해금");
+
+                                      if (isCubeTicket) {
+                                        const raw = cell?.type === "TEXT" ? cell.text : "";
+                                        const n = raw === "" ? 0 : Number(String(raw).replace(/[^0-9]/g, ""));
+                                        const value = Number.isFinite(n) ? n : 0;
+
+                                        const setValue = (next: number) => onTextChange(tableId, task, ch, String(Math.max(0, next)));
+                                        const useOnce = () => setValue(value - 1);
+                                        const useTriple = () => setValue(value - 3);
+
+                                        return (
+                                          <td key={ch.id} className="cell">
+                                            <div className="ticket-grid">
+                                              <div className="ticket-left">
+                                                <input
+                                                  inputMode="numeric"
+                                                  className="ticket-input"
+                                                  value={raw}
+                                                  onChange={(e) => {
+                                                    const onlyNum = e.target.value.replace(/[^0-9]/g, "");
+                                                    onTextChange(tableId, task, ch, onlyNum);
+                                                  }}
+                                                  placeholder="0"
+                                                />
+
+                                                <div className="ticket-left-actions">
+                                                  <button type="button" className="ticket-btn" onClick={() => setValue(value + 1)}>추가</button>
+                                                  <button type="button" className="ticket-btn" onClick={() => setValue(value - 1)} disabled={value < 1}>
+                                                    삭제
+                                                  </button>
+                                                </div>
+                                              </div>
+
+                                              <div className="ticket-right">
+                                                <button type="button" className="ticket-btn primary" onClick={useOnce} disabled={value < 1}>1회사용</button>
+                                                <button type="button" className="ticket-btn primary" onClick={useTriple} disabled={value < 3}>3회사용</button>
+                                              </div>
+                                            </div>
+                                          </td>
+                                        );
+                                      }
+
+                                      return (
+                                        <td key={ch.id} className="cell">
+                                          <input
+                                            className="cell-text"
+                                            value={cell?.type === "TEXT" ? cell.text : ""}
+                                            onChange={(e) => onTextChange(tableId, task, ch, e.target.value)}
+                                          />
+                                        </td>
+                                      );
+                                    }
+
+                                    if (task.cellType === "SELECT") {
+                                      const opts = task.options ?? ["완료", "미완"];
+                                      return (
+                                        <td key={ch.id} className="cell">
+                                          <select
+                                            className="cell-select"
+                                            value={cell?.type === "SELECT" ? cell.value : ""}
+                                            onChange={(e) => onSelectChange(tableId, task, ch, e.target.value)}
+                                          >
+                                            <option value="">-</option>
+                                            {opts.map((o) => (
+                                              <option key={o} value={o}>{o}</option>
+                                            ))}
+                                          </select>
+                                        </td>
+                                      );
+                                    }
+
+                                    if (task.cellType === "COUNTER") {
+                                      const max = Math.max(1, task.max ?? 1);
+                                      const count = cell?.type === "COUNTER" ? (cell.count ?? 0) : 0;
+
+                                      const isCore = task.id === CORE_DAILY_TASK_ID;
+                                      const isGuardian = task.title === "가디언 토벌";
+
+                                      const restValue = isCore
+                                        ? (table.restGauges?.[ch.id]?.chaos ?? 0)
+                                        : isGuardian
+                                          ? (table.restGauges?.[ch.id]?.guardian ?? 0)
+                                          : 0;
+
+                                      const restMax = isCore ? 200 : isGuardian ? 100 : 0;
+
+                                      return (
+                                        <td
+                                          key={ch.id}
+                                          className="cell"
+                                          data-counter="1"
+                                          data-task-id={task.id}
+                                          data-ch-id={ch.id}
+                                          onClick={() => onCellClick(tableId, task, ch)}
+                                          title={task.id === CORE_DAILY_TASK_ID ? getCoreDailyLabel(getCharIlvl(ch)) : "클릭 토글"}
+                                        >
+                                          <div className="cell-inline">
+                                            <CounterDots max={max} count={count} />
+
+                                            {(isCore || isGuardian) && (
+                                              <input
+                                                inputMode="numeric"
+                                                className="rest-input"
+                                                value={String(restValue)}
+                                                onChange={(e) => {
+                                                  const raw = e.target.value.replace(/[^0-9]/g, "");
+                                                  const n = raw === "" ? 0 : Number(raw);
+                                                  const clamped = clamp(Number.isFinite(n) ? n : 0, 0, restMax);
+
+                                                  setRestGaugeInTable(tableId, ch.id, {
+                                                    chaos: isCore ? clamped : undefined,
+                                                    guardian: isGuardian ? clamped : undefined,
+                                                  });
+                                                }}
+                                                title={isCore ? "핵심 콘텐츠 휴식(0~200)" : "가디언 휴식(0~100)"}
+                                                onClick={(e) => e.stopPropagation()}
+                                              />
+                                            )}
+                                          </div>
+                                        </td>
+                                      );
+                                    }
+
+                                    // ✅ 주간 레이드: 캐릭터별 Top3 레이드만 체크 버튼 렌더링
+                                    if (section === "주간 레이드" && isWeeklyRaidTaskTitle(task.title)) {
+                                      const ilvl = getCharIlvl(ch);
+                                      const top3Set = getWeeklyTop3RaidNameSet(ilvl);
+                                      if (!top3Set.has(task.title)) {
+                                        return <td key={ch.id} className="cell" />;
+                                      }
+                                    }
+
+                                    // CHECK
+                                    const checked = cell?.type === "CHECK" ? cell.checked : false;
+
+                                    return (
+                                      <td key={ch.id} className="cell">
+                                        <button type="button" className="cell-check-btn" onClick={() => onCellClick(tableId, task, ch)} title="완료 체크">
+                                          <span className={`check ${checked ? "on" : ""}`} />
+                                        </button>
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              );
+                            })}
+
+                            {section === "주간 레이드" && (
+                              <tr className="task-row gold-sum-row">
+                                <td className="todo-sticky-left task-left">
+                                  <div className="task-left-inner">
+                                    <div className="task-title">주간 클리어 골드(추천 Top3)</div>
+                                    <div className="task-sub">아이템레벨 기준 · 레이드별 최고 난이도만 적용</div>
+                                  </div>
+                                </td>
+
+                                {characters.map((ch) => {
+                                  const ilvl = parseIlvl(ch.itemLevel);
+
+                                  if (!Number.isFinite(ilvl)) {
+                                    return (
+                                      <td key={ch.id} className="cell">
+                                        <div className="goldbox muted">Lv 입력 필요</div>
+                                      </td>
+                                    );
+                                  }
+
+                                  const r = calcWeeklyTop3Gold(ilvl);
+                                  const detail = r.top3
+                                    .map((x) => `${x.raid} ${x.diff}(${x.gold.toLocaleString()})`)
+                                    .join(" + ");
+
+                                  return (
+                                    <td key={ch.id} className="cell">
+                                      <div className="goldbox" title={detail}>
+                                        <div className="gold-sum">{r.sum.toLocaleString()} G</div>
+                                        <div className="gold-detail">{r.top3.map((x) => x.raid).join(" / ")}</div>
+                                      </div>
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div >
+    );
+  }
+
+  return (
+    <>
+      {azenaModal.open && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.4)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+          }}
+        >
+          <div
+            style={{
+              width: 340,
+              background: "white",
+              borderRadius: 12,
+              padding: 14,
+              boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
+            }}
+          >
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>아제나 만료 시각 입력</div>
+
+            <input
+              type="datetime-local"
+              value={azenaModal.value}
+              onChange={(e) => setAzenaModal((p) => ({ ...p, value: e.target.value }))}
+              style={{
+                width: "100%",
+                height: 34,
+                borderRadius: 10,
+                border: "1px solid #e5e7eb",
+                padding: "0 10px",
+                fontSize: 13,
+              }}
+            />
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
+              <button className="btn" onClick={cancelAzena}>
+                취소
+              </button>
+              <button className="btn" onClick={confirmAzena}>
+                확인
+              </button>
+            </div>
+
+            <div style={{ fontSize: 12, opacity: 0.75, marginTop: 10, lineHeight: 1.35 }}>
+              * 지정한 시각이 지나면 자동으로 체크가 해제됩니다. (새로고침/재접속/탭 복귀 시에도 자동 보정)
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="todo-page">
+        <div className="todo-topbar">
+          <div className="todo-title">
+            <h2>할 일 (To-do)</h2>
+            <div className="todo-sub">로스터 기반 숙제 체크리스트 · 일일 6시 / 주간 수요일 6시 자동 초기화</div>
+
+            <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <select
+                value={state.activeTableId}
+                onChange={(e) => setActiveTableId(e.target.value)}
+                style={{
+                  height: 34,
+                  borderRadius: 10,
+                  border: "1px solid #e5e7eb",
+                  padding: "0 10px",
+                  fontSize: 13,
+                }}
+                title="왼쪽(편집) 표 선택"
+              >
+                {state.tables.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+
+              {/* ✅ 오른쪽 표 선택(기존 표 불러오기) */}
+              <select
+                value={secondaryTableId}
+                onChange={(e) => setSecondaryTableId(e.target.value)}
+                style={{
+                  height: 34,
+                  borderRadius: 10,
+                  border: "1px solid #e5e7eb",
+                  padding: "0 10px",
+                  fontSize: 13,
+                }}
+                title="오른쪽에 같이 볼 표 선택"
+              >
+                <option value="">(오른쪽 표)</option>
+                {state.tables
+                  .filter((t) => t.id !== state.activeTableId)
+                  .map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+              </select>
+
+              <button className="btn" onClick={addTable}>
+                + 표 추가
+              </button>
+              <button className="btn" onClick={renameTable}>
+                표 이름변경
+              </button>
+              <button className="btn" onClick={deleteTable}>
+                표 삭제
+              </button>
+            </div>
+          </div>
+
+          <div className="todo-actions">
+            <button className="btn" onClick={addCharacter}>
+              + 캐릭 추가
+            </button>
+            <button className="btn" onClick={() => addTask("DAILY")}>
+              + 일일 숙제
+            </button>
+            <button className="btn" onClick={() => addTask("WEEKLY")}>
+              + 주간 숙제
+            </button>
+            <button className="btn" onClick={() => addTask("NONE")}>
+              + 기타 숙제
+            </button>
+
+            <BidPopover />
+
+            <div className="divider" />
+            <button className="btn" onClick={() => manualReset("DAILY")}>
+              일일 초기화
+            </button>
+            <button className="btn" onClick={() => manualReset("WEEKLY")}>
+              주간 초기화
+            </button>
+
+            <div className="divider" />
+            <button className="btn" onClick={doExport}>
+              백업
+            </button>
+            <button className="btn" onClick={doImport}>
+              복원
+            </button>
+          </div>
+        </div>
+
+        <div className="todo-tabs">
+          <button className={`tab ${periodTab === "ALL" ? "active" : ""}`} onClick={() => setPeriodTab("ALL")}>
+            전체
+          </button>
+          <button className={`tab ${periodTab === "DAILY" ? "active" : ""}`} onClick={() => setPeriodTab("DAILY")}>
+            일일
+          </button>
+          <button className={`tab ${periodTab === "WEEKLY" ? "active" : ""}`} onClick={() => setPeriodTab("WEEKLY")}>
+            주간
+          </button>
+          <button className={`tab ${periodTab === "NONE" ? "active" : ""}`} onClick={() => setPeriodTab("NONE")}>
+            기타
+          </button>
+
+          <div className="todo-progress">
+            진행률(체크/카운터): <b>{totalProgress.done}</b> / {totalProgress.all}
+          </div>
+        </div>
+
+
+        {/* ✅ 표 영역 wrapper: 요일별 + 표 그리드를 한 컨테이너로 묶기 */}
+        <div className="todo-table-area">
+          {/* ✅ 요일별 콘텐츠(계정 공용) - 전체/일일 탭에서 */}
+          {(periodTab === "ALL" || periodTab === "DAILY") && (
+            secondaryTableId ? (
+              <div
+                className="accountDailyGrid"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 12,
+                  alignItems: "start",
+                  marginBottom: 8,
+                }}
+              >
+                <AccountDailyPanel tableId={state.activeTableId} />
+                <AccountDailyPanel tableId={secondaryTableId} />
+              </div>
+            ) : (
+              <AccountDailyPanel tableId={state.activeTableId} />
+            )
+          )}
+
+          {/* ✅ 두 표 동시 렌더 */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: secondaryTableId ? "1fr 1fr" : "1fr",
+              gap: 12,
+              alignItems: "stretch",
+              minHeight: 0,
+
+              // ✅ 핵심: 이 그리드가 남은 공간을 먹도록
+              flex: "1 1 auto",
+            }}
+            className="todo-two-table-grid"
+          >
+            {renderTodoTable(state.activeTableId, "왼쪽(편집)")}
+            {secondaryTableId && renderTodoTable(secondaryTableId, "오른쪽")}
+          </div>
+        </div>
+
+
+
+        <div className="todo-hint">
+          <div>팁</div>
+          <ul>
+            <li>카운터 셀: 클릭으로 토글</li>
+            <li>핵심 콘텐츠/가디언: 카운터 옆 휴식게이지(숫자) 입력 가능</li>
+            <li>일일 초기화: 휴식게이지 갱신 후 일일 체크 초기화</li>
+            <li>리셋: 일일 6시 / 주간 수요일 6시 자동 적용(앱 켜둔 상태에서도)</li>
+          </ul>
+        </div>
+
+        {raidGoldPopup && (
+          <div
+            className="raid-gold-pop"
+            style={{
+              left: raidGoldPopup.x + 12,
+              top: raidGoldPopup.y + 12,
+            }}
+          >
+            <div className="raid-gold-head">
+              <b>{raidGoldPopup.title}</b>
+              <button onClick={() => setRaidGoldPopup(null)}>닫기</button>
+            </div>
+
+            <div className="raid-gold-body">
+              {RAID_CLEAR_GOLD[raidGoldPopup.title].normal !== undefined && (
+                <div>노말: {RAID_CLEAR_GOLD[raidGoldPopup.title].normal!.toLocaleString()} G</div>
+              )}
+              {RAID_CLEAR_GOLD[raidGoldPopup.title].hard !== undefined && (
+                <div>하드: {RAID_CLEAR_GOLD[raidGoldPopup.title].hard!.toLocaleString()} G</div>
+              )}
+              {RAID_CLEAR_GOLD[raidGoldPopup.title].nightmare !== undefined && (
+                <div>나이트메어: {RAID_CLEAR_GOLD[raidGoldPopup.title].nightmare!.toLocaleString()} G</div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
