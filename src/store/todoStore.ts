@@ -89,6 +89,7 @@ export function createTask(input: {
   max?: number;
   options?: string[];
   section?: string;
+  order?: number;           // ✅ 추가
 }): TaskRow {
   return {
     id: input.id ?? uid("task"),
@@ -98,9 +99,10 @@ export function createTask(input: {
     max: input.max,
     options: input.options,
     section: input.section ?? "숙제",
-    order: Date.now(),
+    order: input.order ?? Date.now(),   // ✅ 변경
   };
 }
+
 
 function makeDefaultState(): TodoState {
   // =========================
@@ -161,11 +163,13 @@ function makeDefaultState(): TodoState {
     createTask({ title: "클리어메달 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
     createTask({ title: "해적주화 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
 
+    createTask({ title: "1막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
     createTask({ title: "2막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
     createTask({ title: "3막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
     createTask({ title: "4막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
     createTask({ title: "종막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
     createTask({ title: "세르카", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+
 
     // 기타(귀속 메모)
     createTask({
@@ -224,6 +228,7 @@ function normalizeState(parsed: any): TodoState {
     st.tasks = Array.isArray(st.tasks) ? st.tasks : [];
 
     // ✅ (마이그레이션) '기타 / 큐브(귀속 메모)' 없으면 자동 추가
+    // ✅ (마이그레이션) '기타 / 큐브(귀속 메모)' 없으면 자동 추가
     const hasCube = st.tasks.some((t) => t.title === "큐브" && t.period === "NONE");
     if (!hasCube) {
       st.tasks = [
@@ -236,6 +241,18 @@ function normalizeState(parsed: any): TodoState {
         }),
       ];
     }
+
+    // ✅ (마이그레이션) '주간 레이드 / 1막' 없으면 자동 추가  ← 반드시 밖!
+    const hasRaid1 = st.tasks.some(
+      (t) => t.title === "1막" && t.period === "WEEKLY" && t.section === "주간 레이드"
+    );
+    if (!hasRaid1) {
+      st.tasks = [
+        ...st.tasks,
+        createTask({ title: "1막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 1 })
+      ];
+    }
+
 
     if (!st.tables.length) return makeDefaultState();
     if (!st.activeTableId || !st.tables.some((t) => t.id === st.activeTableId)) st.activeTableId = st.tables[0].id;
