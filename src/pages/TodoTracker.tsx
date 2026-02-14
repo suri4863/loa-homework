@@ -57,7 +57,7 @@ function getLoaGameDate(resetHour: number) {
 }
 
 
-type Tab = "DAILY" | "WEEKLY" | "NONE" | "ALL";
+type Tab = "DAILY" | "WEEKLY" | "NONE" | "ALL" | "RAID_LEFT";
 
 function uid(prefix: string) {
   return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
@@ -890,21 +890,55 @@ export default function TodoTracker() {
 
 
   const tasks = useMemo(() => {
+    // ✅ 남은 레이드: 주간 레이드 섹션만 출력
+    if (periodTab === "RAID_LEFT") {
+      return state.tasks.filter(
+        (t) => t.period === "WEEKLY" && t.section === "주간 레이드"
+      );
+    }
+
     if (periodTab === "ALL") return state.tasks;
     return state.tasks.filter((t) => t.period === periodTab);
   }, [periodTab, state.tasks]);
+
+  const SECTION_ORDER: Record<string, number> = {
+    "일일 숙제": 1,
+    "주간 레이드": 2,
+    "주간 교환": 3,
+  };
+
+  const WEEKLY_RAID_ORDER: Record<string, number> = {
+    "1막": 1,
+    "2막": 2,
+    "3막": 3,
+    "4막": 4,
+    "종막": 5,
+    "세르카": 6,
+  };
+
 
   const groupedTasks = useMemo(() => {
     const map = new Map<string, TaskRow[]>();
 
     for (const t of tasks) {
-      const key = t.section ?? "숙제";
+      const key = (t.section ?? "숙제").trim();
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(t);
     }
 
-    for (const [, arr] of map.entries()) {
+    for (const [sectionRaw, arr] of map.entries()) {
+      const section = (sectionRaw ?? "").trim();
+
       arr.sort((a, b) => {
+        if (section === "주간 레이드") {
+          const at = (a.title ?? "").trim();
+          const bt = (b.title ?? "").trim();
+          const ai = WEEKLY_RAID_ORDER[at] ?? 999;
+          const bi = WEEKLY_RAID_ORDER[bt] ?? 999;
+          if (ai !== bi) return ai - bi;
+          return at.localeCompare(bt);
+        }
+
         const ao = a.order ?? Number.MAX_SAFE_INTEGER;
         const bo = b.order ?? Number.MAX_SAFE_INTEGER;
         if (ao !== bo) return ao - bo;
@@ -912,13 +946,28 @@ export default function TodoTracker() {
       });
     }
 
-    return Array.from(map.entries());
+    const entries = Array.from(map.entries());
+    entries.sort(([a], [b]) => (SECTION_ORDER[a] ?? 999) - (SECTION_ORDER[b] ?? 999));
+
+    return entries;
   }, [tasks]);
-  const SECTION_ORDER: Record<string, number> = {
-    "일일 숙제": 1,
-    "주간 레이드": 2,
-    "주간 교환": 3,
-  };
+
+
+  const weeklyRaidTaskIds = useMemo(() => {
+    return state.tasks
+      .filter((t) => t.period === "WEEKLY" && t.section === "주간 레이드" && t.cellType === "CHECK")
+      .map((t) => t.id);
+  }, [state.tasks]);
+
+  function getWeeklyRaidCheckedCount(tableId: string, charId: string) {
+    let cnt = 0;
+    for (const taskId of weeklyRaidTaskIds) {
+      const v = getCellByTableId(state, tableId, taskId, charId);
+      if (v && v.type === "CHECK" && v.checked) cnt++;
+    }
+    return cnt;
+  }
+
 
   function reorderTaskWithinSection(fromTaskId: string, toTaskId: string) {
     if (fromTaskId === toTaskId) return;
@@ -1090,11 +1139,230 @@ export default function TodoTracker() {
       </div>
     );
   }
+  function renderRaidLeftUnifiedTable() {
+    // 1) 모든 표의 모든 캐릭터를 “열”로 합치기
+    const allCols = state.tables.flatMap((tbl) =>
+      tbl.characters.map((ch) => ({
+        tableId: tbl.id,
+        tableName: tbl.name ?? tbl.id,
+        ch,
+      }))
+    );
+
+    // 2) 주간 레이드 체크 3개 미만만 남기기
+    // (네가 이미 만들어둔 getWeeklyRaidCheckedCount(tableId, charId) 그대로 사용)
+    const visibleCols = allCols.filter(({ tableId, ch }) => getWeeklyRaidCheckedCount(tableId, ch.id) < 3);
+
+    // 3) 남은 캐릭 0명 안내
+    if (visibleCols.length === 0) {
+      return (
+        <div className="tablePane">
+          <div className="paneHeader">
+            <div className="paneTitle">남은 레이드 · 전체</div>
+          </div>
+          <div style={{ padding: 16, opacity: 0.7 }}>✅ 남은 레이드(3회 미만) 캐릭터가 없어.</div>
+        </div>
+      );
+    }
+
+    // 4) tasks는 이미 RAID_LEFT에서 “주간 레이드만” 남도록 필터되어 있다고 가정
+    // 그래도 groupedTasks 흐름을 맞추려면 section 그룹핑을 그대로 사용
+
+
+    return (
+      <div className="tablePane">
+        <div className="paneHeader">
+          <div className="paneTitle">남은 레이드 · 전체 ({visibleCols.length}캐릭)</div>
+        </div>
+
+        {/* ✅ 표 내부 스크롤은 끄고, 바깥(.raid-left-hscroll)에서 가로 스크롤 */}
+        <div className="todo-table-scroll raid-left-mode" style={{ height: "100%" }}>
+          <table className="todo-table">
+            <thead>
+              <tr>
+                <th className="todo-sticky-left todo-col-head">숙제</th>
+
+                {visibleCols.map(({ tableId, tableName, ch }) => {
+                  const isActiveCol = tableId === state.activeTableId; // ✅ 활성 표 컬럼만 수정/삭제 가능(기존 editCharacter가 active표만 수정하니까)
+
+                  return (
+                    <th key={`${tableId}:${ch.id}`} className="todo-col-head">
+                      <div className="char-head">
+                        {/*표 출처 표시*/}
+                        <div className="char-meta" style={{ fontSize: 11, opacity: 0.7 }}>{tableName}</div>
+
+
+                        <div className="char-name" title={ch.name}>
+                          {ch.name}
+                        </div>
+
+                        <div className="char-meta">Lv. {ch.itemLevel || "-"}</div>
+                        <div className="char-meta">{ch.power || "-"}</div>
+
+                        {/* ✅ 아제나 (기존 그대로) */}
+                        {(() => {
+                          const enabled = Boolean((ch as any).azenaEnabled);
+                          const expiresAt = (ch as any).azenaExpiresAt as string | null | undefined;
+                          const expired = enabled && expiresAt ? new Date(expiresAt).getTime() <= Date.now() : false;
+                          const checked = enabled && !expired;
+
+                          return (
+                            <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+                              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(e) => onToggleAzena(tableId, ch.id, e.target.checked)}
+                                />
+                                <span>아제나</span>
+                              </label>
+
+                              <div
+                                style={{
+                                  fontSize: 11,
+                                  opacity: 0.8,
+                                  visibility: checked && expiresAt ? "visible" : "hidden",
+                                  height: 14,
+                                  lineHeight: "14px",
+                                }}
+                              >
+                                ~ {checked && expiresAt ? formatKoreanDateTime(expiresAt) : "0000년 00월 00일(월) 00:00"}
+                              </div>
+                            </div>
+                          );
+                        })()}
+
+                        {/* ✅ 캐릭 수정/삭제는 active 표에서만 (기존 UX 유지) */}
+                        <div className="char-actions">
+                          {isActiveCol && (
+                            <>
+                              <button className="mini" onClick={() => editCharacter(ch)}>수정</button>
+                              <button className="mini" onClick={() => deleteCharacter(ch)}>삭제</button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </th>
+                  );
+                })}
+
+              </tr>
+            </thead>
+
+            <tbody>
+              {groupedTasks.map(([section, rows]) => (
+                <React.Fragment key={section}>
+                  <tr className="section-row section-strong">
+                    <td className="todo-sticky-left section-left" colSpan={1 + visibleCols.length}>
+                      {section}
+                    </td>
+                  </tr>
+
+                  {rows.map((task) => (
+                    <tr key={task.id} className="task-row">
+                      <td className="todo-sticky-left task-left">
+                        <div className="task-left-inner">
+                          <div className="task-title raid-title-click">{task.title}</div>
+
+                          <div className="pill weekly">주간</div>
+
+                          <div className="task-actions">
+                            <button className="mini" onClick={() => editTask(task)}>수정</button>
+                            <button className="mini" onClick={() => deleteTask(task)}>삭제</button>
+                          </div>
+                        </div>
+                      </td>
+
+
+                      {visibleCols.map(({ tableId, ch }) => {
+                        const cell = getCellByTableId(state, tableId, task.id, ch.id);
+
+                        // ✅ 주간 레이드 Top3만 체크 노출(기존 로직 유지)
+                        if (section === "주간 레이드" && isWeeklyRaidTaskTitle(task.title)) {
+                          const ilvl = getCharIlvl(ch);
+                          const top3Set = getWeeklyTop3RaidNameSet(ilvl);
+                          if (!top3Set.has(task.title)) {
+                            return <td key={`${tableId}:${ch.id}`} className="cell" />;
+                          }
+                        }
+
+                        const checked = cell?.type === "CHECK" ? cell.checked : false;
+
+                        return (
+                          <td key={`${tableId}:${ch.id}`} className="cell">
+                            <button
+                              type="button"
+                              className="cell-check-btn"
+                              onClick={() => onCellClick(tableId, task, ch)}
+                              title="완료 체크"
+                            >
+                              <span className={`check ${checked ? "on" : ""}`} />
+                            </button>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+
+                  {/* ✅ 주간 레이드 골드합(Top3) 줄도 유지하고 싶으면 그대로 합쳐서 출력 */}
+                  {section === "주간 레이드" && (
+                    <tr className="task-row gold-sum-row">
+                      <td className="todo-sticky-left task-left">
+                        <div className="task-left-inner">
+                          <div className="task-title">주간 클리어 골드(추천 Top3)</div>
+                          <div className="task-sub">아이템레벨 기준 · 레이드별 최고 난이도만 적용</div>
+                        </div>
+                      </td>
+
+                      {visibleCols.map(({ tableId, ch }) => {
+                        const ilvl = parseIlvl(ch.itemLevel);
+
+                        if (!Number.isFinite(ilvl)) {
+                          return (
+                            <td key={`${tableId}:${ch.id}`} className="cell">
+                              <div className="goldbox muted">Lv 입력 필요</div>
+                            </td>
+                          );
+                        }
+
+                        const r = calcWeeklyTop3Gold(ilvl);
+                        const detail = r.top3.map((x) => `${x.raid} ${x.diff}(${x.gold.toLocaleString()})`).join(" + ");
+
+                        return (
+                          <td key={`${tableId}:${ch.id}`} className="cell">
+                            <div className="goldbox" title={detail}>
+                              <div className="gold-sum">{r.sum.toLocaleString()} G</div>
+                              <div className="gold-detail">{r.top3.map((x) => x.raid).join(" / ")}</div>
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  )}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
 
   function renderTodoTable(tableId: string, paneLabel: string) {
     const table = getTableById(state, tableId);
     const characters = table.characters;
     const isActivePane = tableId === state.activeTableId;
+
+    // ✅ 남은 레이드 탭일 때만: 주간 레이드 체크 3개 미만 캐릭만 노출
+    const visibleCharacters =
+      periodTab === "RAID_LEFT"
+        ? characters
+          .map((ch) => ({ ch, raidDone: getWeeklyRaidCheckedCount(tableId, ch.id) }))
+          .filter(({ raidDone }) => raidDone < 3)
+          .map(({ ch }) => ch)
+        : characters;
+
 
     return (
       <div
@@ -1117,7 +1385,11 @@ export default function TodoTracker() {
           )}
         </div>
         <div style={{ flex: "1 1 auto", minHeight: 0, overflow: "auto" }}>
-          <div className="todo-table-scroll" style={{ height: "100%" }} ref={isActivePane ? tableWrapRef : undefined as any}>
+          <div
+            className={`todo-table-scroll ${periodTab === "RAID_LEFT" ? "raid-left-mode" : ""}`}
+            style={{ height: "100%" }}
+            ref={isActivePane ? tableWrapRef : undefined as any}
+          >
             <div className="todo-table-center">
               <div className="todo-table-card" style={{ height: "100%" }}>
                 <table className="todo-table">
@@ -1129,7 +1401,7 @@ export default function TodoTracker() {
                         </div>
                       </th>
 
-                      {characters.map((ch) => (
+                      {visibleCharacters.map((ch) => (
                         <th
                           key={ch.id}
                           className="todo-col-head"
@@ -1292,7 +1564,7 @@ export default function TodoTracker() {
                                     </div>
                                   </td>
 
-                                  {characters.map((ch) => {
+                                  {visibleCharacters.map((ch) => {
                                     const cell = getCellByTableId(state, tableId, task.id, ch.id);
 
                                     if (typeof min === "number") {
@@ -1458,7 +1730,7 @@ export default function TodoTracker() {
                                   </div>
                                 </td>
 
-                                {characters.map((ch) => {
+                                {visibleCharacters.map((ch) => {
                                   const ilvl = parseIlvl(ch.itemLevel);
 
                                   if (!Number.isFinite(ilvl)) {
@@ -1661,6 +1933,10 @@ export default function TodoTracker() {
           <button className={`tab ${periodTab === "NONE" ? "active" : ""}`} onClick={() => setPeriodTab("NONE")}>
             기타
           </button>
+          <button className={`tab ${periodTab === "RAID_LEFT" ? "active" : ""}`} onClick={() => setPeriodTab("RAID_LEFT")}>
+            남은 레이드
+          </button>
+
 
           <div className="todo-progress">
             진행률(체크/카운터): <b>{totalProgress.done}</b> / {totalProgress.all}
@@ -1692,22 +1968,29 @@ export default function TodoTracker() {
           )}
 
           {/* ✅ 두 표 동시 렌더 */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: secondaryTableId ? "1fr 1fr" : "1fr",
-              gap: 12,
-              alignItems: "stretch",
-              minHeight: 0,
-
-              // ✅ 핵심: 이 그리드가 남은 공간을 먹도록
-              flex: "1 1 auto",
-            }}
-            className="todo-two-table-grid"
-          >
-            {renderTodoTable(state.activeTableId, "왼쪽(편집)")}
-            {secondaryTableId && renderTodoTable(secondaryTableId, "오른쪽")}
-          </div>
+          {periodTab === "RAID_LEFT" ? (
+            <div className="raid-left-hscroll">
+              {/* ✅ 통합 표 1개만 렌더 */}
+              <div style={{ width: "max-content" }}>
+                {renderRaidLeftUnifiedTable()}
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: secondaryTableId ? "1fr 1fr" : "1fr",
+                gap: 12,
+                alignItems: "stretch",
+                minHeight: 0,
+                flex: "1 1 auto",
+              }}
+              className="todo-two-table-grid"
+            >
+              {renderTodoTable(state.activeTableId, "왼쪽(편집)")}
+              {secondaryTableId && renderTodoTable(secondaryTableId, "오른쪽")}
+            </div>
+          )}
         </div>
 
 
