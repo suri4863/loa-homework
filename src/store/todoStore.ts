@@ -40,12 +40,12 @@ export type GridValues = Record<string /* taskId */, Record<string /* charId */,
 export type ResetState = {
   lastDailyResetAt: number;
   lastWeeklyResetAt: number;
-  dailyResetHour: number;     // 6
+  dailyResetHour: number; // 6
   weeklyResetWeekday: number; // 3(수), 0=일
 };
 
 export type RestGauge = {
-  chaos: number;    // 0~200
+  chaos: number; // 0~200
   guardian: number; // 0~100
 };
 
@@ -59,11 +59,46 @@ export type TodoTable = {
   restGauges: RestGauges;
 };
 
+// =========================
+// ✅ 친구/공유(서버 없이 스냅샷 공유용)
+// =========================
+export type ShareMode = "PUBLIC" | "PRIVATE";
+
+export type UserProfile = {
+  friendCode: string; // 내 공유 코드
+  shareMode: ShareMode; // 공개/비공개
+};
+
+export type RaidLeftSnapshotPayload = {
+  version: 1;
+  friendCode: string;
+  shareMode: ShareMode;
+  exportedAt: number;
+  tableName: string;
+  data: Array<{
+    charName: string;
+    remainingRaids: string[];
+    clearedCount: number;
+    totalCount: number;
+  }>;
+};
+
+export type FriendEntry = {
+  code: string; // 친구의 friendCode
+  nickname: string;
+  addedAt: number;
+  lastSnapshot?: RaidLeftSnapshotPayload;
+};
+
 export type TodoState = {
   tables: TodoTable[];
   activeTableId: string;
   tasks: TaskRow[];
   reset: ResetState;
+
+  // ✅ 친구 기능용
+  profile: UserProfile;
+  friends: FriendEntry[];
 };
 
 const STORAGE_KEY = "loa-todo:v1";
@@ -89,7 +124,7 @@ export function createTask(input: {
   max?: number;
   options?: string[];
   section?: string;
-  order?: number;           // ✅ 추가
+  order?: number; // ✅ 추가
 }): TaskRow {
   return {
     id: input.id ?? uid("task"),
@@ -99,10 +134,9 @@ export function createTask(input: {
     max: input.max,
     options: input.options,
     section: input.section ?? "숙제",
-    order: input.order ?? Date.now(),   // ✅ 변경
+    order: input.order ?? Date.now(), // ✅ 변경
   };
 }
-
 
 function makeDefaultState(): TodoState {
   // =========================
@@ -123,7 +157,6 @@ function makeDefaultState(): TodoState {
   const baseOrder = Date.now();
 
   const tasks: TaskRow[] = [
-    // ✅ 일일 숙제 (order 명시)
     {
       ...createTask({
         title: "길드 출석",
@@ -157,19 +190,19 @@ function makeDefaultState(): TodoState {
       order: baseOrder + 3,
     },
 
-    // 주간
+    // 주간 교환
     createTask({ title: "천상", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
     createTask({ title: "혈석 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
     createTask({ title: "클리어메달 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
     createTask({ title: "해적주화 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
 
+    // 주간 레이드
     createTask({ title: "1막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
     createTask({ title: "2막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
     createTask({ title: "3막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
     createTask({ title: "4막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
     createTask({ title: "종막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
     createTask({ title: "세르카", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
-
 
     // 기타(귀속 메모)
     createTask({
@@ -192,11 +225,8 @@ function makeDefaultState(): TodoState {
 
   // =========================
   // 휴식게이지 초기값
-  // chaos = 핵심 콘텐츠 휴식
   // =========================
-  const restGauges: RestGauges = Object.fromEntries(
-    characters.map((c) => [c.id, { chaos: 0, guardian: 0 }])
-  );
+  const restGauges: RestGauges = Object.fromEntries(characters.map((c) => [c.id, { chaos: 0, guardian: 0 }]));
 
   const table: TodoTable = {
     id: uid("tbl"),
@@ -206,11 +236,18 @@ function makeDefaultState(): TodoState {
     restGauges,
   };
 
+  const profile: UserProfile = {
+    friendCode: `FC_${Math.random().toString(16).slice(2, 8)}_${Date.now().toString(16)}`,
+    shareMode: "PUBLIC",
+  };
+
   return {
     tables: [table],
     activeTableId: table.id,
     tasks,
     reset,
+    profile,
+    friends: [],
   };
 }
 
@@ -219,7 +256,19 @@ function normalizeState(parsed: any): TodoState {
   if (Array.isArray(parsed?.tables) && typeof parsed?.activeTableId === "string") {
     const st: TodoState = parsed as TodoState;
 
-    st.reset = st.reset ?? { lastDailyResetAt: 0, lastWeeklyResetAt: 0, dailyResetHour: 6, weeklyResetWeekday: 3 };
+    // ✅ 친구/공유 마이그레이션 (구버전 호환)
+    if (!st.profile?.friendCode) {
+      st.profile = {
+        friendCode: `FC_${Math.random().toString(16).slice(2, 8)}_${Date.now().toString(16)}`,
+        shareMode: "PUBLIC",
+      };
+    } else {
+      st.profile.shareMode = st.profile.shareMode ?? "PUBLIC";
+    }
+    if (!Array.isArray((st as any).friends)) (st as any).friends = [];
+
+    st.reset =
+      st.reset ?? { lastDailyResetAt: 0, lastWeeklyResetAt: 0, dailyResetHour: 6, weeklyResetWeekday: 3 };
     st.reset.dailyResetHour = st.reset.dailyResetHour ?? 6;
     st.reset.weeklyResetWeekday = st.reset.weeklyResetWeekday ?? 3;
     st.reset.lastDailyResetAt = st.reset.lastDailyResetAt ?? 0;
@@ -227,8 +276,7 @@ function normalizeState(parsed: any): TodoState {
 
     st.tasks = Array.isArray(st.tasks) ? st.tasks : [];
 
-    // ✅ (마이그레이션) '기타 / 큐브(귀속 메모)' 없으면 자동 추가
-    // ✅ (마이그레이션) '기타 / 큐브(귀속 메모)' 없으면 자동 추가
+    // ✅ '기타 / 큐브' 없으면 추가
     const hasCube = st.tasks.some((t) => t.title === "큐브" && t.period === "NONE");
     if (!hasCube) {
       st.tasks = [
@@ -242,17 +290,14 @@ function normalizeState(parsed: any): TodoState {
       ];
     }
 
-    // ✅ (마이그레이션) '주간 레이드 / 1막' 없으면 자동 추가  ← 반드시 밖!
-    const hasRaid1 = st.tasks.some(
-      (t) => t.title === "1막" && t.period === "WEEKLY" && t.section === "주간 레이드"
-    );
+    // ✅ '주간 레이드 / 1막' 없으면 추가
+    const hasRaid1 = st.tasks.some((t) => t.title === "1막" && t.period === "WEEKLY" && t.section === "주간 레이드");
     if (!hasRaid1) {
       st.tasks = [
         ...st.tasks,
-        createTask({ title: "1막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 1 })
+        createTask({ title: "1막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 1 }),
       ];
     }
-
 
     if (!st.tables.length) return makeDefaultState();
     if (!st.activeTableId || !st.tables.some((t) => t.id === st.activeTableId)) st.activeTableId = st.tables[0].id;
@@ -286,6 +331,12 @@ function normalizeState(parsed: any): TodoState {
 
   const tableId = uid("tbl");
   const migrated: TodoState = {
+    profile: {
+      friendCode: `FC_${Math.random().toString(16).slice(2, 8)}_${Date.now().toString(16)}`,
+      shareMode: "PUBLIC",
+    },
+    friends: [],
+
     tables: [
       {
         id: tableId,
@@ -301,8 +352,7 @@ function normalizeState(parsed: any): TodoState {
   };
 
   migrated.reset.dailyResetHour = migrated.reset.dailyResetHour ?? 6;
-  const legacyWeekday =
-    typeof parsed?.reset?.weeklyResetday === "number" ? parsed.reset.weeklyResetday : undefined; // 옛 오타 대비
+  const legacyWeekday = typeof parsed?.reset?.weeklyResetday === "number" ? parsed.reset.weeklyResetday : undefined;
   migrated.reset.weeklyResetWeekday = legacyWeekday ?? migrated.reset.weeklyResetWeekday ?? 3;
   migrated.reset.lastDailyResetAt = migrated.reset.lastDailyResetAt ?? 0;
   migrated.reset.lastWeeklyResetAt = migrated.reset.lastWeeklyResetAt ?? 0;
@@ -349,7 +399,7 @@ export const DEFAULT_TODO_STATE = {
 };
 
 // =========================
-// ✅ Table helpers (추가)
+// ✅ Table helpers
 // =========================
 export function getActiveTable(state: TodoState): TodoTable {
   const tables = state?.tables ?? [];
@@ -403,9 +453,9 @@ export function setCellByTableId(state: TodoState, tableId: string, task: TaskRo
 
 function sanitizeJsonText(raw: string): string {
   return raw
-    .replace(/\u2026/g, "...")          // …(한 글자) -> ... 통일
-    .replace(/\.\.\./g, "")            // 화면 생략(...) 제거
-    .replace(/,\s*([}\]])/g, "$1")     // trailing comma 제거
+    .replace(/\u2026/g, "...")
+    .replace(/\.\.\./g, "")
+    .replace(/,\s*([}\]])/g, "$1")
     .trim();
 }
 
@@ -419,19 +469,57 @@ export function importStateFromJson(raw: string): TodoState {
     throw new Error("Invalid JSON");
   }
 
-  // ✅ v2 백업 포맷: { version, exportedAt, state }
   const payload = parsed?.state ?? parsed;
-
-  // ✅ normalizeState가 TodoState로 보정/마이그레이션 수행
   return normalizeState(payload);
 }
 
 export function exportStateToJson(state: TodoState): string {
-  return JSON.stringify(
-    { version: 1, exportedAt: new Date().toISOString(), state },
-    null,
-    2
+  return JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), state }, null, 2);
+}
+
+// =========================
+// ✅ 친구 스냅샷 (남은 레이드만 공유)
+// =========================
+export function exportRaidLeftSnapshot(state: TodoState, tableId: string): string {
+  if (state.profile?.shareMode === "PRIVATE") throw new Error("PRIVATE_MODE");
+
+  const table = getTableById(state, tableId);
+
+  const weeklyRaidTasks = state.tasks.filter(
+    (t) => t.period === "WEEKLY" && t.section === "주간 레이드" && t.cellType === "CHECK"
   );
+  const totalCount = weeklyRaidTasks.length;
+
+  const data = table.characters.map((ch) => {
+    const remaining: string[] = [];
+    let clearedCount = 0;
+
+    for (const task of weeklyRaidTasks) {
+      const v = table.values?.[task.id]?.[ch.id];
+      const cleared = v?.type === "CHECK" && v.checked === true;
+      if (cleared) clearedCount++;
+      else remaining.push(task.title);
+    }
+
+    return { charName: ch.name, remainingRaids: remaining, clearedCount, totalCount };
+  });
+
+  const payload: RaidLeftSnapshotPayload = {
+    version: 1,
+    friendCode: state.profile.friendCode,
+    shareMode: state.profile.shareMode,
+    exportedAt: Date.now(),
+    tableName: table.name,
+    data,
+  };
+
+  return JSON.stringify(payload);
+}
+
+export function importRaidLeftSnapshot(raw: string): RaidLeftSnapshotPayload {
+  const parsed = JSON.parse(raw);
+  if (parsed?.version !== 1) throw new Error("INVALID_SNAPSHOT");
+  return parsed as RaidLeftSnapshotPayload;
 }
 
 /** Reset anchor 계산 */
@@ -482,12 +570,8 @@ function applyDailyRestUpdate(prev: TodoState): TodoState {
       const curChaos = clamp(Number(current.chaos ?? 0), 0, 200);
       let nextChaos = curChaos;
 
-      if (coreCount === 0) {
-        nextChaos = clamp(curChaos + 20, 0, 200);
-      } else {
-        // ✅ 임계값 40 이상일 때만 -40
-        nextChaos = clamp(curChaos - (curChaos >= 40 ? 40 : 0), 0, 200);
-      }
+      if (coreCount === 0) nextChaos = clamp(curChaos + 20, 0, 200);
+      else nextChaos = clamp(curChaos - (curChaos >= 40 ? 40 : 0), 0, 200);
 
       // ===== 가디언 (0~1) =====
       let guardianCount = 0;
@@ -500,12 +584,8 @@ function applyDailyRestUpdate(prev: TodoState): TodoState {
       const curGuardian = clamp(Number(current.guardian ?? 0), 0, 100);
       let nextGuardian = curGuardian;
 
-      if (guardianCount === 0) {
-        nextGuardian = clamp(curGuardian + 10, 0, 100);
-      } else {
-        // ✅ 임계값 20 이상일 때만 -20
-        nextGuardian = clamp(curGuardian - (curGuardian >= 20 ? 20 : 0), 0, 100);
-      }
+      if (guardianCount === 0) nextGuardian = clamp(curGuardian + 10, 0, 100);
+      else nextGuardian = clamp(curGuardian - (curGuardian >= 20 ? 20 : 0), 0, 100);
 
       restGauges[ch.id] = { chaos: nextChaos, guardian: nextGuardian };
     }
@@ -516,15 +596,12 @@ function applyDailyRestUpdate(prev: TodoState): TodoState {
   return { ...prev, tables };
 }
 
-
 export function resetByPeriod(state: TodoState, period: "DAILY" | "WEEKLY", hard: boolean): TodoState {
   const targetTaskIds = state.tasks.filter((t) => t.period === period).map((t) => t.id);
 
   const tables = state.tables.map((tbl) => {
     const values: GridValues = { ...(tbl.values ?? {}) };
-    for (const taskId of targetTaskIds) {
-      if (values[taskId]) values[taskId] = {};
-    }
+    for (const taskId of targetTaskIds) if (values[taskId]) values[taskId] = {};
     return { ...tbl, values };
   });
 
@@ -539,7 +616,6 @@ export function resetByPeriod(state: TodoState, period: "DAILY" | "WEEKLY", hard
   return { ...state, tables, reset };
 }
 
-/** ✅ 버튼용: 지금 즉시 "일일 리셋 + 휴식게이지 갱신" 실행 */
 export function runDailyResetNow(state: TodoState, hard: boolean): TodoState {
   let next = state;
   next = applyDailyRestUpdate(next);
@@ -548,7 +624,6 @@ export function runDailyResetNow(state: TodoState, hard: boolean): TodoState {
   return next;
 }
 
-/** ✅ 자동 리셋(앱 켜고 6시가 지나면 자동 적용) */
 export function applyAutoResetIfNeeded(state: TodoState): TodoState {
   const now = new Date();
 
@@ -559,14 +634,11 @@ export function applyAutoResetIfNeeded(state: TodoState): TodoState {
 
   const lastDaily = next.reset.lastDailyResetAt ?? 0;
 
-  // ⚠️ 초기 설치/첫 실행처럼 lastDailyResetAt이 없으면,
-  // 과거를 “무한 누적”해버리니까 현재 앵커로 초기화만 해두는 게 안전함.
   if (lastDaily === 0) {
     next = { ...next, reset: { ...next.reset, lastDailyResetAt: dailyAnchor.getTime() } };
   } else {
     let cursor = getDailyResetAnchor(new Date(lastDaily), next.reset.dailyResetHour);
 
-    // cursor(마지막 적용 앵커) < dailyAnchor(현재 최신 앵커) 인 동안 하루씩 반복 적용
     while (cursor.getTime() < dailyAnchor.getTime()) {
       next = applyDailyRestUpdate(next);
       next = resetByPeriod(next, "DAILY", false);
@@ -575,16 +647,13 @@ export function applyAutoResetIfNeeded(state: TodoState): TodoState {
       next = { ...next, reset: { ...next.reset, lastDailyResetAt: cursor.getTime() } };
     }
   }
+
   const lastWeekly = next.reset.lastWeeklyResetAt ?? 0;
 
   if (lastWeekly === 0) {
     next = { ...next, reset: { ...next.reset, lastWeeklyResetAt: weeklyAnchor.getTime() } };
   } else {
-    let wcursor = getWeeklyResetAnchor(
-      new Date(lastWeekly),
-      next.reset.weeklyResetWeekday,
-      next.reset.dailyResetHour
-    );
+    let wcursor = getWeeklyResetAnchor(new Date(lastWeekly), next.reset.weeklyResetWeekday, next.reset.dailyResetHour);
 
     while (wcursor.getTime() < weeklyAnchor.getTime()) {
       next = resetByPeriod(next, "WEEKLY", false);
