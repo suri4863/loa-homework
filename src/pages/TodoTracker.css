@@ -1133,3 +1133,102 @@ body {
 .todo-table-scroll.raid-left-mode .todo-table thead th.todo-sticky-left {
   background: var(--soft) !important;
 }
+/* =========================
+   Friends UI
+   ========================= */
+.friendBox {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--soft-2);
+}
+
+.friendRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.friendLabel {
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 44px;
+}
+
+.friendCode {
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.friendInput {
+  height: 32px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  padding: 0 10px;
+  background: #fff;
+}
+
+.friendSelect {
+  height: 32px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  padding: 0 8px;
+  background: #fff;
+}
+
+/* RAID_LEFT 친구 보기 레이아웃 */
+.raidLeftToolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0 10px;
+}
+
+.friendRaidGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.friendRaidCard {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: #fff;
+  padding: 12px;
+  box-shadow: var(--shadow);
+}
+
+.friendRaidHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.friendRaidName {
+  font-weight: 900;
+}
+
+.friendRaidMeta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.friendRaidDone {
+  font-size: 13px;
+  color: #047857;
+  font-weight: 800;
+}
+
+.friendRaidList {
+  margin: 0;
+  padding-left: 18px;
+  color: #374151;
+  font-size: 13px;
+}

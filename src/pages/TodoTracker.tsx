@@ -4,6 +4,12 @@ import "./TodoTracker.css";
 import type { TodoState, Character, TaskRow, TodoTable, RestGauges, CellValue, GridValues } from "../store/todoStore";
 import BidPopover from "../components/BidPopover";
 
+// =========================
+// ✅ Vercel 서버리스 API 모드 (Vercel 환경변수 VITE_SERVER_MODE=1)
+// =========================
+const SERVER_MODE = (import.meta as any).env?.VITE_SERVER_MODE === "1";
+
+
 import {
   DEFAULT_TODO_STATE,
   LEVEL_PERIODS,
@@ -18,6 +24,9 @@ import {
   getTableById,
   getCellByTableId,
   setCellByTableId,
+  exportRaidLeftSnapshot,
+  importRaidLeftSnapshot,
+
 } from "../store/todoStore";
 
 // ✅ 계정 요일별 콘텐츠 (06:00 리셋 기준)
@@ -37,6 +46,7 @@ const WEEKLY_ACCOUNT_CONTENT: Record<number, { id: string; label: string }[]> = 
   5: [{ id: "FBOSS", label: "필보" }],
   6: [{ id: "CAGE", label: "카게" }],
 };
+
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");
@@ -147,6 +157,151 @@ export default function TodoTracker() {
   const [tick, forceTick] = useState(0);
   // ✅ 오른쪽에 같이 볼 표(기존 표 선택)
   const [secondaryTableId, setSecondaryTableId] = useState<string>("");
+
+  // =========================
+  // ✅ 친구/공유 (컴포넌트 스코프)
+  // =========================
+  const [raidLeftView, setRaidLeftView] = useState<"ME" | "FRIEND">("ME");
+  const [selectedFriendCode, setSelectedFriendCode] = useState<string>("");
+
+  // =========================
+  // ✅ 서버 친구/요청 (SERVER_MODE일 때만)
+  // =========================
+  const [incomingReqs, setIncomingReqs] = useState<
+    { id: number; fromFriendCode: string; createdAt: string }[]
+  >([]);
+  const [syncingFriends, setSyncingFriends] = useState(false);
+
+  async function apiFetch2(path: string, init?: RequestInit) {
+    const headers = new Headers(init?.headers || {});
+    headers.set("Content-Type", "application/json");
+    headers.set("x-friend-code", state.profile.friendCode);
+    headers.set("x-nickname", state.profile.friendCode);
+
+    const res = await fetch(path, { ...init, headers });
+
+    if (!res.ok) {
+      const msg = await res.text().catch(() => "");
+      throw new Error(`${res.status} ${msg || res.statusText}`);
+    }
+    if (res.status === 204) return null as any;
+    return res.json();
+  }
+
+  async function refreshFriends() {
+    if (!SERVER_MODE) return;
+    setSyncingFriends(true);
+    try {
+      const friends = await apiFetch2("/api/friends");
+      const incoming = await apiFetch2("/api/friend-requests/incoming");
+
+      setState((prev) => ({
+        ...prev,
+        friends: (friends as any[]).map((f) => ({
+          code: f.friendCode,
+          nickname: f.nickname || f.friendCode,
+          addedAt: Date.now(),
+        })),
+      }));
+
+      setIncomingReqs((incoming as any[]) ?? []);
+    } finally {
+      setSyncingFriends(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!SERVER_MODE) return;
+    refreshFriends().catch(() => { });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+
+
+  async function setShareMode(mode: "PUBLIC" | "PRIVATE") {
+    setState((prev) => ({ ...prev, profile: { ...prev.profile, shareMode: mode } }));
+    if (!SERVER_MODE) return;
+    await apiFetch2("/api/me/share-mode", {
+      method: "PUT",
+      body: JSON.stringify({ shareMode: mode }),
+    });
+  }
+
+  function addFriend(code: string, nickname: string) {
+    const c = code.trim();
+    const n = nickname.trim() || c;
+    if (!c) return;
+
+    setState((prev) => {
+      const exists = prev.friends.some((f) => f.code === c);
+      if (exists) return prev;
+      return { ...prev, friends: [...prev.friends, { code: c, nickname: n, addedAt: Date.now() }] };
+    });
+  }
+
+  function attachSnapshotToFriend(snapshotRaw: string) {
+    let snap;
+    try {
+      snap = importRaidLeftSnapshot(snapshotRaw);
+    } catch {
+      alert("스냅샷 JSON 형식이 올바르지 않아");
+      return;
+    }
+
+    if (snap.shareMode === "PRIVATE") {
+      alert("친구가 비공개로 설정했어. 확인 불가!");
+      return;
+    }
+
+    setState((prev) => {
+      const idx = prev.friends.findIndex((f) => f.code === snap.friendCode);
+      if (idx < 0) {
+        return {
+          ...prev,
+          friends: [
+            ...prev.friends,
+            { code: snap.friendCode, nickname: snap.friendCode, addedAt: Date.now(), lastSnapshot: snap },
+          ],
+        };
+      }
+      const nextFriends = [...prev.friends];
+      nextFriends[idx] = { ...nextFriends[idx], lastSnapshot: snap };
+      return { ...prev, friends: nextFriends };
+    });
+  }
+
+  function renderFriendRaidLeft() {
+    const f = state.friends.find((x) => x.code === selectedFriendCode);
+    if (!f) return <div className="todo-hint">친구를 선택해줘.</div>;
+    if (!f.lastSnapshot) return <div className="todo-hint">친구 스냅샷이 없어. 스냅샷을 붙여넣어줘.</div>;
+    if (f.lastSnapshot.shareMode === "PRIVATE") return <div className="todo-hint">친구가 비공개야.</div>;
+
+    return (
+      <div className="friendRaidGrid">
+        {f.lastSnapshot.data.map((row) => (
+          <div key={row.charName} className="friendRaidCard">
+            <div className="friendRaidHead">
+              <div className="friendRaidName">{row.charName}</div>
+              <div className="friendRaidMeta">
+                {row.clearedCount}/{row.totalCount}
+              </div>
+            </div>
+
+            {row.remainingRaids.length === 0 ? (
+              <div className="friendRaidDone">이번 주 레이드 끝!</div>
+            ) : (
+              <ul className="friendRaidList">
+                {row.remainingRaids.map((r) => (
+                  <li key={r}>{r}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
 
   useEffect(() => {
     const t = setInterval(() => forceTick((x) => x + 1), 30_000);
@@ -1035,7 +1190,7 @@ export default function TodoTracker() {
 
   const RAID_CATALOG: RaidDef[] = [
     { key: "ACT1", name: "1막", diffs: [{ name: "노말", minIlvl: 1660, gold: 11500 }, { name: "하드", minIlvl: 1680, gold: 18000 }] },
-    { key: "ACT2", name: "2막", diffs: [{ name: "노말", minIlvl: 1670, gold: 18000 }, { name: "하드", minIlvl: 1690, gold: 23000 }] },
+    { key: "ACT2", name: "2막", diffs: [{ name: "노말", minIlvl: 1670, gold: 16500 }, { name: "하드", minIlvl: 1690, gold: 23000 }] },
     { key: "ACT3", name: "3막", diffs: [{ name: "노말", minIlvl: 1680, gold: 21000 }, { name: "하드", minIlvl: 1700, gold: 27000 }] },
     { key: "ACT4", name: "4막", diffs: [{ name: "노말", minIlvl: 1700, gold: 33000 }, { name: "하드", minIlvl: 1720, gold: 42000 }] },
     { key: "FINAL", name: "종막", diffs: [{ name: "노말", minIlvl: 1710, gold: 40000 }, { name: "하드", minIlvl: 1730, gold: 52000 }] },
@@ -1501,7 +1656,7 @@ export default function TodoTracker() {
                               className={`section-row ${section === "일일 숙제" || section === "주간 교환" || section === "주간 레이드" ? "section-strong" : ""
                                 }`}
                             >
-                              <td className="todo-sticky-left section-left" colSpan={1 + characters.length}>
+                              <td className="todo-sticky-left section-left" colSpan={1 + visibleCharacters.length}>
                                 {section}
                               </td>
                             </tr>
@@ -1918,6 +2073,186 @@ export default function TodoTracker() {
               복원
             </button>
           </div>
+          <div className="todo-actions">
+            {/* 기존 버튼들 ... */}
+
+            <div className="divider" />
+
+            <div className="friendBox">
+              <div className="friendRow">
+                <div className="friendLabel">내 코드</div>
+                <code className="friendCode">{state.profile.friendCode}</code>
+                <button className="mini" onClick={() => navigator.clipboard.writeText(state.profile.friendCode)}>
+                  복사
+                </button>
+
+                {SERVER_MODE ? (
+                  <span className="pill weekly" style={{ marginLeft: 6 }}>
+                    서버모드
+                  </span>
+                ) : (
+                  <span className="pill daily" style={{ marginLeft: 6 }}>
+                    로컬모드
+                  </span>
+                )}
+              </div>
+
+              <div className="friendRow">
+                <div className="friendLabel">공개</div>
+                <select
+                  className="friendSelect"
+                  value={state.profile.shareMode}
+                  onChange={(e) => setShareMode(e.target.value as any).catch((err) => alert(String(err)))}
+                >
+                  <option value="PUBLIC">공개</option>
+                  <option value="PRIVATE">비공개</option>
+                </select>
+
+                {!SERVER_MODE ? (
+                  <button
+                    className="mini"
+                    onClick={() => {
+                      try {
+                        const json = exportRaidLeftSnapshot(state, state.activeTableId);
+                        navigator.clipboard.writeText(json);
+                        alert("남은 레이드 스냅샷을 클립보드에 복사했어!");
+                      } catch (e: any) {
+                        if (String(e?.message) === "PRIVATE_MODE") alert("비공개면 스냅샷을 만들 수 없어!");
+                        else alert("스냅샷 생성 실패");
+                      }
+                    }}
+                  >
+                    남은 레이드 스냅샷 복사
+                  </button>
+                ) : (
+                  <button
+                    className="mini"
+                    onClick={async () => {
+                      try {
+                        const json = exportRaidLeftSnapshot(state, state.activeTableId);
+                        await apiFetch2("/api/me/raid-left-snapshot", {
+                          method: "PUT",
+                          body: JSON.stringify({ snapshotJson: json }),
+                        });
+                        alert("서버에 남은 레이드 스냅샷 업로드 완료!");
+                      } catch (e: any) {
+                        alert(`업로드 실패: ${String(e)}`);
+                      }
+                    }}
+                  >
+                    남은 레이드 서버 업로드
+                  </button>
+                )}
+              </div>
+
+              {SERVER_MODE ? (
+                <>
+                  <div className="friendRow">
+                    <button
+                      className="mini"
+                      onClick={async () => {
+                        const toCode = (prompt("친구 코드(FC_...) 입력") ?? "").trim();
+                        if (!toCode) return;
+
+                        try {
+                          await apiFetch2("/api/friend-requests", {
+                            method: "POST",
+                            body: JSON.stringify({ toFriendCode: toCode }),
+                          });
+                          alert("친구요청 보냄!");
+                          await refreshFriends();
+                        } catch (e: any) {
+                          alert(`친구요청 실패: ${String(e)}`);
+                        }
+                      }}
+                    >
+                      친구요청 보내기
+                    </button>
+
+                    <button className="mini" disabled={syncingFriends} onClick={() => refreshFriends().catch((e) => alert(String(e)))}>
+                      {syncingFriends ? "동기화중..." : "서버 동기화"}
+                    </button>
+                  </div>
+
+                  {incomingReqs.length > 0 && (
+                    <div className="todo-hint" style={{ marginTop: 8 }}>
+                      <div>받은 친구요청</div>
+                      <ul>
+                        {incomingReqs.map((r) => (
+                          <li key={r.id}>
+                            {r.fromFriendCode}{" "}
+                            <button
+                              className="mini"
+                              onClick={async () => {
+                                try {
+                                  await apiFetch2(`/api/friend-requests/${r.id}/accept`, { method: "POST" });
+                                  await refreshFriends();
+                                } catch (e: any) {
+                                  alert(`수락 실패: ${String(e)}`);
+                                }
+                              }}
+                            >
+                              수락
+                            </button>{" "}
+                            <button
+                              className="mini"
+                              onClick={async () => {
+                                try {
+                                  await apiFetch2(`/api/friend-requests/${r.id}/reject`, { method: "POST" });
+                                  await refreshFriends();
+                                } catch (e: any) {
+                                  alert(`거절 실패: ${String(e)}`);
+                                }
+                              }}
+                            >
+                              거절
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="friendRow">
+                  <input
+                    className="friendInput"
+                    placeholder="친구 코드(FC_...)"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        const code = (e.currentTarget as HTMLInputElement).value;
+                        addFriend(code, code);
+                        (e.currentTarget as HTMLInputElement).value = "";
+                      }
+                    }}
+                  />
+                  <button
+                    className="mini"
+                    onClick={() => {
+                      const code = prompt("친구 코드(FC_...) 입력") ?? "";
+                      if (!code.trim()) return;
+                      const nick = prompt("친구 별명(선택)") ?? "";
+                      addFriend(code, nick);
+                    }}
+                  >
+                    친구 추가
+                  </button>
+
+                  <button
+                    className="mini"
+                    onClick={() => {
+                      const raw = prompt("친구가 준 스냅샷 JSON을 붙여넣어") ?? "";
+                      if (!raw.trim()) return;
+                      attachSnapshotToFriend(raw);
+                    }}
+                  >
+                    친구 스냅샷 붙여넣기
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
         </div>
 
         <div className="todo-tabs">
@@ -1936,6 +2271,57 @@ export default function TodoTracker() {
           <button className={`tab ${periodTab === "RAID_LEFT" ? "active" : ""}`} onClick={() => setPeriodTab("RAID_LEFT")}>
             남은 레이드
           </button>
+          {periodTab === "RAID_LEFT" && (
+            <div className="raidLeftToolbar">
+              <select
+                className="friendSelect"
+                value={raidLeftView}
+                onChange={(e) => setRaidLeftView(e.target.value as any)}
+              >
+                <option value="ME">내 남은 레이드</option>
+                <option value="FRIEND">친구 남은 레이드</option>
+              </select>
+
+              {raidLeftView === "FRIEND" && (
+                <>
+                  <select
+                    className="friendSelect"
+                    value={selectedFriendCode}
+                    onChange={(e) => setSelectedFriendCode(e.target.value)}
+                  >
+                    <option value="">친구 선택</option>
+                    {state.friends.map((f) => (
+                      <option key={f.code} value={f.code}>
+                        {f.nickname}
+                      </option>
+                    ))}
+                  </select>
+
+                  {SERVER_MODE && (
+                    <button
+                      className="mini"
+                      disabled={!selectedFriendCode}
+                      onClick={async () => {
+                        try {
+                          const data = await apiFetch2(
+                            `/api/raid-left-snapshot?friendCode=${encodeURIComponent(selectedFriendCode)}`
+                          );
+                          attachSnapshotToFriend((data as any).snapshotJson);
+                          alert("친구 남은 레이드 불러오기 완료!");
+                        } catch (e: any) {
+                          alert("불러오기 실패(비공개이거나 친구가 아닐 수 있어)");
+                        }
+                      }}
+                    >
+                      서버에서 불러오기
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+
 
 
           <div className="todo-progress">
@@ -1969,12 +2355,18 @@ export default function TodoTracker() {
 
           {/* ✅ 두 표 동시 렌더 */}
           {periodTab === "RAID_LEFT" ? (
-            <div className="raid-left-hscroll">
-              {/* ✅ 통합 표 1개만 렌더 */}
-              <div style={{ width: "max-content" }}>
-                {renderRaidLeftUnifiedTable()}
+            raidLeftView === "FRIEND" ? (
+              <div className="tablePane" style={{ height: "100%", minHeight: 0 }}>
+                <div className="paneHeader">
+                  <div className="paneTitle">친구 남은 레이드</div>
+                </div>
+                <div style={{ padding: 12 }}>{renderFriendRaidLeft()}</div>
               </div>
-            </div>
+            ) : (
+              <div className="raid-left-hscroll">
+                <div style={{ width: "max-content" }}>{renderRaidLeftUnifiedTable()}</div>
+              </div>
+            )
           ) : (
             <div
               style={{
