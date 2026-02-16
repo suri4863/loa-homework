@@ -23,10 +23,11 @@
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
+html,
 body {
   background: var(--bg);
-  color: var(--text);
 }
+
 
 /* =========================
    Theme: Dark
@@ -1535,4 +1536,10 @@ html[data-theme="dark"] .rest-input {
 
 .ticket-left-actions .use-btn:hover {
   background: var(--primary-soft);
+}
+html, body, #root {
+  background: var(--bg) !important;
+}
+html, body, #root {
+  background: var(--bg) !important;
 }
