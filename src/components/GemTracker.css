@@ -18,11 +18,32 @@
   --primary-soft: rgba(59, 130, 246, 0.15);
 }
 
+/* =========================
+   Dark Theme
+   ========================= */
+html[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #0b1220;
+  --panel: #0f172a;
+  --panel-soft: #111c33;
+  --border: #22304a;
+
+  --text: #e5e7eb;
+  --text-muted: #9ca3af;
+
+  --primary: #60a5fa;
+  --primary-soft: rgba(96, 165, 250, 0.18);
+}
+
 /* 전체 래퍼 */
-body {
+html,
+body,
+#root {
   background: var(--bg);
   color: var(--text);
 }
+
 
 /* 스크롤 래퍼 */
 .gem-table-wrap {
@@ -32,7 +53,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--panel);
-  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   padding-bottom: 6px;
 }
 
@@ -48,7 +69,8 @@ body {
 /* 공통 셀 (✅ 행 높이 여기서 결정됨: 이 값은 유지) */
 .gem-table th,
 .gem-table td {
-  padding: 12px 14px;                /* ✅ 행(칸) 높이 유지 */
+  padding: 12px 14px;
+  /* ✅ 행(칸) 높이 유지 */
   border-bottom: 1px solid var(--border);
   border-right: 1px solid var(--border);
   vertical-align: middle;
@@ -63,7 +85,7 @@ body {
 
 /* 행 hover */
 .gem-table tbody tr:hover td {
-  background: #f9fafb;
+  background: var(--panel-soft);
 }
 
 /* 헤더 */
@@ -126,7 +148,7 @@ body {
 /* ===== 버튼 공통 ===== */
 .ticket-btn,
 .head-actions button {
-  background: #ffffff;
+  background: var(--panel);
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: 10px;
@@ -146,17 +168,20 @@ body {
   width: 100%;
   min-width: 84px !important;
 
-  height: 28px !important;          /* ✅ 입력칸 높이 줄임 */
+  height: 28px !important;
+  /* ✅ 입력칸 높이 줄임 */
   min-height: 28px !important;
-  padding: 0 8px !important;        /* ✅ 입력칸 내부 여백 줄임 */
+  padding: 0 8px !important;
+  /* ✅ 입력칸 내부 여백 줄임 */
 
   border: 1px solid var(--border) !important;
   border-radius: 8px !important;
-  background: #ffffff !important;
+  background: var(--panel) !important;
   color: var(--text) !important;
 
   font-size: 13px !important;
-  line-height: 28px !important;     /* ✅ 세로 중앙 정렬 */
+  line-height: 28px !important;
+  /* ✅ 세로 중앙 정렬 */
   box-sizing: border-box !important;
   display: block;
   outline: none;
@@ -172,13 +197,199 @@ body {
 }
 
 /* (선택) 스크롤바 톤 */
-.gem-table-wrap::-webkit-scrollbar { height: 10px; }
-.gem-table-wrap::-webkit-scrollbar-track { background: #f1f3f6; border-radius: 999px; }
-.gem-table-wrap::-webkit-scrollbar-thumb { background: rgba(107,114,128,0.25); border-radius: 999px; }
-.gem-table-wrap::-webkit-scrollbar-thumb:hover { background: rgba(107,114,128,0.35); }
+.gem-table-wrap::-webkit-scrollbar {
+  height: 10px;
+}
+
+.gem-table-wrap::-webkit-scrollbar-track {
+  background: var(--panel-soft);
+  border-radius: 999px;
+}
+
+.gem-table-wrap::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.28);
+  border-radius: 999px;
+}
+
+.gem-table-wrap::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.40);
+}
+
 
 /* ✅ 컬럼 폭 줄이기 (기존 190px → 140px 정도) */
-.col-head{
-  min-width: 130px;   /* 원하는 정도로 130~150 사이로 조절 */
-  width: 130px;       /* ✅ 고정폭으로 더 확실하게 */
+.col-head {
+  min-width: 130px;
+  /* 원하는 정도로 130~150 사이로 조절 */
+  width: 130px;
+  /* ✅ 고정폭으로 더 확실하게 */
+}
+
+/* =========================
+   GemTracker layout classes (Tailwind 대체)
+   ========================= */
+
+.gemPage{
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.gemCard{
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  color: var(--text);
+}
+
+.gemTopRow{
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.gemBtnRow{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.gemBtn{
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.gemBtn:hover{
+  background: var(--panel-soft);
+}
+
+.gemH2{
+  font-size: 15px;
+  font-weight: 800;
+  margin: 0;
+  color: var(--text);
+}
+
+.gemMuted{
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.gemHint{
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+.gemBig{
+  margin-top: 6px;
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.gemMid{
+  margin-top: 6px;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.gemSummaryGrid{
+  display: grid;
+  gap: 12px;
+}
+@media (min-width: 768px){
+  .gemSummaryGrid{ grid-template-columns: repeat(3, 1fr); }
+}
+
+.gemTwoCol{
+  display: grid;
+  gap: 16px;
+}
+@media (min-width: 768px){
+  .gemTwoCol{ grid-template-columns: 1fr 1fr; }
+}
+
+.gemInnerTableWrap{
+  margin-top: 12px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.gemInnerTable{
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.gemInnerTable thead th{
+  background: var(--panel-soft);
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 800;
+}
+
+.gemInnerTable tbody td{
+  padding: 10px 12px;
+  color: var(--text);
+}
+
+.gemInnerTable .right{ text-align: right; }
+
+.rowEven{ background: var(--panel); }
+.rowOdd{ background: var(--panel-soft); }
+
+.fontMed{ font-weight: 700; }
+.fontBold{ font-weight: 900; }
+
+.topBorder{
+  border-top: 1px solid var(--border);
+}
+
+.gemPriceInput{
+  width: 100%;
+  height: 30px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  padding: 0 10px;
+  text-align: right;
+  outline: none;
+}
+
+.gemPriceInput:focus{
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+.gemNote{
+  margin-top: 12px;
+  border-radius: 12px;
+  background: var(--panel-soft);
+  padding: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* 메인 테이블 td 패딩 타이트 */
+.gemTdTight{
+  padding: 6px 8px !important;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
 }

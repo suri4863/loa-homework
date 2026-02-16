@@ -126,7 +126,7 @@ export default function BidPopover() {
             {/* 판매 수수료(자동) */}
             <div className="bid-field">
               <div className="bid-label">판매 수수료 (5%)</div>
-              <div className="bid-input" style={{ background: "#f9fafb" }}>
+              <div className="bid-input">
                 {formatGold(fee)}
               </div>
             </div>

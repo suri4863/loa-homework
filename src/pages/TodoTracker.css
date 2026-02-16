@@ -132,7 +132,8 @@ body {
 
 /* 제목(할 일 To-do) 색상 */
 .todo-title h2 {
-  color: var(--text);   /* 라이트: 진한 글자 / 다크: 흰색 계열 */
+  color: var(--text);
+  /* 라이트: 진한 글자 / 다크: 흰색 계열 */
 }
 
 
@@ -625,7 +626,8 @@ body {
    휴식게이지 입력(rest-input) 다크/화이트 대응
    ========================= */
 .rest-input {
-  width: 52px;            /* 지금처럼 작게 유지 */
+  width: 52px;
+  /* 지금처럼 작게 유지 */
   height: 28px;
   border-radius: 10px;
 
@@ -872,8 +874,77 @@ html[data-theme="dark"] .rest-input {
   cursor: grabbing;
 }
 
+/* ===== BidPopover 스타일(다크모드 대응) ===== */
+/* ===== BidPopover 스타일(테마 변수 기반 / 다크모드 대응) ===== */
+.bid-popover-wrap {
+  display: inline-block;
+}
+
+
+.bid-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.bid-popover-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.bid-popover-close {
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  padding: 4px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.bid-popover-close:hover {
+  background: var(--soft);
+}
+
+.bid-popover-body {
+  display: grid;
+  gap: 10px;
+}
+
+.bid-field {
+  display: grid;
+  gap: 6px;
+}
+
+.bid-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* 입력 */
+.bid-input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  outline: none;
+
+  background: var(--card);
+  color: var(--text);
+}
+
+.bid-input:focus {
+  border-color: color-mix(in srgb, var(--primary) 70%, var(--border));
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+/* 수수료/결과 박스 */
+/* =========================
+   BidCalculator / BidPopover (theme vars)
+   ========================= */
 /*계산기*/
-/* ===== BidPopover 스타일(필수) ===== */
+/* ===== BidPopover 스타일(다크/라이트 공용: var 기반) ===== */
 .bid-popover-wrap {
   display: inline-block;
 }
@@ -882,11 +953,15 @@ html[data-theme="dark"] .rest-input {
   position: fixed;
   z-index: 99999;
   width: 340px;
-  background: #fff;
-  border: 1px solid #e5e7eb;
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
   border-radius: 16px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
   padding: 12px;
+
+  /* ✅ 폼 기본 테마도 다크에 맞추기 */
+  color-scheme: light dark;
 }
 
 .bid-popover-head {
@@ -904,13 +979,14 @@ html[data-theme="dark"] .rest-input {
 .bid-popover-close {
   border: 0;
   background: transparent;
+  color: var(--text);
   padding: 4px 6px;
   border-radius: 8px;
   cursor: pointer;
 }
 
 .bid-popover-close:hover {
-  background: #f3f4f6;
+  background: var(--soft-2);
 }
 
 .bid-popover-body {
@@ -925,19 +1001,25 @@ html[data-theme="dark"] .rest-input {
 
 .bid-label {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--muted);
 }
 
+/* ✅ 핵심: input 흰색 방지 */
 .bid-input {
   width: 100%;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 10px 12px;
   outline: none;
+
+  background: var(--soft);
+  color: var(--text);
+  -webkit-text-fill-color: var(--text); /* ✅ 크롬 계열에서 글자색 튐 방지 */
 }
 
 .bid-input:focus {
-  border-color: #9ca3af;
+  border-color: rgba(96, 165, 250, 0.65);
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.18);
 }
 
 .bid-row {
@@ -947,29 +1029,32 @@ html[data-theme="dark"] .rest-input {
 
 .bid-chip {
   flex: 1;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 8px 0;
-  background: #fff;
+  background: var(--card);
+  color: var(--text);
   cursor: pointer;
 }
 
 .bid-chip:hover {
-  background: #f9fafb;
+  background: var(--soft-2);
 }
 
 .bid-chip.active {
-  background: #111827;
-  color: #fff;
-  border-color: #111827;
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--text);
 }
 
 .bid-box {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 10px 12px;
   display: grid;
   gap: 6px;
+  background: var(--soft);
+  color: var(--text);
 }
 
 .bid-line {
@@ -979,7 +1064,7 @@ html[data-theme="dark"] .rest-input {
 }
 
 .bid-line span {
-  color: #6b7280;
+  color: var(--muted);
 }
 
 .bid-copy {
@@ -987,7 +1072,7 @@ html[data-theme="dark"] .rest-input {
   border: 0;
   border-radius: 16px;
   padding: 12px 14px;
-  background: #111827;
+  background: var(--primary);
   color: #fff;
   font-weight: 700;
   cursor: pointer;
@@ -996,6 +1081,8 @@ html[data-theme="dark"] .rest-input {
 .bid-copy:hover {
   filter: brightness(1.05);
 }
+
+
 
 /*표 2개*/
 .tt-grid {
@@ -1537,9 +1624,15 @@ html[data-theme="dark"] .rest-input {
 .ticket-left-actions .use-btn:hover {
   background: var(--primary-soft);
 }
-html, body, #root {
+
+html,
+body,
+#root {
   background: var(--bg) !important;
 }
-html, body, #root {
+
+html,
+body,
+#root {
   background: var(--bg) !important;
 }

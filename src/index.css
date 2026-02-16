@@ -1,3 +1,148 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* =========================
+   Global Theme Tokens (App 전체 공통)
+   - navBtn / appHeader / appFooter에서 var() 쓰므로 전역에 있어야 함
+   ========================= */
+:root {
+    --bg: #f6f7fb;
+    --card: #ffffff;
+    --soft: #f2f4f8;
+    --soft-2: #f8fafc;
+    --border: #e5e7eb;
+
+    --text: #111827;
+    --muted: #6b7280;
+
+    --primary: #3b82f6;
+    --primary-soft: rgba(59, 130, 246, 0.16);
+
+    --warning: #f59e0b;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+html[data-theme="dark"] {
+    color-scheme: dark;
+
+    --bg: #0b1220;
+    --card: #0f172a;
+    --soft: #111c33;
+    --soft-2: #0b1328;
+    --border: #22304a;
+
+    --text: #e5e7eb;
+    --muted: #9ca3af;
+
+    --primary: #60a5fa;
+    --primary-soft: rgba(96, 165, 250, 0.18);
+
+    --warning: #fbbf24;
+    --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+/* body 전역 적용 */
+html,
+body {
+    background: var(--bg);
+    color: var(--text);
+}
+
+/* =========================
+   App Header / Footer
+   ========================= */
+.appHeader {
+    background: color-mix(in srgb, var(--card) 82%, transparent) !important;
+    color: var(--text) !important;
+    border-color: var(--border) !important;
+    /* tailwind border-b와 함께 사용 */
+}
+
+html[data-theme="dark"] .appHeader {
+    border-bottom: 1px solid var(--border) !important;
+}
+
+.appFooter {
+    background: var(--card) !important;
+    color: var(--text) !important;
+    border-color: var(--border) !important;
+}
+
+.appTitle {
+    color: var(--text) !important;
+}
+
+.appSub {
+    color: var(--muted) !important;
+}
+
+/* =========================
+   Top nav buttons (보석/숙제)
+   - 라이트/다크 둘 다 "버튼"처럼 확실히 보이게 대비 강화
+   ========================= */
+/* =========================
+   Top nav buttons (보석/숙제)
+   - 확실한 버튼 스타일 (대비 강함)
+   ========================= */
+
+/* =========================
+   Top nav buttons (보석/숙제)
+   - 라이트에서 테두리가 너무 연해 안 보이는 문제 해결
+   ========================= */
+.navBtn {
+    /* ✅ 라이트에서 확실히 보이도록 border를 더 진하게 */
+    border: 1px solid rgba(17, 24, 39, 0.18) !important;
+    /* #111827 계열 */
+    background: var(--card) !important;
+    color: var(--text) !important;
+
+    border-radius: 12px !important;
+    padding: 8px 14px !important;
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    line-height: 1 !important;
+
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+
+    text-decoration: none !important;
+    cursor: pointer;
+
+    /* ✅ 버튼 느낌 */
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+
+    transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 80ms ease, box-shadow 160ms ease;
+}
+
+.navBtn:hover {
+    background: var(--soft) !important;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.10) !important;
+}
+
+.navBtn:active {
+    transform: translateY(1px);
+}
+
+.navBtnIdle {
+    opacity: 0.98;
+}
+
+/* ✅ 활성(선택된 탭): 파란 버튼 확실히 */
+.navBtnActive {
+    background: var(--primary) !important;
+    border-color: var(--primary) !important;
+    color: #fff !important;
+}
+
+/* ✅ 다크에서는 테두리/배경을 다크 전용으로 */
+html[data-theme="dark"] .navBtn {
+    border-color: rgba(255, 255, 255, 0.14) !important;
+    background: #111c33 !important;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35) !important;
+}
+
+html[data-theme="dark"] .navBtn:hover {
+    background: #162443 !important;
+}
