@@ -172,21 +172,44 @@ export default function TodoTracker() {
   >([]);
   const [syncingFriends, setSyncingFriends] = useState(false);
 
-async function apiFetch2(path: string, init?: RequestInit) {
-  const headers = new Headers(init?.headers || {});
-  headers.set("Content-Type", "application/json");
-  headers.set("x-friend-code", state.profile.friendCode);
-  headers.set("x-nickname", state.profile.friendCode);
+  async function apiFetch2(path: string, init?: RequestInit) {
+    // ✅ "/api/..." 형태 강제 (상대경로로 /todo/api... 되는 것 방지)
+    const safePath =
+      /^https?:\/\//.test(path) ? path : path.startsWith("/") ? path : `/${path}`;
 
-  const res = await fetch(path, { ...init, headers });
+    const headers = new Headers(init?.headers || {});
+    headers.set("Content-Type", "application/json");
+    headers.set("x-friend-code", state.profile.friendCode);
+    headers.set("x-nickname", state.profile.friendCode); // 내 닉네임 없으니 friendCode로 통일
 
-  if (!res.ok) {
-    const msg = await res.text().catch(() => "");
-    throw new Error(`${res.status} ${msg || res.statusText}`);
+    const res = await fetch(safePath, { ...init, headers });
+
+    if (!res.ok) {
+      const ct = res.headers.get("content-type") || "";
+      const bodyText = await res.text().catch(() => "");
+
+      // ✅ 서버가 JSON 에러를 주면 더 보기 좋게
+      if (ct.includes("application/json")) {
+        try {
+          const j = JSON.parse(bodyText);
+          throw new Error(`${res.status} ${j?.error || j?.message || JSON.stringify(j)}`);
+        } catch {
+          // JSON 파싱 실패 시 텍스트로 fallback
+        }
+      }
+
+      throw new Error(`${res.status} ${bodyText || res.statusText}`);
+    }
+
+    if (res.status === 204) return null as any;
+
+    // ✅ 성공 응답도 content-type 보고 처리
+    const ct = res.headers.get("content-type") || "";
+    if (ct.includes("application/json")) return res.json();
+    return (await res.text()) as any;
   }
-  if (res.status === 204) return null as any;
-  return res.json();
-}
+
+
 
   async function refreshFriends() {
     if (!SERVER_MODE) return;

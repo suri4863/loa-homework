@@ -15,7 +15,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "OPTIONS") return res.status(204).end();
 
   try {
-    if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+    if (req.method !== "POST") {
+      // ✅ 이게 보이면 "진짜 이 함수가 실행된 것" 확정
+      return res.status(405).json({
+        ok: false,
+        error: "Method Not Allowed",
+        method: req.method,
+        url: req.url,
+      });
+    }
+
     const me = await getMe(req);
 
     const id = Number(req.query.id);
