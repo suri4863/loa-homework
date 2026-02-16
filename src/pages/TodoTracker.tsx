@@ -172,21 +172,21 @@ export default function TodoTracker() {
   >([]);
   const [syncingFriends, setSyncingFriends] = useState(false);
 
-  async function apiFetch2(path: string, init?: RequestInit) {
-    const headers = new Headers(init?.headers || {});
-    headers.set("Content-Type", "application/json");
-    headers.set("x-friend-code", state.profile.friendCode);
-    headers.set("x-nickname", state.profile.friendCode);
+async function apiFetch2(path: string, init?: RequestInit) {
+  const headers = new Headers(init?.headers || {});
+  headers.set("Content-Type", "application/json");
+  headers.set("x-friend-code", state.profile.friendCode);
+  headers.set("x-nickname", state.profile.friendCode);
 
-    const res = await fetch(path, { ...init, headers });
+  const res = await fetch(path, { ...init, headers });
 
-    if (!res.ok) {
-      const msg = await res.text().catch(() => "");
-      throw new Error(`${res.status} ${msg || res.statusText}`);
-    }
-    if (res.status === 204) return null as any;
-    return res.json();
+  if (!res.ok) {
+    const msg = await res.text().catch(() => "");
+    throw new Error(`${res.status} ${msg || res.statusText}`);
   }
+  if (res.status === 204) return null as any;
+  return res.json();
+}
 
   async function refreshFriends() {
     if (!SERVER_MODE) return;
