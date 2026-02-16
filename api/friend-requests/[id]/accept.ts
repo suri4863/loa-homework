@@ -3,9 +3,7 @@ import { sql } from "@vercel/postgres";
 import { getMe, sendError, sendJson } from "../../_db.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  console.log("METHOD=", req.method, "URL=", req.url);
-  res.setHeader("x-method-debug", req.method || "none");
-
+  
   // ✅ CORS (로컬/다른 도메인에서 호출 시 preflight 통과)
   res.setHeader("Access-Control-Allow-Origin", req.headers.origin ?? "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");

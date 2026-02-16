@@ -1191,18 +1191,19 @@ body {
 }
 
 .friendRaidGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  display: flex;
   gap: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 10px;
+  -webkit-overflow-scrolling: touch;
+  flex-wrap: nowrap;
 }
 
 .friendRaidCard {
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: #fff;
-  padding: 12px;
-  box-shadow: var(--shadow);
+  flex: 0 0 260px;
 }
+
 
 .friendRaidHead {
   display: flex;

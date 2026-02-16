@@ -180,7 +180,7 @@ export default function TodoTracker() {
     const headers = new Headers(init?.headers || {});
     headers.set("Content-Type", "application/json");
     headers.set("x-friend-code", state.profile.friendCode);
-    headers.set("x-nickname", state.profile.friendCode); // 내 닉네임 없으니 friendCode로 통일
+    headers.set("x-nickname", (state.profile.nickname || "").trim() || state.profile.friendCode);
 
     const res = await fetch(safePath, { ...init, headers });
 
@@ -215,23 +215,36 @@ export default function TodoTracker() {
     if (!SERVER_MODE) return;
     setSyncingFriends(true);
     try {
-      const friends = await apiFetch2("/api/friends");
-      const incoming = await apiFetch2("/api/friend-requests/incoming");
+      const friendsRes = await apiFetch2("/api/friends");
+      const incomingRes = await apiFetch2("/api/friend-requests/incoming");
+
+      const friendsArr = Array.isArray(friendsRes)
+        ? friendsRes
+        : Array.isArray((friendsRes as any)?.friends)
+          ? (friendsRes as any).friends
+          : [];
+
+      const incomingArr = Array.isArray(incomingRes)
+        ? incomingRes
+        : Array.isArray((incomingRes as any)?.incoming)
+          ? (incomingRes as any).incoming
+          : [];
 
       setState((prev) => ({
         ...prev,
-        friends: (friends as any[]).map((f) => ({
-          code: f.friendCode,
-          nickname: f.nickname || f.friendCode,
+        friends: friendsArr.map((f: any) => ({
+          code: String(f.friendCode ?? f.code ?? "").trim(),
+          nickname: String(f.nickname ?? f.alias ?? f.friendCode ?? f.code ?? "").trim(),
           addedAt: Date.now(),
-        })),
+        })).filter((x: any) => x.code),
       }));
 
-      setIncomingReqs((incoming as any[]) ?? []);
+      setIncomingReqs(incomingArr);
     } finally {
       setSyncingFriends(false);
     }
   }
+
 
   useEffect(() => {
     if (!SERVER_MODE) return;
@@ -249,6 +262,18 @@ export default function TodoTracker() {
       body: JSON.stringify({ shareMode: mode }),
     });
   }
+  async function setMyNickname(nickname: string) {
+    setState((prev) => ({ ...prev, profile: { ...prev.profile, nickname } }));
+
+    if (!SERVER_MODE) return;
+
+    // ✅ 서버에 닉네임 저장 엔드포인트가 있다면 이걸 사용
+    await apiFetch2("/api/me/nickname", {
+      method: "PUT",
+      body: JSON.stringify({ nickname }),
+    });
+  }
+
 
   function addFriend(code: string, nickname: string) {
     const c = code.trim();
@@ -2103,6 +2128,13 @@ export default function TodoTracker() {
 
             <div className="friendBox">
               <div className="friendRow">
+                <input
+                  className="friendInput w-32"
+                  placeholder="내 닉네임(표시명)"
+                  value={state.profile.nickname ?? ""}
+                  onChange={(e) => setMyNickname(e.target.value)}
+                />
+
                 <div className="friendLabel">내 코드</div>
                 <code className="friendCode">{state.profile.friendCode}</code>
                 <button className="mini" onClick={() => navigator.clipboard.writeText(state.profile.friendCode)}>

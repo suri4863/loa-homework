@@ -67,7 +67,9 @@ export type ShareMode = "PUBLIC" | "PRIVATE";
 export type UserProfile = {
   friendCode: string; // 내 공유 코드
   shareMode: ShareMode; // 공개/비공개
+  nickname?: string; // (선택) 내 표시용 닉네임
 };
+
 
 export type RaidLeftSnapshotPayload = {
   version: 1;
@@ -239,6 +241,7 @@ function makeDefaultState(): TodoState {
   const profile: UserProfile = {
     friendCode: `FC_${Math.random().toString(16).slice(2, 8)}_${Date.now().toString(16)}`,
     shareMode: "PUBLIC",
+    nickname: "",
   };
 
   return {
@@ -264,6 +267,7 @@ function normalizeState(parsed: any): TodoState {
       };
     } else {
       st.profile.shareMode = st.profile.shareMode ?? "PUBLIC";
+      st.profile.nickname = (st.profile.nickname ?? "").toString();
     }
     if (!Array.isArray((st as any).friends)) (st as any).friends = [];
 
@@ -480,41 +484,88 @@ export function exportStateToJson(state: TodoState): string {
 // =========================
 // ✅ 친구 스냅샷 (남은 레이드만 공유)
 // =========================
-export function exportRaidLeftSnapshot(state: TodoState, tableId: string): string {
+// tableId를 주면 해당 표만, 없으면(또는 "ALL") 모든 표의 캐릭터 합산
+export function exportRaidLeftSnapshot(state: TodoState, tableId?: string | "ALL"): string {
   if (state.profile?.shareMode === "PRIVATE") throw new Error("PRIVATE_MODE");
 
-  const table = getTableById(state, tableId);
+  // 레이드 Top3 계산용 카탈로그(프론트와 동일 컨셉)
+  const RAID_CATALOG = [
+    { name: "1막", diffs: [{ minIlvl: 1660, gold: 11500 }, { minIlvl: 1680, gold: 18000 }] },
+    { name: "2막", diffs: [{ minIlvl: 1670, gold: 16500 }, { minIlvl: 1690, gold: 23000 }] },
+    { name: "3막", diffs: [{ minIlvl: 1680, gold: 21000 }, { minIlvl: 1700, gold: 27000 }] },
+    { name: "4막", diffs: [{ minIlvl: 1700, gold: 33000 }, { minIlvl: 1720, gold: 42000 }] },
+    { name: "종막", diffs: [{ minIlvl: 1710, gold: 40000 }, { minIlvl: 1730, gold: 52000 }] },
+    { name: "세르카", diffs: [{ minIlvl: 1710, gold: 35000 }, { minIlvl: 1730, gold: 44000 }, { minIlvl: 1740, gold: 54000 }] },
+  ];
+
+  const parseIlvl = (raw?: string) => {
+    if (!raw) return 0;
+    const n = Number(String(raw).replace(/,/g, "").trim());
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const getTop3RaidSet = (ilvl: number) => {
+    const candidates = RAID_CATALOG
+      .map((r) => {
+        const best = r.diffs.filter((d) => ilvl >= d.minIlvl).sort((a, b) => b.gold - a.gold)[0];
+        return best ? { raid: r.name, gold: best.gold } : null;
+      })
+      .filter(Boolean) as { raid: string; gold: number }[];
+
+    candidates.sort((a, b) => b.gold - a.gold);
+    return new Set(candidates.slice(0, 3).map((x) => x.raid));
+  };
 
   const weeklyRaidTasks = state.tasks.filter(
     (t) => t.period === "WEEKLY" && t.section === "주간 레이드" && t.cellType === "CHECK"
   );
-  const totalCount = weeklyRaidTasks.length;
 
-  const data = table.characters.map((ch) => {
-    const remaining: string[] = [];
-    let clearedCount = 0;
+  const isAll = !tableId || tableId === "ALL";
+  const tables = isAll ? state.tables : [getTableById(state, tableId)];
+  const rows = [];
 
-    for (const task of weeklyRaidTasks) {
-      const v = table.values?.[task.id]?.[ch.id];
-      const cleared = v?.type === "CHECK" && v.checked === true;
-      if (cleared) clearedCount++;
-      else remaining.push(task.title);
+  for (const table of tables) {
+    for (const ch of table.characters) {
+      const ilvl = parseIlvl(ch.itemLevel);
+      const top3 = getTop3RaidSet(ilvl);
+      const top3Tasks = weeklyRaidTasks.filter((t) => top3.has(t.title));
+      if (top3Tasks.length === 0) continue;
+
+      const remaining: string[] = [];
+      let clearedCount = 0;
+
+      for (const task of top3Tasks) {
+        const v = table.values?.[task.id]?.[ch.id];
+        const cleared = v?.type === "CHECK" && v.checked === true;
+        if (cleared) clearedCount++;
+        else remaining.push(task.title);
+      }
+
+      // ✅ 상위3개를 "안 한 캐릭"만 남김
+      if (remaining.length === 0) continue;
+
+      rows.push({
+        charName: ch.name,
+        tableName: table.name,
+        ilvl,
+        remainingRaids: remaining,
+        clearedCount,
+        totalCount: top3Tasks.length,
+      });
     }
+  }
 
-    return { charName: ch.name, remainingRaids: remaining, clearedCount, totalCount };
-  });
-
-  const payload: RaidLeftSnapshotPayload = {
-    version: 1,
+  return JSON.stringify({
+    version: 2,
     friendCode: state.profile.friendCode,
+    nickname: state.profile.nickname || undefined,
     shareMode: state.profile.shareMode,
     exportedAt: Date.now(),
-    tableName: table.name,
-    data,
-  };
-
-  return JSON.stringify(payload);
+    scope: isAll ? "ALL_TABLES" : "ONE_TABLE",
+    data: rows,
+  });
 }
+
 
 export function importRaidLeftSnapshot(raw: string): RaidLeftSnapshotPayload {
   const parsed = JSON.parse(raw);

@@ -55,9 +55,14 @@ export default function App() {
       {/* ✅ 여백/폭을 보석 탭 기준으로 통일 */}
       <main className={`${shell} py-6`}>
         <Routes>
+          <Route path="/" element={<Navigate to="/todo" replace />} />   {/* ✅ 추가 */}
           <Route path="/gems" element={<GemTracker />} />
           <Route path="/todo" element={<TodoTracker />} />
+
+          {/* (선택) 없는 경로는 todo로 보내기 */}
+          <Route path="*" element={<Navigate to="/todo" replace />} />
         </Routes>
+
       </main>
 
 

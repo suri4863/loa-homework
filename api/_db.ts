@@ -76,7 +76,7 @@ export async function getMe(req: VercelRequest): Promise<MeUserRow> {
   const existed = await sql<MeUserRow>`select id, friend_code, nickname, share_mode from users where friend_code=${friendCode}`;
   if (existed.rowCount && existed.rows[0]) {
     // 닉네임이 비어있으면 채워주기
-    if (!existed.rows[0].nickname && nickname) {
+    if (nickname && existed.rows[0].nickname !== nickname) {
       await sql`update users set nickname=${nickname} where id=${existed.rows[0].id}`;
     }
     return existed.rows[0];
