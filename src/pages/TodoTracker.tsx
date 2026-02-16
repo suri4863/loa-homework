@@ -2426,7 +2426,10 @@ export default function TodoTracker() {
                             const data = await apiFetch2(
                               `/api/raid-left-snapshot?friendCode=${encodeURIComponent(selectedFriendCode)}`
                             );
-                            attachSnapshotToFriend((data as any).snapshotJson, selectedFriendCode);
+                            const snapAny = (data as any).snapshotJson;
+                            const snapStr = typeof snapAny === "string" ? snapAny : JSON.stringify(snapAny);
+                            attachSnapshotToFriend(snapStr, selectedFriendCode);
+
                             alert("친구 남은 레이드 불러오기 완료!");
                           } catch (e: any) {
                             alert("불러오기 실패(비공개이거나 친구가 아닐 수 있어)");

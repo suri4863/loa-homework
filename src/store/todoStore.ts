@@ -570,11 +570,41 @@ export function exportRaidLeftSnapshot(state: TodoState, tableId?: string | "ALL
 }
 
 
-export function importRaidLeftSnapshot(raw: string): RaidLeftSnapshotPayload {
-  const parsed = JSON.parse(raw);
-  if (parsed?.version !== 1) throw new Error("INVALID_SNAPSHOT");
+export function importRaidLeftSnapshot(raw: any): RaidLeftSnapshotPayload {
+  let parsed: any = raw;
+
+  // 1) raw가 객체면 그대로 사용
+  if (typeof parsed !== "string") {
+    // do nothing
+  } else {
+    // 2) 문자열이면 trim 후 parse 시도
+    let s = parsed.trim();
+
+    // 빈 문자열 방어
+    if (!s) throw new Error("INVALID_SNAPSHOT");
+
+    // 2-1) 1차 파싱
+    parsed = JSON.parse(s);
+
+    // 2-2) 만약 결과가 또 문자열이면(이중 stringified) 한 번 더 파싱
+    if (typeof parsed === "string") {
+      parsed = JSON.parse(parsed);
+    }
+  }
+
+  const v = Number(parsed?.version ?? 1);
+  if (v !== 1 && v !== 2) throw new Error("INVALID_SNAPSHOT");
+
+  // 최소 필드 보정
+  parsed.friendCode = String(parsed.friendCode ?? "").trim();
+  parsed.shareMode = parsed.shareMode === "PRIVATE" ? "PRIVATE" : "PUBLIC";
+  parsed.exportedAt = typeof parsed.exportedAt === "number" ? parsed.exportedAt : Date.now();
+  parsed.data = Array.isArray(parsed.data) ? parsed.data : [];
+
   return parsed as RaidLeftSnapshotPayload;
 }
+
+
 
 /** Reset anchor 계산 */
 function getDailyResetAnchor(now: Date, dailyHour: number): Date {
