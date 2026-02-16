@@ -2188,11 +2188,16 @@ export default function TodoTracker() {
                     className="mini"
                     onClick={async () => {
                       try {
-                        const json = exportRaidLeftSnapshot(state, state.activeTableId);
+                        const snapshotJson = exportRaidLeftSnapshot(state, state.activeTableId);
+
                         await apiFetch2("/api/me/raid-left-snapshot", {
                           method: "PUT",
-                          body: JSON.stringify({ snapshotJson: json }),
+                          body: JSON.stringify({
+                            nickname: state.profile.nickname,
+                            snapshotJson,
+                          }),
                         });
+
                         alert("서버에 남은 레이드 스냅샷 업로드 완료!");
                       } catch (e: any) {
                         alert(`업로드 실패: ${String(e)}`);
