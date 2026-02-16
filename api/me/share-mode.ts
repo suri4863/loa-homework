@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { sql } from "@vercel/postgres";
-import { getMe, sendError, sendJson } from "../_db.js";
+import { getMe, sendError, sendJson } from "../_db";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
