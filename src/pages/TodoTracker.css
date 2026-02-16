@@ -1266,6 +1266,20 @@ body {
   opacity: 0.95;
 }
 
+/*닉네임*/
+.nick-status.saved {
+  color: #22c55e;
+  font-weight: 600;
+}
+
+.nick-status.saving {
+  color: #3b82f6;
+}
+
+.nick-status.error {
+  color: #ef4444;
+}
+
 /*내 코드*/
 .friendRow {
   display: flex;

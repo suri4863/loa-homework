@@ -339,7 +339,7 @@ export default function TodoTracker() {
       nickSaveTimerRef.current = window.setTimeout(() => {
         setNickSaveState("saved");
         // 1.2초 뒤 표시 원복
-        window.setTimeout(() => setNickSaveState("idle"), 1200);
+        // window.setTimeout(() => setNickSaveState("idle"), 1200);
       }, 400);
       return;
     }
@@ -2341,7 +2341,10 @@ export default function TodoTracker() {
                   className="friendInput"
                   placeholder="닉네임(친구에게 표시)"
                   value={(state.profile.nickname ?? "")}
-                  onChange={(e) => setMyNickname(e.target.value)}
+                  onChange={(e) => {
+                    setNickSaveState("saving");   // ← 수정 시작하면 바로 저장중 표시
+                    setMyNickname(e.target.value);
+                  }}
                 />
                 {/* ✅ 저장 상태 표시 */}
                 {nickSaveState !== "idle" && (
