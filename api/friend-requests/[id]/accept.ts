@@ -3,6 +3,14 @@ import { sql } from "@vercel/postgres";
 import { getMe, sendError, sendJson } from "../../_db.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // ✅ CORS (로컬/다른 도메인에서 호출 시 preflight 통과)
+  res.setHeader("Access-Control-Allow-Origin", req.headers.origin ?? "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type,x-friend-code,x-nickname");
+  res.setHeader("Access-Control-Max-Age", "86400");
+
+  if (req.method === "OPTIONS") return res.status(204).end();
+
   try {
     if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
     const me = await getMe(req);
