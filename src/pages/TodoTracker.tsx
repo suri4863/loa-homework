@@ -1370,6 +1370,48 @@ export default function TodoTracker() {
   }
 
   // =========================
+  // ✅ 상단: 주간 레이드 골드 진행률(모든 표/모든 캐릭 · Top3 기준)
+  //   - total: 각 캐릭 Top3 합산
+  //   - done : 체크된 레이드(Top3에 해당)만 합산
+  // =========================
+  const weeklyRaidTaskIdByTitle = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const t of state.tasks) {
+      if (t.period !== "WEEKLY") continue;
+      if ((t.section ?? "").trim() !== "주간 레이드") continue;
+      if (t.cellType !== "CHECK") continue;
+      map.set((t.title ?? "").trim(), t.id);
+    }
+    return map;
+  }, [state.tasks]);
+
+  const weeklyGoldProgress = useMemo(() => {
+    let total = 0;
+    let done = 0;
+
+    for (const tbl of state.tables) {
+      for (const ch of tbl.characters as any[]) {
+        const ilvl = parseIlvl(ch.itemLevel);
+        if (!Number.isFinite(ilvl) || ilvl <= 0) continue;
+
+        const r = calcWeeklyTop3Gold(ilvl);
+        total += r.sum;
+
+        for (const x of r.top3) {
+          const taskId = weeklyRaidTaskIdByTitle.get((x.raid ?? "").trim());
+          if (!taskId) continue;
+          const cell = getCellByTableId(state, tbl.id, taskId, ch.id);
+          if (cell && cell.type === "CHECK" && cell.checked) done += x.gold;
+        }
+      }
+    }
+
+    const pct = total > 0 ? Math.floor((done / total) * 100) : 0;
+    return { done, total, pct };
+  }, [state, weeklyRaidTaskIdByTitle]);
+
+
+  // =========================
   // 2-표 렌더링 (핵심)
   // =========================
   function setRestGaugeInTable(tableId: string, chId: string, next: { chaos?: number; guardian?: number }) {
@@ -2094,7 +2136,11 @@ export default function TodoTracker() {
             <h2>할 일 (To-do)</h2>
             <div className="todo-sub">로스터 기반 숙제 체크리스트 · 일일 6시 / 주간 수요일 6시 자동 초기화</div>
 
-            <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <div
+              className="topbar-controls"
+              style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}
+            >
+
               <select
                 value={state.activeTableId}
                 onChange={(e) => setActiveTableId(e.target.value)}
@@ -2147,6 +2193,23 @@ export default function TodoTracker() {
                 표 삭제
               </button>
             </div>
+            {/* ✅ 주간 레이드 골드 진행률(Top3 합산) */}
+            <div className="weeklyGoldSummary" title="모든 표/모든 캐릭터의 주간 레이드 Top3(아이템레벨 기준) 합산">
+              <div className="weeklyGoldTitle">주간 레이드 골드</div>
+
+              {weeklyGoldProgress.total > 0 ? (
+                <div className="weeklyGoldValue">
+                  <span className="weeklyGoldNum">{weeklyGoldProgress.done.toLocaleString()}</span>
+                  <span className="weeklyGoldSep">/</span>
+                  <span className="weeklyGoldNum">{weeklyGoldProgress.total.toLocaleString()}</span>
+                  <span className="weeklyGoldPct">({weeklyGoldProgress.pct}%)</span>
+                </div>
+              ) : (
+                <div className="weeklyGoldValue muted">아이템레벨 입력 필요</div>
+              )}
+
+              <div className="weeklyGoldHint">Top3 기준 · 체크하면 자동 합산</div>
+            </div>
           </div>
 
           <div className="todo-actions">
@@ -2188,13 +2251,6 @@ export default function TodoTracker() {
 
             <div className="friendBox">
               <div className="friendRow">
-                <input
-                  className="friendInput w-32"
-                  placeholder="내 닉네임(표시명)"
-                  value={state.profile.nickname ?? ""}
-                  onChange={(e) => setMyNickname(e.target.value)}
-                />
-
                 <div className="friendLabel">내 코드</div>
                 <code className="friendCode">{state.profile.friendCode}</code>
                 <button className="mini" onClick={() => navigator.clipboard.writeText(state.profile.friendCode)}>

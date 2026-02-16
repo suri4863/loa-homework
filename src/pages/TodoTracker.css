@@ -56,21 +56,35 @@ body {
   overflow: auto;
 }
 
-
 /* ---------- Topbar ---------- */
 .todo-topbar {
+  position: relative;          /* ✅ 중앙 배치 기준점 */
+
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
   align-items: flex-end;
   justify-content: space-between;
 
-  padding: 14px;
+  padding: 14px 14px 42px;     /* ✅ 아래 공간 확보 (중앙 카드 자리) */
   border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--card);
   box-shadow: var(--shadow);
 }
+
+/* 왼쪽 영역은 무조건 세로로 쌓이게 고정 */
+.todo-title{
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+/* 버튼/셀렉트 줄을 아래로 확실히 내림 */
+.topbar-controls{
+  margin-top: 60px !important;   /* ✅ 아래 여백 확보 */
+}
+
 
 .todo-title h2 {
   margin: 0;
@@ -91,6 +105,75 @@ body {
   gap: 8px;
   align-items: center;
 }
+
+/* =========================
+   Weekly Gold Summary (FINAL)
+   ========================= */
+
+.todo-topbar{
+  position: relative;   /* 중앙 absolute 기준 */
+  padding: 14px 14px 20px;   /* 아래 여백 최소 확보 */
+}
+
+/* 중앙 고정 카드 */
+.weeklyGoldSummary{
+  position: absolute;
+  left: 50%;
+  top: 10px;                 /* 버튼과 적당히 간격 */
+  transform: translateX(-50%);
+  z-index: 3;
+
+  min-width: 260px;
+  padding: 10px 16px;
+
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--soft);
+  text-align: center;
+}
+
+/* 제목 */
+.weeklyGoldTitle{
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+/* 값 */
+.weeklyGoldValue{
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  color: var(--text);
+}
+
+.weeklyGoldValue.muted{
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.weeklyGoldNum{
+  font-variant-numeric: tabular-nums;
+}
+
+.weeklyGoldSep{
+  margin: 0 6px;
+  opacity: 0.6;
+}
+
+.weeklyGoldPct{
+  margin-left: 6px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.weeklyGoldHint{
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+
 
 .btn {
   border: 1px solid var(--border);
@@ -1133,6 +1216,7 @@ body {
 .todo-table-scroll.raid-left-mode .todo-table thead th.todo-sticky-left {
   background: var(--soft) !important;
 }
+
 /* =========================
    Friends UI
    ========================= */
@@ -1233,6 +1317,7 @@ body {
   color: #374151;
   font-size: 13px;
 }
+
 /* 친구 남은 레이드: 캐릭터 칼럼 가로 나열 */
 .raidLeftColsWrap {
   width: 100%;
@@ -1251,7 +1336,8 @@ body {
 }
 
 .raidLeftColCard {
-  flex: 0 0 170px;           /* 칼럼 너비 */
+  flex: 0 0 170px;
+  /* 칼럼 너비 */
   border: 1px solid var(--border);
   border-radius: 16px;
   background: #fff;
