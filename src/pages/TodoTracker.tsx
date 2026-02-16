@@ -180,7 +180,11 @@ export default function TodoTracker() {
     const headers = new Headers(init?.headers || {});
     headers.set("Content-Type", "application/json");
     headers.set("x-friend-code", state.profile.friendCode);
-    headers.set("x-nickname", (state.profile.nickname || "").trim() || state.profile.friendCode);
+
+    const nickRaw = ((state.profile.nickname || "").trim() || state.profile.friendCode).trim();
+    // ✅ 한글/특수문자 헤더 안전 전송
+    headers.set("x-nickname", encodeURIComponent(nickRaw));
+
 
     const res = await fetch(safePath, { ...init, headers });
 

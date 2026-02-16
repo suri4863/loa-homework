@@ -63,7 +63,16 @@ export type MeUserRow = {
 
 export async function getMe(req: VercelRequest): Promise<MeUserRow> {
   const friendCode = String(req.headers["x-friend-code"] ?? "").trim();
-  const nickname = String(req.headers["x-nickname"] ?? friendCode).trim() || friendCode;
+
+  const rawNick = String(req.headers["x-nickname"] ?? friendCode).trim() || friendCode;
+  // ✅ 프론트에서 encodeURIComponent로 보내므로 복원
+  let nickname = rawNick;
+  try {
+    nickname = decodeURIComponent(rawNick);
+  } catch {
+    // decode 실패하면 raw 그대로 사용
+  }
+  nickname = String(nickname).trim() || friendCode;
 
   if (!friendCode) {
     const err = new Error("Missing x-friend-code");
