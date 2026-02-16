@@ -500,9 +500,11 @@ export function exportRaidLeftSnapshot(state: TodoState, tableId?: string | "ALL
 
   const parseIlvl = (raw?: string) => {
     if (!raw) return 0;
-    const n = Number(String(raw).replace(/,/g, "").trim());
+    const cleaned = String(raw).replace(/,/g, "").replace(/[^0-9.]/g, "").trim();
+    const n = Number(cleaned);
     return Number.isFinite(n) ? n : 0;
   };
+
 
   const getTop3RaidSet = (ilvl: number) => {
     const candidates = RAID_CATALOG
@@ -542,15 +544,16 @@ export function exportRaidLeftSnapshot(state: TodoState, tableId?: string | "ALL
       }
 
       // ✅ 상위3개를 "안 한 캐릭"만 남김
-      if (remaining.length === 0) continue;
+      const remainingTop3 = remaining.slice(0, 3);
+      if (remainingTop3.length === 0) continue;
 
       rows.push({
         charName: ch.name,
         tableName: table.name,
         ilvl,
-        remainingRaids: remaining,
+        remainingRaids: remainingTop3,   // ✅ 최대 3개
         clearedCount,
-        totalCount: top3Tasks.length,
+        totalCount: Math.min(3, top3Tasks.length), // ✅ 최대 3
       });
     }
   }

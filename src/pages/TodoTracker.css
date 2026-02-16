@@ -1233,3 +1233,51 @@ body {
   color: #374151;
   font-size: 13px;
 }
+/* 남은 레이드(친구): 가로 표 */
+.raidLeftTableWrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.raidLeftTable {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
+.raidLeftTable th,
+.raidLeftTable td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.raidLeftTable thead th {
+  background: var(--soft-2);
+  font-weight: 800;
+}
+
+.raidLeftTable tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.raidLeftCharCell {
+  min-width: 140px;
+}
+
+.raidLeftCharName {
+  font-weight: 900;
+}
+
+.raidLeftCharSub {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--muted);
+}

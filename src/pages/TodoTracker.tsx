@@ -213,6 +213,53 @@ export default function TodoTracker() {
     return (await res.text()) as any;
   }
 
+  function renderFriendRaidLeftTable() {
+    if (!selectedFriendCode) return <div className="todo-hint">친구를 선택해줘.</div>;
+
+    const f = state.friends.find((x) => x.code === selectedFriendCode);
+    if (!f) return <div className="todo-hint">친구를 찾을 수 없어.</div>;
+
+    const snap: any = (f as any).lastSnapshot;
+    if (!snap?.data) return <div className="todo-hint">친구 스냅샷이 없어. (서버에서 불러오기 또는 스냅샷 붙여넣기)</div>;
+    if (snap.shareMode === "PRIVATE") return <div className="todo-hint">친구가 비공개야.</div>;
+
+    const rows = (snap.data as any[]).map((row) => {
+      const r1 = row.remainingRaids?.[0] ?? "-";
+      const r2 = row.remainingRaids?.[1] ?? "-";
+      const r3 = row.remainingRaids?.[2] ?? "-";
+      return { ...row, r1, r2, r3 };
+    });
+
+    if (!rows.length) return <div className="todo-hint">✅ 친구는 상위 3개 레이드가 전부 완료된 상태야.</div>;
+
+    return (
+      <div className="raidLeftTableWrap">
+        <table className="raidLeftTable">
+          <thead>
+            <tr>
+              <th>캐릭터명</th>
+              <th>레이드1</th>
+              <th>레이드2</th>
+              <th>레이드3</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row: any) => (
+              <tr key={`${row.tableName ?? ""}-${row.charName}`}>
+                <td className="raidLeftCharCell">
+                  <div className="raidLeftCharName">{row.charName}</div>
+                  {row.tableName ? <div className="raidLeftCharSub">{row.tableName}</div> : null}
+                </td>
+                <td>{row.r1}</td>
+                <td>{row.r2}</td>
+                <td>{row.r3}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
 
 
   async function refreshFriends() {
@@ -291,7 +338,7 @@ export default function TodoTracker() {
     });
   }
 
-  function attachSnapshotToFriend(snapshotRaw: string) {
+  function attachSnapshotToFriend(snapshotRaw: string, targetFriendCode?: string) {
     let snap;
     try {
       snap = importRaidLeftSnapshot(snapshotRaw);
@@ -305,14 +352,22 @@ export default function TodoTracker() {
       return;
     }
 
+    // ✅ 서버에서 불러온 친구코드를 우선 사용 (없으면 스냅샷 주인 코드)
+    const codeToAttach = (targetFriendCode || snap.friendCode || "").trim();
+
+    if (!codeToAttach) {
+      alert("친구 코드가 비어있어. 스냅샷을 연결할 수 없어");
+      return;
+    }
+
     setState((prev) => {
-      const idx = prev.friends.findIndex((f) => f.code === snap.friendCode);
+      const idx = prev.friends.findIndex((f) => f.code === codeToAttach);
       if (idx < 0) {
         return {
           ...prev,
           friends: [
             ...prev.friends,
-            { code: snap.friendCode, nickname: snap.friendCode, addedAt: Date.now(), lastSnapshot: snap },
+            { code: codeToAttach, nickname: codeToAttach, addedAt: Date.now(), lastSnapshot: snap },
           ],
         };
       }
@@ -2370,7 +2425,7 @@ export default function TodoTracker() {
                           const data = await apiFetch2(
                             `/api/raid-left-snapshot?friendCode=${encodeURIComponent(selectedFriendCode)}`
                           );
-                          attachSnapshotToFriend((data as any).snapshotJson);
+                          attachSnapshotToFriend((data as any).snapshotJson, selectedFriendCode);
                           alert("친구 남은 레이드 불러오기 완료!");
                         } catch (e: any) {
                           alert("불러오기 실패(비공개이거나 친구가 아닐 수 있어)");
@@ -2380,13 +2435,16 @@ export default function TodoTracker() {
                       서버에서 불러오기
                     </button>
                   )}
+
+                  {/* ✅ 버튼 바깥에서 렌더링 */}
+                  <div style={{ marginTop: 12 }}>
+                    {renderFriendRaidLeftTable()}
+                  </div>
                 </>
               )}
+
             </div>
           )}
-
-
-
 
           <div className="todo-progress">
             진행률(체크/카운터): <b>{totalProgress.done}</b> / {totalProgress.all}
