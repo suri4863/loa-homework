@@ -79,11 +79,17 @@ export type RaidLeftSnapshotPayload = {
   tableName: string;
   data: Array<{
     charName: string;
+    /** (선택) 캐릭터 아이템레벨/레벨 표시용. 예: "1720" */
+    charItemLevel?: string;
+    /** (선택) 표 이름(캐릭터가 속한 표) */
+    tableName?: string;
     remainingRaids: string[];
     clearedCount: number;
     totalCount: number;
   }>;
+
 };
+
 
 export type FriendEntry = {
   code: string; // 친구의 friendCode
@@ -505,6 +511,33 @@ export function exportRaidLeftSnapshot(state: TodoState, tableId?: string | "ALL
     return Number.isFinite(n) ? n : 0;
   };
 
+  type DiffName = "노말" | "하드" | "나이트메어";
+
+  const diffNameByIndex = (raidName: string, idx: number): DiffName => {
+    // 2단계 레이드는 [노말, 하드]
+    // 3단계 레이드는 [노말, 하드, 나이트메어] (세르카)
+    if (raidName === "세르카") return (["노말", "하드", "나이트메어"][idx] as DiffName);
+    return (["노말", "하드"][idx] as DiffName);
+  };
+
+  const pickBestDiffLabel = (raidName: string, ilvl: number) => {
+    const raid = RAID_CATALOG.find((r) => r.name === raidName);
+    if (!raid) return null;
+
+    const eligible = raid.diffs
+      .map((d, idx) => ({ ...d, idx }))
+      .filter((d) => ilvl >= d.minIlvl)
+      .sort((a, b) => b.gold - a.gold)[0];
+
+    if (!eligible) return null;
+    return diffNameByIndex(raidName, eligible.idx);
+  };
+
+  const withDiff = (raidName: string, ilvl: number) => {
+    const label = pickBestDiffLabel(raidName, ilvl);
+    return label ? `${raidName} ${label}` : raidName;
+  };
+
 
   const getTop3RaidSet = (ilvl: number) => {
     const candidates = RAID_CATALOG
@@ -544,16 +577,17 @@ export function exportRaidLeftSnapshot(state: TodoState, tableId?: string | "ALL
       }
 
       // ✅ 상위3개를 "안 한 캐릭"만 남김
-      const remainingTop3 = remaining.slice(0, 3);
+      const remainingTop3 = remaining.slice(0, 3).map((r) => withDiff(r, ilvl));
       if (remainingTop3.length === 0) continue;
 
       rows.push({
         charName: ch.name,
+        charItemLevel: ch.itemLevel || "",     // ✅ 표시용(문자열)
         tableName: table.name,
-        ilvl,
-        remainingRaids: remainingTop3,   // ✅ 최대 3개
+        ilvl,                                  // ✅ 계산용(숫자)
+        remainingRaids: remainingTop3,
         clearedCount,
-        totalCount: Math.min(3, top3Tasks.length), // ✅ 최대 3
+        totalCount: Math.min(3, top3Tasks.length),
       });
     }
   }

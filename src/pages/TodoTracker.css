@@ -58,7 +58,8 @@ body {
 
 /* ---------- Topbar ---------- */
 .todo-topbar {
-  position: relative;          /* ✅ 중앙 배치 기준점 */
+  position: relative;
+  /* ✅ 중앙 배치 기준점 */
 
   display: flex;
   flex-wrap: wrap;
@@ -66,7 +67,8 @@ body {
   align-items: flex-end;
   justify-content: space-between;
 
-  padding: 14px 14px 42px;     /* ✅ 아래 공간 확보 (중앙 카드 자리) */
+  padding: 14px 14px 42px;
+  /* ✅ 아래 공간 확보 (중앙 카드 자리) */
   border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--card);
@@ -74,15 +76,16 @@ body {
 }
 
 /* 왼쪽 영역은 무조건 세로로 쌓이게 고정 */
-.todo-title{
+.todo-title {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
 }
 
 /* 버튼/셀렉트 줄을 아래로 확실히 내림 */
-.topbar-controls{
-  margin-top: 60px !important;   /* ✅ 아래 여백 확보 */
+.topbar-controls {
+  margin-top: 60px !important;
+  /* ✅ 아래 여백 확보 */
 }
 
 
@@ -110,16 +113,19 @@ body {
    Weekly Gold Summary (FINAL)
    ========================= */
 
-.todo-topbar{
-  position: relative;   /* 중앙 absolute 기준 */
-  padding: 14px 14px 20px;   /* 아래 여백 최소 확보 */
+.todo-topbar {
+  position: relative;
+  /* 중앙 absolute 기준 */
+  padding: 14px 14px 20px;
+  /* 아래 여백 최소 확보 */
 }
 
 /* 중앙 고정 카드 */
-.weeklyGoldSummary{
+.weeklyGoldSummary {
   position: absolute;
   left: 50%;
-  top: 10px;                 /* 버튼과 적당히 간격 */
+  top: 10px;
+  /* 버튼과 적당히 간격 */
   transform: translateX(-50%);
   z-index: 3;
 
@@ -133,41 +139,41 @@ body {
 }
 
 /* 제목 */
-.weeklyGoldTitle{
+.weeklyGoldTitle {
   font-size: 12px;
   color: var(--muted);
   margin-bottom: 4px;
 }
 
 /* 값 */
-.weeklyGoldValue{
+.weeklyGoldValue {
   font-size: 15px;
   font-weight: 800;
   letter-spacing: -0.2px;
   color: var(--text);
 }
 
-.weeklyGoldValue.muted{
+.weeklyGoldValue.muted {
   color: var(--muted);
   font-weight: 700;
 }
 
-.weeklyGoldNum{
+.weeklyGoldNum {
   font-variant-numeric: tabular-nums;
 }
 
-.weeklyGoldSep{
+.weeklyGoldSep {
   margin: 0 6px;
   opacity: 0.6;
 }
 
-.weeklyGoldPct{
+.weeklyGoldPct {
   margin-left: 6px;
   color: var(--muted);
   font-weight: 700;
 }
 
-.weeklyGoldHint{
+.weeklyGoldHint {
   margin-top: 4px;
   font-size: 11px;
   color: var(--muted);
@@ -1220,102 +1226,43 @@ body {
 /* =========================
    Friends UI
    ========================= */
-.friendBox {
-  display: grid;
-  gap: 8px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--soft-2);
-}
-
-.friendRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.friendLabel {
-  font-size: 12px;
-  color: var(--muted);
-  min-width: 44px;
-}
-
-.friendCode {
-  padding: 3px 8px;
-  border-radius: 10px;
-  background: #fff;
-  border: 1px solid var(--border);
-  font-size: 12px;
-}
-
-.friendInput {
-  height: 32px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  padding: 0 10px;
-  background: #fff;
-}
-
-.friendSelect {
-  height: 32px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  padding: 0 8px;
-  background: #fff;
-}
-
-/* RAID_LEFT 친구 보기 레이아웃 */
-.raidLeftToolbar {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin: 8px 0 10px;
-}
-
-.friendRaidGrid {
-  display: flex;
-  gap: 12px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding-bottom: 10px;
-  -webkit-overflow-scrolling: touch;
-  flex-wrap: nowrap;
-}
-
-.friendRaidCard {
-  flex: 0 0 260px;
-}
-
-
 .friendRaidHead {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;   /* baseline → 위로 정렬 */
   justify-content: space-between;
+  gap: 10px;
   margin-bottom: 10px;
 }
 
 .friendRaidName {
   font-weight: 900;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.friendRaidIlvl {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .friendRaidMeta {
   font-size: 12px;
   color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  white-space: nowrap;
 }
 
-.friendRaidDone {
-  font-size: 13px;
-  color: #047857;
-  font-weight: 800;
-}
-
-.friendRaidList {
-  margin: 0;
-  padding-left: 18px;
-  color: #374151;
-  font-size: 13px;
+.friendRaidTable {
+  font-size: 11px;
+  opacity: 0.95;
 }
 
 /* 친구 남은 레이드: 캐릭터 칼럼 가로 나열 */

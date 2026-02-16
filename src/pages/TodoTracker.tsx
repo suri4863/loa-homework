@@ -389,9 +389,18 @@ export default function TodoTracker() {
         {f.lastSnapshot.data.map((row) => (
           <div key={row.charName} className="friendRaidCard">
             <div className="friendRaidHead">
-              <div className="friendRaidName">{row.charName}</div>
+              <div className="friendRaidName">
+                {row.charName}
+                {!!row.charItemLevel && (
+                  <span className="friendRaidIlvl">{row.charItemLevel}</span>
+                )}
+              </div>
+
               <div className="friendRaidMeta">
-                {row.clearedCount}/{row.totalCount}
+                {!!row.tableName && <div className="friendRaidTable">{row.tableName}</div>}
+                <div>
+                  {row.clearedCount}/{row.totalCount}
+                </div>
               </div>
             </div>
 
