@@ -159,6 +159,25 @@ export default function TodoTracker() {
   const [secondaryTableId, setSecondaryTableId] = useState<string>("");
 
   // =========================
+  // ✅ Theme (light/dark)
+  // =========================
+  type Theme = "light" | "dark";
+  const THEME_KEY = "todoTheme";
+
+  const [theme, setTheme] = useState<Theme>(() => {
+    const saved = localStorage.getItem(THEME_KEY);
+    return saved === "dark" ? "dark" : "light";
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem(THEME_KEY, theme);
+  }, [theme]);
+
+  const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
+
+
+  // =========================
   // ✅ 친구/공유 (컴포넌트 스코프)
   // =========================
   const [raidLeftView, setRaidLeftView] = useState<"ME" | "FRIEND">("ME");
@@ -2149,23 +2168,27 @@ export default function TodoTracker() {
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(0,0,0,0.4)",
+            background: "rgba(0,0,0,0.45)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             zIndex: 9999,
+            padding: 14, // ✅ 모바일에서 가장자리 안 잘리게
           }}
         >
           <div
             style={{
               width: 340,
-              background: "white",
+              maxWidth: "100%",
+              background: "var(--card)",
+              color: "var(--text)",
+              border: "1px solid var(--border)",
               borderRadius: 12,
               padding: 14,
-              boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
+              boxShadow: "var(--shadow)",
             }}
           >
-            <div style={{ fontWeight: 700, marginBottom: 8 }}>아제나 만료 시각 입력</div>
+            <div style={{ fontWeight: 800, marginBottom: 8 }}>아제나 만료 시각 입력</div>
 
             <input
               type="datetime-local"
@@ -2175,9 +2198,12 @@ export default function TodoTracker() {
                 width: "100%",
                 height: 34,
                 borderRadius: 10,
-                border: "1px solid #e5e7eb",
+                border: "1px solid var(--border)",
+                background: "var(--card)",
+                color: "var(--text)",
                 padding: "0 10px",
                 fontSize: 13,
+                outline: "none",
               }}
             />
 
@@ -2190,7 +2216,7 @@ export default function TodoTracker() {
               </button>
             </div>
 
-            <div style={{ fontSize: 12, opacity: 0.75, marginTop: 10, lineHeight: 1.35 }}>
+            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 10, lineHeight: 1.35 }}>
               * 지정한 시각이 지나면 자동으로 체크가 해제됩니다. (새로고침/재접속/탭 복귀 시에도 자동 보정)
             </div>
           </div>
@@ -2214,12 +2240,15 @@ export default function TodoTracker() {
                 style={{
                   height: 34,
                   borderRadius: 10,
-                  border: "1px solid #e5e7eb",
+                  border: "1px solid var(--border)",
+                  background: "var(--card)",
+                  color: "var(--text)",
                   padding: "0 10px",
                   fontSize: 13,
                 }}
                 title="왼쪽(편집) 표 선택"
               >
+
                 {state.tables.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name}
@@ -2234,7 +2263,9 @@ export default function TodoTracker() {
                 style={{
                   height: 34,
                   borderRadius: 10,
-                  border: "1px solid #e5e7eb",
+                  border: "1px solid var(--border)",
+                  background: "var(--card)",
+                  color: "var(--text)",
                   padding: "0 10px",
                   fontSize: 13,
                 }}
@@ -2296,6 +2327,9 @@ export default function TodoTracker() {
             <BidPopover />
 
             <div className="divider" />
+
+
+            <div className="divider" />
             <button className="btn" onClick={() => manualReset("DAILY")}>
               일일 초기화
             </button>
@@ -2309,6 +2343,10 @@ export default function TodoTracker() {
             </button>
             <button className="btn" onClick={doImport}>
               복원
+            </button>
+            
+            <button className="btn" onClick={toggleTheme} title="테마 전환">
+              {theme === "dark" ? "☀️ 화이트모드" : "🌙 다크모드"}
             </button>
           </div>
           <div className="todo-actions">
