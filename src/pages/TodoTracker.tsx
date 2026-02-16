@@ -213,7 +213,7 @@ export default function TodoTracker() {
     return (await res.text()) as any;
   }
 
-  function renderFriendRaidLeftTable() {
+  function renderFriendRaidLeftColumns() {
     if (!selectedFriendCode) return <div className="todo-hint">친구를 선택해줘.</div>;
 
     const f = state.friends.find((x) => x.code === selectedFriendCode);
@@ -223,43 +223,44 @@ export default function TodoTracker() {
     if (!snap?.data) return <div className="todo-hint">친구 스냅샷이 없어. (서버에서 불러오기 또는 스냅샷 붙여넣기)</div>;
     if (snap.shareMode === "PRIVATE") return <div className="todo-hint">친구가 비공개야.</div>;
 
-    const rows = (snap.data as any[]).map((row) => {
-      const r1 = row.remainingRaids?.[0] ?? "-";
-      const r2 = row.remainingRaids?.[1] ?? "-";
-      const r3 = row.remainingRaids?.[2] ?? "-";
-      return { ...row, r1, r2, r3 };
-    });
+    const rows = (snap.data as any[]).filter((r) => r && r.charName);
 
     if (!rows.length) return <div className="todo-hint">✅ 친구는 상위 3개 레이드가 전부 완료된 상태야.</div>;
 
     return (
-      <div className="raidLeftTableWrap">
-        <table className="raidLeftTable">
-          <thead>
-            <tr>
-              <th>캐릭터명</th>
-              <th>레이드1</th>
-              <th>레이드2</th>
-              <th>레이드3</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row: any) => (
-              <tr key={`${row.tableName ?? ""}-${row.charName}`}>
-                <td className="raidLeftCharCell">
-                  <div className="raidLeftCharName">{row.charName}</div>
-                  {row.tableName ? <div className="raidLeftCharSub">{row.tableName}</div> : null}
-                </td>
-                <td>{row.r1}</td>
-                <td>{row.r2}</td>
-                <td>{row.r3}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="raidLeftColsWrap">
+        <div className="raidLeftColsTitle">친구 남은 레이드</div>
+
+        <div className="raidLeftCols">
+          {rows.map((row: any) => {
+            const raids = Array.isArray(row.remainingRaids) ? row.remainingRaids.slice(0, 3) : [];
+            return (
+              <div key={`${row.tableName ?? ""}-${row.charName}`} className="raidLeftColCard">
+                <div className="raidLeftColHeader">
+                  <div className="raidLeftColName">{row.charName}</div>
+                  {/* 필요 없으면 아래 줄 삭제 */}
+                  {row.tableName ? <div className="raidLeftColSub">{row.tableName}</div> : null}
+                </div>
+
+                <div className="raidLeftColBody">
+                  {raids.length ? (
+                    raids.map((r: string, i: number) => (
+                      <div key={`${row.charName}-${i}`} className="raidLeftColItem">
+                        {r}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="raidLeftColEmpty">-</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     );
   }
+
 
 
   async function refreshFriends() {
@@ -2371,7 +2372,6 @@ export default function TodoTracker() {
               )}
             </div>
           </div>
-
         </div>
 
         <div className="todo-tabs">
@@ -2391,59 +2391,55 @@ export default function TodoTracker() {
             남은 레이드
           </button>
           {periodTab === "RAID_LEFT" && (
-            <div className="raidLeftToolbar">
-              <select
-                className="friendSelect"
-                value={raidLeftView}
-                onChange={(e) => setRaidLeftView(e.target.value as any)}
-              >
-                <option value="ME">내 남은 레이드</option>
-                <option value="FRIEND">친구 남은 레이드</option>
-              </select>
+            <>
+              <div className="raidLeftToolbar">
+                <select
+                  className="friendSelect"
+                  value={raidLeftView}
+                  onChange={(e) => setRaidLeftView(e.target.value as any)}
+                >
+                  <option value="ME">내 남은 레이드</option>
+                  <option value="FRIEND">친구 남은 레이드</option>
+                </select>
 
-              {raidLeftView === "FRIEND" && (
-                <>
-                  <select
-                    className="friendSelect"
-                    value={selectedFriendCode}
-                    onChange={(e) => setSelectedFriendCode(e.target.value)}
-                  >
-                    <option value="">친구 선택</option>
-                    {state.friends.map((f) => (
-                      <option key={f.code} value={f.code}>
-                        {f.nickname}
-                      </option>
-                    ))}
-                  </select>
-
-                  {SERVER_MODE && (
-                    <button
-                      className="mini"
-                      disabled={!selectedFriendCode}
-                      onClick={async () => {
-                        try {
-                          const data = await apiFetch2(
-                            `/api/raid-left-snapshot?friendCode=${encodeURIComponent(selectedFriendCode)}`
-                          );
-                          attachSnapshotToFriend((data as any).snapshotJson, selectedFriendCode);
-                          alert("친구 남은 레이드 불러오기 완료!");
-                        } catch (e: any) {
-                          alert("불러오기 실패(비공개이거나 친구가 아닐 수 있어)");
-                        }
-                      }}
+                {raidLeftView === "FRIEND" && (
+                  <>
+                    <select
+                      className="friendSelect"
+                      value={selectedFriendCode}
+                      onChange={(e) => setSelectedFriendCode(e.target.value)}
                     >
-                      서버에서 불러오기
-                    </button>
-                  )}
+                      <option value="">친구 선택</option>
+                      {state.friends.map((f) => (
+                        <option key={f.code} value={f.code}>
+                          {f.nickname}
+                        </option>
+                      ))}
+                    </select>
 
-                  {/* ✅ 버튼 바깥에서 렌더링 */}
-                  <div style={{ marginTop: 12 }}>
-                    {renderFriendRaidLeftTable()}
-                  </div>
-                </>
-              )}
-
-            </div>
+                    {SERVER_MODE && (
+                      <button
+                        className="mini"
+                        disabled={!selectedFriendCode}
+                        onClick={async () => {
+                          try {
+                            const data = await apiFetch2(
+                              `/api/raid-left-snapshot?friendCode=${encodeURIComponent(selectedFriendCode)}`
+                            );
+                            attachSnapshotToFriend((data as any).snapshotJson, selectedFriendCode);
+                            alert("친구 남은 레이드 불러오기 완료!");
+                          } catch (e: any) {
+                            alert("불러오기 실패(비공개이거나 친구가 아닐 수 있어)");
+                          }
+                        }}
+                      >
+                        서버에서 불러오기
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            </>
           )}
 
           <div className="todo-progress">
@@ -2482,7 +2478,7 @@ export default function TodoTracker() {
                 <div className="paneHeader">
                   <div className="paneTitle">친구 남은 레이드</div>
                 </div>
-                <div style={{ padding: 12 }}>{renderFriendRaidLeft()}</div>
+                <div style={{ padding: 12 }}>{renderFriendRaidLeftColumns()}</div> {/* ✅ 교체 */}
               </div>
             ) : (
               <div className="raid-left-hscroll">
@@ -2506,7 +2502,6 @@ export default function TodoTracker() {
             </div>
           )}
         </div>
-
 
 
         <div className="todo-hint">

@@ -1233,51 +1233,59 @@ body {
   color: #374151;
   font-size: 13px;
 }
-/* 남은 레이드(친구): 가로 표 */
-.raidLeftTableWrap {
+/* 친구 남은 레이드: 캐릭터 칼럼 가로 나열 */
+.raidLeftColsWrap {
   width: 100%;
-  overflow-x: auto;
 }
 
-.raidLeftTable {
-  width: 100%;
-  min-width: 520px;
-  border-collapse: separate;
-  border-spacing: 0;
+.raidLeftColsTitle {
+  font-weight: 900;
+  margin: 8px 0 10px;
+}
+
+.raidLeftCols {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  padding: 8px 4px;
+}
+
+.raidLeftColCard {
+  flex: 0 0 170px;           /* 칼럼 너비 */
   border: 1px solid var(--border);
   border-radius: 16px;
-  overflow: hidden;
   background: #fff;
   box-shadow: var(--shadow);
+  padding: 12px;
 }
 
-.raidLeftTable th,
-.raidLeftTable td {
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
-  font-size: 13px;
-  white-space: nowrap;
+.raidLeftColHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
 }
 
-.raidLeftTable thead th {
-  background: var(--soft-2);
-  font-weight: 800;
-}
-
-.raidLeftTable tbody tr:last-child td {
-  border-bottom: 0;
-}
-
-.raidLeftCharCell {
-  min-width: 140px;
-}
-
-.raidLeftCharName {
+.raidLeftColName {
   font-weight: 900;
 }
 
-.raidLeftCharSub {
-  margin-top: 2px;
+.raidLeftColSub {
   font-size: 11px;
+  color: var(--muted);
+}
+
+.raidLeftColBody {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.raidLeftColItem {
+  font-size: 13px;
+}
+
+.raidLeftColEmpty {
+  font-size: 13px;
   color: var(--muted);
 }
