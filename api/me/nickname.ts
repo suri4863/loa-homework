@@ -1,20 +1,16 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { sql } from "@vercel/postgres";
-import { getMe, sendError, sendJson } from "../_db";
+import { getMe, sendError, sendJson } from "../_db.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (req.method !== "PUT") return res.status(405).send("Method Not Allowed");
 
     const me = await getMe(req);
-    const shareMode = req.body?.shareMode;
+    const nickname = String(req.body?.nickname ?? "").trim();
 
-    if (shareMode !== "PUBLIC" && shareMode !== "PRIVATE") {
-      return res.status(400).send("Invalid shareMode");
-    }
-
-    await sql`update users set share_mode=${shareMode} where id=${me.id}`;
-    return sendJson(res, { ok: true });
+    await sql`update users set nickname=${nickname} where id=${me.id}`;
+    return sendJson(res, { ok: true, nickname });
   } catch (e) {
     return sendError(res, e);
   }
