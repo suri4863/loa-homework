@@ -172,6 +172,18 @@ export default function TodoTracker() {
   >([]);
   const [syncingFriends, setSyncingFriends] = useState(false);
 
+  // ✅ 닉네임 저장 UX 상태
+  const [nickSaveState, setNickSaveState] = useState<"idle" | "typing" | "saving" | "saved" | "error">("idle");
+  const nickSaveTimerRef = useRef<number | null>(null);
+  const nickLastSentRef = useRef<string>("");
+  useEffect(() => {
+    return () => {
+      if (nickSaveTimerRef.current) {
+        window.clearTimeout(nickSaveTimerRef.current);
+      }
+    };
+  }, []);
+
   async function apiFetch2(path: string, init?: RequestInit) {
     // ✅ "/api/..." 형태 강제 (상대경로로 /todo/api... 되는 것 방지)
     const safePath =
@@ -314,17 +326,54 @@ export default function TodoTracker() {
       body: JSON.stringify({ shareMode: mode }),
     });
   }
-  async function setMyNickname(nickname: string) {
+
+  function setMyNickname(nickname: string) {
+    // 1) 로컬 state는 즉시 반영
     setState((prev) => ({ ...prev, profile: { ...prev.profile, nickname } }));
+    setNickSaveState("typing");
 
-    if (!SERVER_MODE) return;
+    // 2) 로컬모드면 “로컬 저장됨” 느낌만 주고 끝
+    if (!SERVER_MODE) {
+      // 타이핑 멈추면 저장완료 배지 뜨게
+      if (nickSaveTimerRef.current) window.clearTimeout(nickSaveTimerRef.current);
+      nickSaveTimerRef.current = window.setTimeout(() => {
+        setNickSaveState("saved");
+        // 1.2초 뒤 표시 원복
+        window.setTimeout(() => setNickSaveState("idle"), 1200);
+      }, 400);
+      return;
+    }
 
-    // ✅ 서버에 닉네임 저장 엔드포인트가 있다면 이걸 사용
-    await apiFetch2("/api/me/nickname", {
-      method: "PUT",
-      body: JSON.stringify({ nickname }),
-    });
+    // 3) 서버모드면 디바운스로 PUT (너무 자주 호출 방지)
+    if (nickSaveTimerRef.current) window.clearTimeout(nickSaveTimerRef.current);
+
+    nickSaveTimerRef.current = window.setTimeout(async () => {
+      const trimmed = (nickname ?? "").trim();
+
+      // 같은 값이면 서버 호출 스킵
+      if (trimmed === nickLastSentRef.current) {
+        setNickSaveState("saved");
+        window.setTimeout(() => setNickSaveState("idle"), 1200);
+        return;
+      }
+
+      setNickSaveState("saving");
+      try {
+        await apiFetch2("/api/me/nickname", {
+          method: "PUT",
+          body: JSON.stringify({ nickname: trimmed }),
+        });
+        nickLastSentRef.current = trimmed;
+        setNickSaveState("saved");
+        window.setTimeout(() => setNickSaveState("idle"), 1200);
+      } catch (e) {
+        setNickSaveState("error");
+        // 실패 표시 잠깐 유지
+        window.setTimeout(() => setNickSaveState("idle"), 2000);
+      }
+    }, 600);
   }
+
 
 
   function addFriend(code: string, nickname: string) {
@@ -2285,7 +2334,40 @@ export default function TodoTracker() {
                   </span>
                 )}
               </div>
-
+              {/* ✅ 닉네임 입력 (친구에게 표시될 이름) */}
+              <div className="friendRow">
+                <div className="friendLabel">닉네임</div>
+                <input
+                  className="friendInput"
+                  placeholder="닉네임(친구에게 표시)"
+                  value={(state.profile.nickname ?? "")}
+                  onChange={(e) => setMyNickname(e.target.value)}
+                />
+                {/* ✅ 저장 상태 표시 */}
+                {nickSaveState !== "idle" && (
+                  <span
+                    className={[
+                      "pill",
+                      nickSaveState === "saving" ? "weekly" : nickSaveState === "error" ? "daily" : "weekly",
+                    ].join(" ")}
+                    style={{ marginLeft: 6 }}
+                    title={
+                      nickSaveState === "typing"
+                        ? "입력 중"
+                        : nickSaveState === "saving"
+                          ? "서버에 저장 중"
+                          : nickSaveState === "saved"
+                            ? (SERVER_MODE ? "서버 저장 완료" : "로컬 저장 완료")
+                            : "저장 실패"
+                    }
+                  >
+                    {nickSaveState === "typing" && "입력중"}
+                    {nickSaveState === "saving" && "저장중…"}
+                    {nickSaveState === "saved" && "저장됨"}
+                    {nickSaveState === "error" && "실패"}
+                  </span>
+                )}
+              </div>
               <div className="friendRow">
                 <div className="friendLabel">공개</div>
                 <select
