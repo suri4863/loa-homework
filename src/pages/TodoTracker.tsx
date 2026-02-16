@@ -2244,7 +2244,7 @@ export default function TodoTracker() {
                     className="mini"
                     onClick={async () => {
                       try {
-                        const snapshotJson = exportRaidLeftSnapshot(state, state.activeTableId);
+                        const snapshotJson = exportRaidLeftSnapshot(state, "ALL");
 
                         await apiFetch2("/api/me/raid-left-snapshot", {
                           method: "PUT",
@@ -2478,9 +2478,6 @@ export default function TodoTracker() {
           {periodTab === "RAID_LEFT" ? (
             raidLeftView === "FRIEND" ? (
               <div className="tablePane" style={{ height: "100%", minHeight: 0 }}>
-                <div className="paneHeader">
-                  <div className="paneTitle">친구 남은 레이드</div>
-                </div>
                 <div style={{ padding: 12 }}>{renderFriendRaidLeftColumns()}</div> {/* ✅ 교체 */}
               </div>
             ) : (
