@@ -4,7 +4,7 @@ import "./GemTracker.css";
 type Level = 10 | 9 | 8 | 7
 
 const LEVELS: Level[] = [10, 9, 8, 7]
-const DEFAULT_COLUMNS = ['창고', '브레이커', '환수사', '발키리', '기상술사', '바드', '창술사', '소서리스', '인파이터', '폿키리']
+const DEFAULT_COLUMNS = ['창고', '캐릭터1', '캐릭터2', '캐릭터3', '캐릭터4', '캐릭터5', '캐릭터6', '캐릭터7', '캐릭터8', '캐릭터9']
 const STORAGE_KEY = 'loa-gem-tracker:v1'
 
 type Counts = Record<Level, Record<string, string>> // string을 유지해서 빈칸("" ) 보존
@@ -284,7 +284,7 @@ export default function GemTracker() {
                         <input
                           inputMode="decimal"
                           className="w-full rounded-lg border bg-white px-2 py-1 text-right outline-none focus:ring-2 focus:ring-neutral-200"
-                          placeholder="예: 13.5"
+                          placeholder="예: 40"
                           value={prices[lvl]}
                           onChange={(e) => updatePrice(lvl, e.target.value)}
                         />

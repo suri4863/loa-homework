@@ -198,11 +198,12 @@ function makeDefaultState(): TodoState {
       order: baseOrder + 3,
     },
 
-    // 주간 교환
-    createTask({ title: "천상", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
-    createTask({ title: "혈석 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
-    createTask({ title: "클리어메달 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
-    createTask({ title: "해적주화 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
+    // 주간 교환 (원하는 순서: 천상 → 혈석 → 클리어 → 해적 → 메모)
+    createTask({ title: "천상", period: "WEEKLY", cellType: "CHECK", section: "주간 교환", order: baseOrder + 100 }),
+    createTask({ title: "혈석 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환", order: baseOrder + 101 }),
+    createTask({ title: "클리어메달 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환", order: baseOrder + 102 }),
+    createTask({ title: "해적주화 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환", order: baseOrder + 103 }),
+    createTask({ title: "메모", period: "WEEKLY", cellType: "TEXT", section: "주간 교환", order: baseOrder + 104 }),
 
     // 주간 레이드
     createTask({ title: "1막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
@@ -212,13 +213,13 @@ function makeDefaultState(): TodoState {
     createTask({ title: "종막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
     createTask({ title: "세르카", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
 
-    // 기타(귀속 메모)
-    createTask({
-      title: "큐브",
-      period: "NONE",
-      cellType: "TEXT",
-      section: "기타",
-    }),
+    // 기타 (원하는 순서: 4해금 → 3해금 → 2해금 → 1해금 → 낙원트리)
+    createTask({ title: "4해금", period: "NONE", cellType: "TEXT", section: "기타", order: baseOrder + 200 }),
+    createTask({ title: "3해금", period: "NONE", cellType: "TEXT", section: "기타", order: baseOrder + 201 }),
+    createTask({ title: "2해금", period: "NONE", cellType: "TEXT", section: "기타", order: baseOrder + 202 }),
+    createTask({ title: "1해금", period: "NONE", cellType: "TEXT", section: "기타", order: baseOrder + 203 }),
+    createTask({ title: "낙원 트리", period: "NONE", cellType: "TEXT", section: "기타", order: baseOrder + 204 }),
+
   ];
 
   // =========================
@@ -286,28 +287,68 @@ function normalizeState(parsed: any): TodoState {
 
     st.tasks = Array.isArray(st.tasks) ? st.tasks : [];
 
-    // ✅ '기타 / 큐브' 없으면 추가
-    const hasCube = st.tasks.some((t) => t.title === "큐브" && t.period === "NONE");
-    if (!hasCube) {
-      st.tasks = [
-        ...st.tasks,
-        createTask({
-          title: "큐브",
-          period: "NONE",
-          cellType: "TEXT",
-          section: "기타",
-        }),
-      ];
-    }
+    // ------------------------------------------------------------
+    // ✅ 기본 task 보강 + 정렬(order) 마이그레이션
+    // 원하는 표시 순서:
+    // [주간 교환] 천상, 혈석, 클리어메달, 해적주화, 메모
+    // [기타] 4해금, 3해금, 2해금, 1해금, 낙원 트리
+    // ------------------------------------------------------------
 
-    // ✅ '주간 레이드 / 1막' 없으면 추가
-    const hasRaid1 = st.tasks.some((t) => t.title === "1막" && t.period === "WEEKLY" && t.section === "주간 레이드");
-    if (!hasRaid1) {
-      st.tasks = [
-        ...st.tasks,
-        createTask({ title: "1막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 1 }),
-      ];
-    }
+    const ensureTask = (spec: { title: string; period: Period; cellType: CellType; section: string; order?: number; id?: string; max?: number }) => {
+      const exists = st.tasks.some(
+        (t) =>
+          t.title === spec.title &&
+          t.period === spec.period &&
+          (spec.section ? t.section === spec.section : true)
+      );
+      if (!exists) st.tasks.push(createTask(spec));
+    };
+
+    const setOrder = (title: string, period: Period, section: string, order: number) => {
+      for (const t of st.tasks) {
+        if (t.title === title && t.period === period && t.section === section) {
+          t.order = order;
+        }
+      }
+    };
+
+    // ✅ 1) 누락된 기본 항목들 추가 (주간 교환)
+    ensureTask({ title: "천상", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" });
+    ensureTask({ title: "혈석 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" });
+    ensureTask({ title: "클리어메달 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" });
+    ensureTask({ title: "해적주화 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" });
+    ensureTask({ title: "메모", period: "WEEKLY", cellType: "TEXT", section: "주간 교환" });
+
+    // ✅ 2) 누락된 기본 항목들 추가 (기타)
+    ensureTask({ title: "낙원 트리", period: "NONE", cellType: "TEXT", section: "기타" });
+    ensureTask({ title: "1해금", period: "NONE", cellType: "TEXT", section: "기타" });
+    ensureTask({ title: "2해금", period: "NONE", cellType: "TEXT", section: "기타" });
+    ensureTask({ title: "3해금", period: "NONE", cellType: "TEXT", section: "기타" });
+    ensureTask({ title: "4해금", period: "NONE", cellType: "TEXT", section: "기타" });
+
+    // (기존 유지) '기타 / 큐브' 없으면 추가 — UI에서 숨김 처리 중이라도 데이터 호환용으로 유지
+    ensureTask({ title: "큐브", period: "NONE", cellType: "TEXT", section: "기타" });
+
+    // (기존 유지) '주간 레이드 / 1막' 없으면 추가
+    ensureTask({ title: "1막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 1 });
+
+    // ✅ 3) order 강제 세팅 (여기 숫자만 보면 됨: 작을수록 위)
+    const base = 10_000; // 다른 task order와 겹치지 않게 큰 값 사용
+
+    // 주간 교환: 천상 → 혈석 → 클리어 → 해적 → 메모
+    setOrder("천상", "WEEKLY", "주간 교환", base + 1);
+    setOrder("혈석 교환", "WEEKLY", "주간 교환", base + 2);
+    setOrder("클리어메달 교환", "WEEKLY", "주간 교환", base + 3);
+    setOrder("해적주화 교환", "WEEKLY", "주간 교환", base + 4);
+    setOrder("메모", "WEEKLY", "주간 교환", base + 5);
+
+    // 기타: 4해금 → 3해금 → 2해금 → 1해금 → 낙원 트리
+    setOrder("4해금", "NONE", "기타", base + 21);
+    setOrder("3해금", "NONE", "기타", base + 22);
+    setOrder("2해금", "NONE", "기타", base + 23);
+    setOrder("1해금", "NONE", "기타", base + 24);
+    setOrder("낙원 트리", "NONE", "기타", base + 25);
+
 
     if (!st.tables.length) return makeDefaultState();
     if (!st.activeTableId || !st.tables.some((t) => t.id === st.activeTableId)) st.activeTableId = st.tables[0].id;

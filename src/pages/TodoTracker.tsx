@@ -974,10 +974,15 @@ export default function TodoTracker() {
     const title = prompt(`${label} 숙제 이름`)?.trim();
     if (!title) return;
 
+    // ✅ 해금/금제는 “티켓형 UI”니까 cellType TEXT로 강제
+    const isTicketTitle = title.includes("해금") || title.includes("금제");
+
     const defaultType = period === "NONE" ? "TEXT" : "CHECK";
-    const cellType = (prompt("셀 타입: CHECK / COUNTER / TEXT / SELECT", defaultType) ?? defaultType)
-      .trim()
-      .toUpperCase();
+    const cellType = isTicketTitle
+      ? "TEXT"
+      : ((prompt("셀 타입: CHECK / COUNTER / TEXT / SELECT", defaultType) ?? defaultType)
+        .trim()
+        .toUpperCase());
 
     let max: number | undefined = undefined;
     let options: string[] | undefined = undefined;
@@ -994,7 +999,10 @@ export default function TodoTracker() {
     const sectionDefault =
       period === "DAILY" ? "일일 숙제" : period === "WEEKLY" ? "주간 레이드" : "기타";
 
-    const section = prompt("섹션 이름(예: 일일 숙제 / 주간 레이드 / 기타)", sectionDefault)?.trim() || sectionDefault;
+    // ✅ 티켓형이면 섹션도 기본 “기타” 추천 (원하면 prompt 생략 가능)
+    const section = isTicketTitle
+      ? "기타"
+      : (prompt("섹션 이름(예: 일일 숙제 / 주간 레이드 / 기타)", sectionDefault)?.trim() || sectionDefault);
 
     const t = createTask({
       title,
@@ -1007,6 +1015,7 @@ export default function TodoTracker() {
 
     setState((prev) => ({ ...prev, tasks: [...prev.tasks, t] }));
   }
+
 
   function editTask(task: TaskRow) {
     const title = prompt("숙제 이름", task.title)?.trim();
@@ -1887,7 +1896,7 @@ export default function TodoTracker() {
                                     }
 
                                     if (task.cellType === "TEXT") {
-                                      const isCubeTicket = task.title.includes("해금");
+                                      const isCubeTicket = task.title.includes("해금") || task.title.includes("금제");
 
                                       if (isCubeTicket) {
                                         const raw = cell?.type === "TEXT" ? cell.text : "";
