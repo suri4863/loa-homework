@@ -1527,6 +1527,7 @@ html[data-theme="dark"] .rest-input {
 .raidLeftColsTitle {
   font-weight: 900;
   margin: 8px 0 10px;
+  color: var(--text);
 }
 
 .raidLeftCols {
@@ -1537,14 +1538,18 @@ html[data-theme="dark"] .rest-input {
 }
 
 .raidLeftColCard {
-  flex: 0 0 170px;
-  /* 칼럼 너비 */
+  flex: 0 0 170px; /* 칼럼 너비 */
   border: 1px solid var(--border);
   border-radius: 16px;
-  background: #fff;
+
+  /* ✅ 다크/라이트 공통 테마 변수 사용 */
+  background: var(--card);
+  color: var(--text);
+
   box-shadow: var(--shadow);
   padding: 12px;
 }
+
 
 .raidLeftColHeader {
   display: flex;
