@@ -291,13 +291,6 @@ body {
   color: var(--muted);
 }
 
-.raid-gold-body {
-  font-size: 13px;
-  color: var(--text);
-  /* ✅ */
-  display: grid;
-  gap: 4px;
-}
 
 
 /* =========================================================
@@ -769,20 +762,7 @@ html[data-theme="dark"] .rest-input {
   font-weight: 800;
 }
 
-/* ---------- Gold sum (주간 골드) ---------- */
-.goldbox {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(107, 114, 128, 0.20);
-  background: var(--card);
-  /* ✅ */
-  color: var(--text);
-  /* ✅ */
-  min-width: 140px;
-}
+
 
 .goldbox.muted {
   opacity: 0.7;
@@ -847,7 +827,8 @@ html[data-theme="dark"] .rest-input {
 
 .raid-gold-head button {
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--card);
+  color: var(--text);
   border-radius: 10px;
   height: 28px;
   padding: 0 10px;
@@ -861,10 +842,33 @@ html[data-theme="dark"] .rest-input {
 
 .raid-gold-body {
   font-size: 13px;
-  color: #374151;
+  color: var(--text);
   display: grid;
   gap: 4px;
 }
+
+/* ---------- Gold sum (주간 골드) ---------- */
+.goldbox {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(107, 114, 128, 0.20);
+  background: var(--card);
+  color: var(--text);
+  min-width: 140px;
+}
+
+.goldbox-btn {
+  cursor: pointer;
+  text-align: left;
+}
+
+.raid-gold-head button:hover {
+  background: var(--soft-2);
+}
+
 
 .todo-col-head[draggable="true"] {
   cursor: grab;
@@ -1640,4 +1644,103 @@ html,
 body,
 #root {
   background: var(--bg) !important;
+}
+
+/* ----------탑3 Weekly Top3 difficulty popup ---------- */
+.weekly-top3-pop{
+  position: fixed;              /* ✅ left/top 적용되게 */
+  z-index: 9999;                /* ✅ 다른 UI 위로 */
+  width: 360px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--text);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+  padding: 10px;
+}
+
+.weekly-top3-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.weekly-top3-head button{
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  border-radius: 10px;
+  height: 28px;
+  padding: 0 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.weekly-top3-head button:hover{
+  background: var(--soft-2);
+}
+
+.weekly-top3-sum{
+  font-size: 13px;
+  opacity: .9;
+  margin-bottom: 8px;
+}
+
+.weekly-top3-body{
+  display: grid;
+  gap: 10px;
+}
+
+.weekly-top3-row{
+  display: grid;
+  grid-template-columns: 52px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--soft);
+  border: 1px solid var(--border);
+}
+
+.weekly-top3-raid{
+  font-weight: 800;
+}
+
+.weekly-top3-diffs{
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.diff-btn{
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  border-radius: 10px;
+  height: 28px;
+  padding: 0 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.diff-btn:hover{
+  background: var(--soft-2);
+}
+
+.diff-btn.active{
+  border-color: rgba(59,130,246,0.55);
+  background: rgba(59,130,246,0.18);
+  font-weight: 800;
+}
+
+.diff-btn:disabled{
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.weekly-top3-gold{
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
 }

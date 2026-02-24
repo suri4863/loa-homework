@@ -1226,6 +1226,8 @@ export default function TodoTracker() {
   type RaidGold = { normal?: number; hard?: number; nightmare?: number };
 
   const RAID_CLEAR_GOLD: Record<string, RaidGold> = {
+    "베히모스": { normal: 7200 },
+    "서막": { normal: 6100, hard: 7200 },
     "1막": { normal: 11500, hard: 18000 },
     "2막": { normal: 16500, hard: 23000 },
     "3막": { normal: 21000, hard: 27000 },
@@ -1237,6 +1239,52 @@ export default function TodoTracker() {
   type RaidPopup = { title: string; x: number; y: number } | null;
   const [raidGoldPopup, setRaidGoldPopup] = useState<RaidPopup>(null);
 
+  // =========================
+  // ✅ Top3 골드: 난이도 선택(캐릭터별 저장) + 팝업
+  // =========================
+  type DiffName = "노말" | "하드" | "나이트메어";
+  type WeeklyTop3Popup =
+    | { tableId: string; charId: string; charName: string; ilvl: number; x: number; y: number }
+    | null;
+
+  const WEEKLY_DIFF_KEY = "loa-weekly-raid-diff:v1";
+  const [weeklyDiffByChar, setWeeklyDiffByChar] = useState<Record<string, Record<string, DiffName>>>({});
+  const [weeklyTop3Popup, setWeeklyTop3Popup] = useState<WeeklyTop3Popup>(null);
+
+  function weeklyCharKey(tableId: string, charId: string) {
+    return `${tableId}:${charId}`;
+  }
+
+  function loadWeeklyDiff(tableId: string, charId: string): Record<string, DiffName> {
+    try {
+      const raw = localStorage.getItem(`${WEEKLY_DIFF_KEY}:${tableId}:${charId}`);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw) as Record<string, DiffName>;
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function saveWeeklyDiff(tableId: string, charId: string, diffMap: Record<string, DiffName>) {
+    try {
+      localStorage.setItem(`${WEEKLY_DIFF_KEY}:${tableId}:${charId}`, JSON.stringify(diffMap));
+    } catch { }
+  }
+
+  // ✅ 표/캐릭터 바뀔 때 로컬저장 값 선로딩(합산값도 바로 반영되게)
+  useEffect(() => {
+    const next: Record<string, Record<string, DiffName>> = {};
+
+    for (const tbl of state.tables) {
+      for (const ch of tbl.characters as any[]) {
+        const k = weeklyCharKey(tbl.id, ch.id);
+        next[k] = loadWeeklyDiff(tbl.id, ch.id);
+      }
+    }
+
+    setWeeklyDiffByChar(next);
+  }, [state.tables]);
 
   const tasks = useMemo(() => {
     // ✅ 남은 레이드: 주간 레이드 섹션만 출력
@@ -1383,6 +1431,8 @@ export default function TodoTracker() {
   type RaidDef = { key: string; name: string; diffs: RaidDifficulty[] };
 
   const RAID_CATALOG: RaidDef[] = [
+    { key: "epic", name: "베히모스", diffs: [{ name: "노말", minIlvl: 1640, gold: 7200 }] },
+    { key: "ACT0", name: "서막", diffs: [{ name: "노말", minIlvl: 1620, gold: 6100 }, { name: "하드", minIlvl: 1640, gold: 7200 }] },
     { key: "ACT1", name: "1막", diffs: [{ name: "노말", minIlvl: 1660, gold: 11500 }, { name: "하드", minIlvl: 1680, gold: 18000 }] },
     { key: "ACT2", name: "2막", diffs: [{ name: "노말", minIlvl: 1670, gold: 16500 }, { name: "하드", minIlvl: 1690, gold: 23000 }] },
     { key: "ACT3", name: "3막", diffs: [{ name: "노말", minIlvl: 1680, gold: 21000 }, { name: "하드", minIlvl: 1700, gold: 27000 }] },
@@ -1443,6 +1493,45 @@ export default function TodoTracker() {
     const top3 = candidates.slice(0, 3);
     const sum = top3.reduce((acc, cur) => acc + cur.gold, 0);
     return { sum, top3, all: candidates };
+  }
+
+  function getGoldByDiffName(raidName: string, diff: DiffName) {
+    const g = RAID_CLEAR_GOLD[raidName];
+    if (!g) return 0;
+    if (diff === "노말") return g.normal ?? 0;
+    if (diff === "하드") return g.hard ?? 0;
+    return g.nightmare ?? 0;
+  }
+
+  function availableDiffNames(ilvl: number, raidName: string): DiffName[] {
+    const def = RAID_CATALOG.find((r) => r.name === raidName);
+    if (!def) return [];
+
+    // RAID_CATALOG의 minIlvl 기준으로 가능한 난이도만 노출
+    return def.diffs
+      .filter((d) => ilvl >= d.minIlvl)
+      .map((d) => d.name);
+  }
+
+  /**
+   * ✅ Top3는 "레이드 3개는 그대로(top3)" 유지하되
+   *   각 레이드 골드는 (선택 난이도 우선) → 없으면 자동 최고난이도
+   */
+  function calcWeeklyTop3GoldWithPick(ilvl: number, picked: Record<string, DiffName> | undefined) {
+    const base = calcWeeklyTop3Gold(ilvl); // top3 레이드 3개는 기존 로직 유지
+    const top3 = base.top3.map((x) => {
+      const avail = availableDiffNames(ilvl, x.raid);
+      const want = picked?.[x.raid];
+
+      // 선택이 가능 난이도면 적용, 아니면 자동(기존 x.diff)
+      const diff: DiffName = want && avail.includes(want) ? want : (x.diff as DiffName);
+      const gold = diff === x.diff ? x.gold : getGoldByDiffName(x.raid, diff);
+
+      return { raid: x.raid, diff, gold, avail };
+    });
+
+    const sum = top3.reduce((acc, cur) => acc + cur.gold, 0);
+    return { sum, top3 };
   }
 
   function getWeeklyTop3RaidNameSet(ilvl: number): Set<string> {
@@ -1716,15 +1805,34 @@ export default function TodoTracker() {
                           );
                         }
 
-                        const r = calcWeeklyTop3Gold(ilvl);
-                        const detail = r.top3.map((x) => `${x.raid} ${x.diff}(${x.gold.toLocaleString()})`).join(" + ");
+                        const charKey = weeklyCharKey(tableId, ch.id); // tableId는 renderTodoTable 인자로 이미 있음
+                        const picked = weeklyDiffByChar[charKey] ?? {};
+                        const pickedResult = calcWeeklyTop3GoldWithPick(ilvl, picked);
+
+                        const detail = pickedResult.top3
+                          .map((x) => `${x.raid} ${x.diff}(${x.gold.toLocaleString()})`)
+                          .join(" + ");
 
                         return (
-                          <td key={`${tableId}:${ch.id}`} className="cell">
-                            <div className="goldbox" title={detail}>
-                              <div className="gold-sum">{r.sum.toLocaleString()} G</div>
-                              <div className="gold-detail">{r.top3.map((x) => x.raid).join(" / ")}</div>
-                            </div>
+                          <td key={ch.id} className="cell">
+                            <button
+                              type="button"
+                              className="goldbox goldbox-btn"
+                              title={detail}
+                              onClick={(e) => {
+                                setWeeklyTop3Popup({
+                                  tableId,
+                                  charId: ch.id,
+                                  charName: ch.name,
+                                  ilvl,
+                                  x: e.clientX,
+                                  y: e.clientY,
+                                });
+                              }}
+                            >
+                              <div className="gold-sum">{pickedResult.sum.toLocaleString()} G</div>
+                              <div className="gold-detail">{pickedResult.top3.map((x) => x.raid).join(" / ")}</div>
+                            </button>
                           </td>
                         );
                       })}
@@ -2117,14 +2225,15 @@ export default function TodoTracker() {
                                 <td className="todo-sticky-left task-left">
                                   <div className="task-left-inner">
                                     <div className="task-title">주간 클리어 골드(추천 Top3)</div>
-                                    <div className="task-sub">아이템레벨 기준 · 레이드별 최고 난이도만 적용</div>
+                                    <div className="task-sub">아이템레벨 기준 · 레이드별 난이도 선택 반영</div>
                                   </div>
                                 </td>
 
                                 {visibleCharacters.map((ch) => {
-                                  const ilvl = parseIlvl(ch.itemLevel);
+                                  // ✅ parseIlvl 대신 getCharIlvl 사용(“Lv. 1710” 같은 포맷도 안전)
+                                  const ilvl = getCharIlvl(ch);
 
-                                  if (!Number.isFinite(ilvl)) {
+                                  if (!Number.isFinite(ilvl) || ilvl <= 0) {
                                     return (
                                       <td key={ch.id} className="cell">
                                         <div className="goldbox muted">Lv 입력 필요</div>
@@ -2132,17 +2241,35 @@ export default function TodoTracker() {
                                     );
                                   }
 
-                                  const r = calcWeeklyTop3Gold(ilvl);
-                                  const detail = r.top3
+                                  // ✅ 캐릭터별 선택 난이도 로드 + 반영 계산
+                                  const charKey = weeklyCharKey(tableId, ch.id);
+                                  const picked = weeklyDiffByChar[charKey] ?? {};
+                                  const pickedResult = calcWeeklyTop3GoldWithPick(ilvl, picked);
+
+                                  const detail = pickedResult.top3
                                     .map((x) => `${x.raid} ${x.diff}(${x.gold.toLocaleString()})`)
                                     .join(" + ");
 
                                   return (
                                     <td key={ch.id} className="cell">
-                                      <div className="goldbox" title={detail}>
-                                        <div className="gold-sum">{r.sum.toLocaleString()} G</div>
-                                        <div className="gold-detail">{r.top3.map((x) => x.raid).join(" / ")}</div>
-                                      </div>
+                                      <button
+                                        type="button"
+                                        className="goldbox goldbox-btn"
+                                        title={detail}
+                                        onClick={(e) => {
+                                          setWeeklyTop3Popup({
+                                            tableId,
+                                            charId: ch.id,
+                                            charName: ch.name,
+                                            ilvl,
+                                            x: e.clientX,
+                                            y: e.clientY,
+                                          });
+                                        }}
+                                      >
+                                        <div className="gold-sum">{pickedResult.sum.toLocaleString()} G</div>
+                                        <div className="gold-detail">{pickedResult.top3.map((x) => x.raid).join(" / ")}</div>
+                                      </button>
                                     </td>
                                   );
                                 })}
@@ -2344,7 +2471,7 @@ export default function TodoTracker() {
             <button className="btn" onClick={doImport}>
               복원
             </button>
-            
+
             <button className="btn" onClick={toggleTheme} title="테마 전환">
               {theme === "dark" ? "☀️ 화이트모드" : "🌙 다크모드"}
             </button>
@@ -2737,6 +2864,74 @@ export default function TodoTracker() {
             </div>
           </div>
         )}
+        {(() => {
+          const popup = weeklyTop3Popup;
+
+          if (popup === null) {
+            return null;
+          }
+
+          const charKey = weeklyCharKey(popup.tableId, popup.charId);
+          const picked = weeklyDiffByChar[charKey] ?? {};
+          const r = calcWeeklyTop3GoldWithPick(popup.ilvl, picked);
+
+          // popup이 null 아닌 블록(분기) 안에서만 실행되게 되어있다는 전제
+          const tableId = popup.tableId;
+          const charId = popup.charId;
+
+          function setPick(raidName: string, diff: DiffName) {
+            setWeeklyDiffByChar((prev) => {
+              const nextChar = { ...(prev[charKey] ?? {}), [raidName]: diff };
+              const next = { ...prev, [charKey]: nextChar };
+
+              saveWeeklyDiff(tableId, charId, nextChar); // ✅ popup 안 씀 → null 경고 사라짐
+              return next;
+            });
+          }
+
+          return (
+            <div className="weekly-top3-pop" style={{ left: popup.x + 12, top: popup.y + 12 }}>
+              <div className="weekly-top3-head">
+                <b>{popup.charName} · Top3 골드</b>
+                <button onClick={() => setWeeklyTop3Popup(null)}>닫기</button>
+              </div>
+
+              <div className="weekly-top3-sum">
+                합계: <b>{r.sum.toLocaleString()} G</b>
+              </div>
+
+              <div className="weekly-top3-body">
+                {r.top3.map((x) => (
+                  <div key={x.raid} className="weekly-top3-row">
+                    <div className="weekly-top3-raid">{x.raid}</div>
+
+                    <div className="weekly-top3-diffs">
+                      {(["노말", "하드", "나이트메어"] as DiffName[]).map((d) => {
+                        const enabled = x.avail.includes(d);
+                        const active = (picked?.[x.raid] ?? x.diff) === d;
+
+                        return (
+                          <button
+                            key={d}
+                            type="button"
+                            className={`diff-btn ${active ? "active" : ""}`}
+                            disabled={!enabled}
+                            onClick={() => setPick(x.raid, d)}
+                            title={enabled ? `${getGoldByDiffName(x.raid, d).toLocaleString()} G` : "아이템레벨 부족"}
+                          >
+                            {d}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="weekly-top3-gold">{x.gold.toLocaleString()} G</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </>
   );

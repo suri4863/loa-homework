@@ -159,7 +159,24 @@ body,
 
 .ticket-btn:hover,
 .head-actions button:hover {
-  background: #f9fafb;
+  background: var(--panel-soft);    /* ✅ 다크/라이트 모두 자연스럽게 */
+  border-color: var(--border);
+}
+
+.ticket-btn,
+.head-actions button{
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.ticket-btn:hover,
+.head-actions button:hover{
+  transform: translateY(-1px);
+}
+
+.ticket-btn:active,
+.head-actions button:active{
+  transform: translateY(0px);
 }
 
 /* ===== 입력창 (✅ 여기만 줄이면 됨) ===== */
