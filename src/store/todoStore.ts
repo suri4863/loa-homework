@@ -72,22 +72,31 @@ export type UserProfile = {
 
 
 export type RaidLeftSnapshotPayload = {
-  version: 1;
+  version: 2;
   friendCode: string;
+  nickname?: string;
   shareMode: ShareMode;
   exportedAt: number;
-  tableName: string;
+
+  scope?: "ALL_TABLES" | "ONE_TABLE";
+
   data: Array<{
     charName: string;
-    /** (선택) 캐릭터 아이템레벨/레벨 표시용. 예: "1720" */
+
+    // 표시용
     charItemLevel?: string;
-    /** (선택) 표 이름(캐릭터가 속한 표) */
+    charPower?: string;
+
+    // ✅ row에 테이블명 포함 (여기가 핵심)
     tableName?: string;
+
+    // 계산용 (export에서 넣고 있으니 optional로 받기)
+    ilvl?: number;
+
     remainingRaids: string[];
     clearedCount: number;
     totalCount: number;
   }>;
-
 };
 
 
@@ -624,6 +633,7 @@ export function exportRaidLeftSnapshot(state: TodoState, tableId?: string | "ALL
       rows.push({
         charName: ch.name,
         charItemLevel: ch.itemLevel || "",     // ✅ 표시용(문자열)
+        charPower: ch.power || "",             // ✅ 추가: 전투력(없으면 빈값)
         tableName: table.name,
         ilvl,                                  // ✅ 계산용(숫자)
         remainingRaids: remainingTop3,
@@ -675,6 +685,24 @@ export function importRaidLeftSnapshot(raw: any): RaidLeftSnapshotPayload {
   parsed.shareMode = parsed.shareMode === "PRIVATE" ? "PRIVATE" : "PUBLIC";
   parsed.exportedAt = typeof parsed.exportedAt === "number" ? parsed.exportedAt : Date.now();
   parsed.data = Array.isArray(parsed.data) ? parsed.data : [];
+
+  // ✅ row 단위 정규화 (v1/v2 공통 처리)
+  parsed.data = parsed.data.map((r: any) => ({
+    charName: String(r?.charName ?? ""),
+
+    // v2에서 넘어오면 그대로 유지
+    charItemLevel: r?.charItemLevel ? String(r.charItemLevel) : undefined,
+    charPower: r?.charPower ? String(r.charPower) : undefined,
+
+    // v2 row.tableName 또는 v1 최상위 tableName 대응
+    tableName: r?.tableName ?? parsed.tableName ?? undefined,
+
+    ilvl: typeof r?.ilvl === "number" ? r.ilvl : undefined,
+
+    remainingRaids: Array.isArray(r?.remainingRaids) ? r.remainingRaids : [],
+    clearedCount: Number(r?.clearedCount ?? 0),
+    totalCount: Number(r?.totalCount ?? 0),
+  }));
 
   return parsed as RaidLeftSnapshotPayload;
 }

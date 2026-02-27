@@ -1417,11 +1417,24 @@ html[data-theme="dark"] .rest-input {
    ========================= */
 .friendRaidHead {
   display: flex;
-  align-items: flex-start;
-  /* baseline → 위로 정렬 */
+  align-items: flex-start;   /* baseline -> flex-start (2줄 표시 안정) */
   justify-content: space-between;
-  gap: 10px;
   margin-bottom: 10px;
+}
+
+.friendRaidLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.friendRaidSub {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .friendRaidName {

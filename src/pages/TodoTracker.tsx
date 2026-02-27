@@ -459,11 +459,15 @@ export default function TodoTracker() {
             <div className="friendRaidHead">
               <div className="friendRaidName">
                 {row.charName}
+
                 {!!row.charItemLevel && (
                   <span className="friendRaidIlvl">{row.charItemLevel}</span>
                 )}
-              </div>
 
+                {!!row.charPower && (
+                  <span className="friendRaidPower">전투력 {row.charPower}</span>
+                )}
+              </div>
               <div className="friendRaidMeta">
                 {!!row.tableName && <div className="friendRaidTable">{row.tableName}</div>}
                 <div>
