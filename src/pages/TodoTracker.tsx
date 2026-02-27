@@ -454,39 +454,42 @@ export default function TodoTracker() {
 
     return (
       <div className="friendRaidGrid">
-        {f.lastSnapshot.data.map((row) => (
-          <div key={row.charName} className="friendRaidCard">
-            <div className="friendRaidHead">
-              <div className="friendRaidName">
-                {row.charName}
+        {f.lastSnapshot.data.map((row, idx) => {
+          if (idx === 0) console.log("[friend snapshot row0]", row);
+          return (
+            <div key={row.charName} className="friendRaidCard">
+              <div className="friendRaidHead">
+                <div className="friendRaidName">
+                  {row.charName}
 
-                {!!row.charItemLevel && (
-                  <span className="friendRaidIlvl">{row.charItemLevel}</span>
-                )}
+                  {!!row.charItemLevel && (
+                    <span className="friendRaidIlvl">{row.charItemLevel}</span>
+                  )}
 
-                {!!row.charPower && (
-                  <span className="friendRaidPower">전투력 {row.charPower}</span>
-                )}
-              </div>
-              <div className="friendRaidMeta">
-                {!!row.tableName && <div className="friendRaidTable">{row.tableName}</div>}
-                <div>
-                  {row.clearedCount}/{row.totalCount}
+                  {!!row.charPower && (
+                    <span className="friendRaidPower">전투력 {row.charPower}</span>
+                  )}
+                </div>
+                <div className="friendRaidMeta">
+                  {!!row.tableName && <div className="friendRaidTable">{row.tableName}</div>}
+                  <div>
+                    {row.clearedCount}/{row.totalCount}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {row.remainingRaids.length === 0 ? (
-              <div className="friendRaidDone">이번 주 레이드 끝!</div>
-            ) : (
-              <ul className="friendRaidList">
-                {row.remainingRaids.map((r) => (
-                  <li key={r}>{r}</li>
-                ))}
-              </ul>
-            )}
-          </div>
-        ))}
+              {row.remainingRaids.length === 0 ? (
+                <div className="friendRaidDone">이번 주 레이드 끝!</div>
+              ) : (
+                <ul className="friendRaidList">
+                  {row.remainingRaids.map((r) => (
+                    <li key={r}>{r}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )
+        })}
       </div>
     );
   }
