@@ -146,6 +146,7 @@ function getNextAzenaExpiryMs(state: TodoState): number | null {
 }
 
 export default function TodoTracker() {
+  const SERVER_MODE = String((import.meta as any)?.env?.VITE_SERVER_MODE ?? "") === "1";
   const [state, setState] = useState<TodoState>(() => {
     const loaded = DEFAULT_TODO_STATE.load();
     return loaded ?? DEFAULT_TODO_STATE.make();
@@ -243,6 +244,85 @@ export default function TodoTracker() {
     if (ct.includes("application/json")) return res.json();
     return (await res.text()) as any;
   }
+
+  // ✅ 서버 백업 비밀번호
+  const [backupPassword, setBackupPassword] = useState("");
+
+  // ✅ 서버로 전체 state 백업 업로드
+  async function uploadBackupToServer() {
+    if (!SERVER_MODE) return alert("서버 모드가 꺼져 있어요. VITE_SERVER_MODE=1로 켜주세요.");
+    const pw = backupPassword.trim();
+    if (!pw) return alert("백업 비밀번호를 입력해주세요.");
+
+    const stateJson = exportStateToJson(state);
+
+    await apiFetch2("/api/me/state-backup", {
+      method: "PUT",
+      body: JSON.stringify({ password: pw, stateJson }),
+    });
+
+    alert("서버 백업 업로드 완료!");
+  }
+
+  const [restoreCode, setRestoreCode] = useState("");
+  // ✅ 서버에서 전체 state 백업 다운로드/복원
+  async function downloadBackupFromServer() {
+    if (!SERVER_MODE) return alert("서버 모드가 꺼져 있어요. VITE_SERVER_MODE=1로 켜주세요.");
+    const pw = backupPassword.trim();
+    if (!pw) return alert("백업 비밀번호를 입력해주세요.");
+
+    const r: any = await apiFetch2("/api/me/state-backup", {
+      method: "POST",
+      body: JSON.stringify({ password: pw }),
+    });
+
+    const next = importStateFromJson(String(r?.stateJson ?? ""));
+    setState(next);
+    alert("서버 백업 다운로드/복원 완료!");
+  }
+
+  async function downloadBackupWithCode(code: string) {
+    if (!SERVER_MODE) {
+      alert("서버 모드가 꺼져 있어요.");
+      return;
+    }
+
+    const pw = backupPassword.trim();
+    const trimmedCode = code.trim(); // ✅ 반드시 있어야 함
+
+    if (!trimmedCode) return alert("코드를 입력해주세요.");
+    if (!pw) return alert("백업 비밀번호를 입력해주세요.");
+
+    const headers = new Headers();
+    headers.set("Content-Type", "application/json");
+    headers.set("x-friend-code", trimmedCode);
+
+    const res = await fetch("/api/me/state-backup", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ password: pw }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(text || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    const next = importStateFromJson(String(data?.stateJson ?? ""));
+
+    // ✅ friendCode도 그 코드로 고정
+    setState({
+      ...next,
+      profile: {
+        ...next.profile,
+        friendCode: trimmedCode
+      }
+    });
+
+    alert("서버 복원 완료!");
+  }
+
 
   function renderFriendRaidLeftColumns() {
     if (!selectedFriendCode) return <div className="todo-hint">친구를 선택해줘.</div>;
@@ -1198,7 +1278,7 @@ export default function TodoTracker() {
   }
 
   function doImport() {
-    const raw = prompt("백업 JSON을 붙여넣으세요");
+    const raw = prompt("백업 JSON을 붙여넣으세요.");
     if (!raw) return;
     try {
       const next = importStateFromJson(raw);
@@ -2373,350 +2453,379 @@ export default function TodoTracker() {
 
       <div className="todo-page">
         <div className="todo-topbar">
-          <div className="todo-title">
-            <h2>할 일 (To-do)</h2>
-            <div className="todo-sub">로스터 기반 숙제 체크리스트 · 일일 6시 / 주간 수요일 6시 자동 초기화</div>
+          <div className="topbar-left">
+            <div className="todo-title">
+              <h2>할 일 (To-do)</h2>
+              <div className="todo-sub">로스터 기반 숙제 체크리스트 · 일일 6시 / 주간 수요일 6시 자동 초기화</div>
 
-            <div
-              className="topbar-controls"
-              style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}
-            >
-
-              <select
-                value={state.activeTableId}
-                onChange={(e) => setActiveTableId(e.target.value)}
-                style={{
-                  height: 34,
-                  borderRadius: 10,
-                  border: "1px solid var(--border)",
-                  background: "var(--card)",
-                  color: "var(--text)",
-                  padding: "0 10px",
-                  fontSize: 13,
-                }}
-                title="왼쪽(편집) 표 선택"
+              <div
+                className="topbar-controls"
+                style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}
               >
 
-                {state.tables.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
+                <select
+                  value={state.activeTableId}
+                  onChange={(e) => setActiveTableId(e.target.value)}
+                  style={{
+                    height: 34,
+                    borderRadius: 10,
+                    border: "1px solid var(--border)",
+                    background: "var(--card)",
+                    color: "var(--text)",
+                    padding: "0 10px",
+                    fontSize: 13,
+                  }}
+                  title="왼쪽(편집) 표 선택"
+                >
 
-              {/* ✅ 오른쪽 표 선택(기존 표 불러오기) */}
-              <select
-                value={secondaryTableId}
-                onChange={(e) => setSecondaryTableId(e.target.value)}
-                style={{
-                  height: 34,
-                  borderRadius: 10,
-                  border: "1px solid var(--border)",
-                  background: "var(--card)",
-                  color: "var(--text)",
-                  padding: "0 10px",
-                  fontSize: 13,
-                }}
-                title="오른쪽에 같이 볼 표 선택"
-              >
-                <option value="">(오른쪽 표)</option>
-                {state.tables
-                  .filter((t) => t.id !== state.activeTableId)
-                  .map((t) => (
+                  {state.tables.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.name}
                     </option>
                   ))}
-              </select>
-
-              <button className="btn" onClick={addTable}>
-                + 표 추가
-              </button>
-              <button className="btn" onClick={renameTable}>
-                표 이름변경
-              </button>
-              <button className="btn" onClick={deleteTable}>
-                표 삭제
-              </button>
-            </div>
-            {/* ✅ 주간 레이드 골드 진행률(Top3 합산) */}
-            <div className="weeklyGoldSummary" title="모든 표/모든 캐릭터의 주간 레이드 Top3(아이템레벨 기준) 합산">
-              <div className="weeklyGoldTitle">주간 레이드 골드</div>
-
-              {weeklyGoldProgress.total > 0 ? (
-                <div className="weeklyGoldValue">
-                  <span className="weeklyGoldNum">{weeklyGoldProgress.done.toLocaleString()}</span>
-                  <span className="weeklyGoldSep">/</span>
-                  <span className="weeklyGoldNum">{weeklyGoldProgress.total.toLocaleString()}</span>
-                  <span className="weeklyGoldPct">({weeklyGoldProgress.pct}%)</span>
-                </div>
-              ) : (
-                <div className="weeklyGoldValue muted">아이템레벨 입력 필요</div>
-              )}
-
-              <div className="weeklyGoldHint">Top3 기준 · 체크하면 자동 합산</div>
-            </div>
-          </div>
-
-          <div className="todo-actions">
-            <button className="btn" onClick={addCharacter}>
-              + 캐릭 추가
-            </button>
-            <button className="btn" onClick={() => addTask("DAILY")}>
-              + 일일 숙제
-            </button>
-            <button className="btn" onClick={() => addTask("WEEKLY")}>
-              + 주간 숙제
-            </button>
-            <button className="btn" onClick={() => addTask("NONE")}>
-              + 기타 숙제
-            </button>
-
-            <BidPopover />
-
-            <div className="divider" />
-
-
-            <div className="divider" />
-            <button className="btn" onClick={() => manualReset("DAILY")}>
-              일일 초기화
-            </button>
-            <button className="btn" onClick={() => manualReset("WEEKLY")}>
-              주간 초기화
-            </button>
-
-            <div className="divider" />
-            <button className="btn" onClick={doExport}>
-              백업
-            </button>
-            <button className="btn" onClick={doImport}>
-              복원
-            </button>
-
-            <button className="btn" onClick={toggleTheme} title="테마 전환">
-              {theme === "dark" ? "☀️ 화이트모드" : "🌙 다크모드"}
-            </button>
-          </div>
-          <div className="todo-actions">
-            {/* 기존 버튼들 ... */}
-
-            <div className="divider" />
-
-            <div className="friendBox">
-              <div className="friendRow">
-                <div className="friendLabel">내 코드</div>
-                <code className="friendCode">{state.profile.friendCode}</code>
-                <button className="mini" onClick={() => navigator.clipboard.writeText(state.profile.friendCode)}>
-                  복사
-                </button>
-
-                {SERVER_MODE ? (
-                  <span className="pill weekly" style={{ marginLeft: 6 }}>
-                    서버모드
-                  </span>
-                ) : (
-                  <span className="pill daily" style={{ marginLeft: 6 }}>
-                    로컬모드
-                  </span>
-                )}
-              </div>
-              {/* ✅ 닉네임 입력 (친구에게 표시될 이름) */}
-              <div className="friendRow">
-                <div className="friendLabel">닉네임</div>
-                <input
-                  className="friendInput"
-                  placeholder="닉네임(친구에게 표시)"
-                  value={(state.profile.nickname ?? "")}
-                  onChange={(e) => {
-                    setNickSaveState("saving");   // ← 수정 시작하면 바로 저장중 표시
-                    setMyNickname(e.target.value);
-                  }}
-                />
-                {/* ✅ 저장 상태 표시 */}
-                {nickSaveState !== "idle" && (
-                  <span
-                    className={[
-                      "pill",
-                      nickSaveState === "saving" ? "weekly" : nickSaveState === "error" ? "daily" : "weekly",
-                    ].join(" ")}
-                    style={{ marginLeft: 6 }}
-                    title={
-                      nickSaveState === "typing"
-                        ? "입력 중"
-                        : nickSaveState === "saving"
-                          ? "서버에 저장 중"
-                          : nickSaveState === "saved"
-                            ? (SERVER_MODE ? "서버 저장 완료" : "로컬 저장 완료")
-                            : "저장 실패"
-                    }
-                  >
-                    {nickSaveState === "typing" && "입력중"}
-                    {nickSaveState === "saving" && "저장중…"}
-                    {nickSaveState === "saved" && "저장됨"}
-                    {nickSaveState === "error" && "실패"}
-                  </span>
-                )}
-              </div>
-              <div className="friendRow">
-                <div className="friendLabel">공개</div>
-                <select
-                  className="friendSelect"
-                  value={state.profile.shareMode}
-                  onChange={(e) => setShareMode(e.target.value as any).catch((err) => alert(String(err)))}
-                >
-                  <option value="PUBLIC">공개</option>
-                  <option value="PRIVATE">비공개</option>
                 </select>
 
-                {!SERVER_MODE ? (
-                  <button
-                    className="mini"
-                    onClick={() => {
-                      try {
-                        const json = exportRaidLeftSnapshot(state, state.activeTableId);
-                        navigator.clipboard.writeText(json);
-                        alert("남은 레이드 스냅샷을 클립보드에 복사했어!");
-                      } catch (e: any) {
-                        if (String(e?.message) === "PRIVATE_MODE") alert("비공개면 스냅샷을 만들 수 없어!");
-                        else alert("스냅샷 생성 실패");
-                      }
-                    }}
-                  >
-                    남은 레이드 스냅샷 복사
-                  </button>
-                ) : (
-                  <button
-                    className="mini"
-                    onClick={async () => {
-                      try {
-                        const snapshotJson = exportRaidLeftSnapshot(state, "ALL");
+                {/* ✅ 오른쪽 표 선택(기존 표 불러오기) */}
+                <select
+                  value={secondaryTableId}
+                  onChange={(e) => setSecondaryTableId(e.target.value)}
+                  style={{
+                    height: 34,
+                    borderRadius: 10,
+                    border: "1px solid var(--border)",
+                    background: "var(--card)",
+                    color: "var(--text)",
+                    padding: "0 10px",
+                    fontSize: 13,
+                  }}
+                  title="오른쪽에 같이 볼 표 선택"
+                >
+                  <option value="">(오른쪽 표)</option>
+                  {state.tables
+                    .filter((t) => t.id !== state.activeTableId)
+                    .map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                </select>
 
-                        await apiFetch2("/api/me/raid-left-snapshot", {
-                          method: "PUT",
-                          body: JSON.stringify({
-                            nickname: state.profile.nickname,
-                            snapshotJson,
-                          }),
-                        });
-
-                        alert("서버에 남은 레이드 스냅샷 업로드 완료!");
-                      } catch (e: any) {
-                        alert(`업로드 실패: ${String(e)}`);
-                      }
-                    }}
-                  >
-                    남은 레이드 서버 업로드
-                  </button>
-                )}
+                <button className="btn" onClick={addTable}>
+                  + 표 추가
+                </button>
+                <button className="btn" onClick={renameTable}>
+                  표 이름변경
+                </button>
+                <button className="btn" onClick={deleteTable}>
+                  표 삭제
+                </button>
               </div>
+            </div>
+          </div>
 
-              {SERVER_MODE ? (
-                <>
-                  <div className="friendRow">
-                    <button
-                      className="mini"
-                      onClick={async () => {
-                        const toCode = (prompt("친구 코드(FC_...) 입력") ?? "").trim();
-                        if (!toCode) return;
+          <div className="topbar-center">
+            {/* ✅ 주간 레이드 골드 진행률(Top3 합산) */}
+            <div className="weeklyGoldSummary" title="모든 표/모든 캐릭터의 주간 레이드 Top3(아이템레벨 기준) 합산">
+                <div className="weeklyGoldTitle">주간 레이드 골드</div>
 
-                        try {
-                          await apiFetch2("/api/friend-requests", {
-                            method: "POST",
-                            body: JSON.stringify({ toFriendCode: toCode }),
-                          });
-                          alert("친구요청 보냄!");
-                          await refreshFriends();
-                        } catch (e: any) {
-                          alert(`친구요청 실패: ${String(e)}`);
-                        }
-                      }}
-                    >
-                      친구요청 보내기
-                    </button>
+                {weeklyGoldProgress.total > 0 ? (
+                  <div className="weeklyGoldValue">
+                    <span className="weeklyGoldNum">{weeklyGoldProgress.done.toLocaleString()}</span>
+                    <span className="weeklyGoldSep">/</span>
+                    <span className="weeklyGoldNum">{weeklyGoldProgress.total.toLocaleString()}</span>
+                    <span className="weeklyGoldPct">({weeklyGoldProgress.pct}%)</span>
+                  </div>
+                ) : (
+                  <div className="weeklyGoldValue muted">아이템레벨 입력 필요</div>
+                )}
 
-                    <button className="mini" disabled={syncingFriends} onClick={() => refreshFriends().catch((e) => alert(String(e)))}>
-                      {syncingFriends ? "동기화중..." : "서버 동기화"}
+                <div className="weeklyGoldHint">Top3 기준 · 체크하면 자동 합산</div>
+              </div>
+            <div className="todo-actions actions-row">
+                <button className="btn" onClick={addCharacter}>
+                  + 캐릭 추가
+                </button>
+                <button className="btn" onClick={() => addTask("DAILY")}>
+                  + 일일 숙제
+                </button>
+                <button className="btn" onClick={() => addTask("WEEKLY")}>
+                  + 주간 숙제
+                </button>
+                <button className="btn" onClick={() => addTask("NONE")}>
+                  + 기타 숙제
+                </button>
+
+                <BidPopover />
+
+
+                <div className="divider" />
+                <button className="btn" onClick={() => manualReset("DAILY")}>
+                  일일 초기화
+                </button>
+                <button className="btn" onClick={() => manualReset("WEEKLY")}>
+                  주간 초기화
+                </button>
+
+                <div className="divider" />
+                <button className="btn" onClick={doExport}>JSON백업</button>
+                <button className="btn" onClick={doImport}>JSON복원</button>
+                <button className="btn" onClick={toggleTheme} title="테마 전환">
+                  {theme === "dark" ? "☀️ 화이트모드" : "🌙 다크모드"}
+                </button>
+              </div>
+          </div>
+
+          <div className="topbar-right">
+            <div className="topbar-cards">
+                            {SERVER_MODE && (
+                <div className="serverBackupPanel">
+                  <div className="serverBackupRow">
+                    <input
+                      className="friendInput"
+                      placeholder="내 코드(FC_...)"
+                      value={restoreCode}
+                      onChange={(e) => setRestoreCode(e.target.value)}
+                    />
+                    <input
+                      className="friendInput"
+                      type="password"
+                      value={backupPassword}
+                      onChange={(e) => setBackupPassword(e.target.value)}
+                      placeholder="서버 백업 비밀번호"
+                    />
+                    <button className="btn" onClick={() => downloadBackupWithCode(restoreCode.trim())}>
+                      이 코드로 서버 복원
                     </button>
                   </div>
 
-                  {incomingReqs.length > 0 && (
-                    <div className="todo-hint" style={{ marginTop: 8 }}>
-                      <div>받은 친구요청</div>
-                      <ul>
-                        {incomingReqs.map((r) => (
-                          <li key={r.id}>
-                            {r.fromFriendCode}{" "}
-                            <button
-                              className="mini"
-                              onClick={async () => {
-                                try {
-                                  await apiFetch2(`/api/friend-requests/${r.id}/accept`, { method: "POST" });
-                                  await refreshFriends();
-                                } catch (e: any) {
-                                  alert(`수락 실패: ${String(e)}`);
-                                }
-                              }}
-                            >
-                              수락
-                            </button>{" "}
-                            <button
-                              className="mini"
-                              onClick={async () => {
-                                try {
-                                  await apiFetch2(`/api/friend-requests/${r.id}/reject`, { method: "POST" });
-                                  await refreshFriends();
-                                } catch (e: any) {
-                                  alert(`거절 실패: ${String(e)}`);
-                                }
-                              }}
-                            >
-                              거절
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="friendRow">
-                  <input
-                    className="friendInput"
-                    placeholder="친구 코드(FC_...)"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        const code = (e.currentTarget as HTMLInputElement).value;
-                        addFriend(code, code);
-                        (e.currentTarget as HTMLInputElement).value = "";
-                      }
-                    }}
-                  />
-                  <button
-                    className="mini"
-                    onClick={() => {
-                      const code = prompt("친구 코드(FC_...) 입력") ?? "";
-                      if (!code.trim()) return;
-                      const nick = prompt("친구 별명(선택)") ?? "";
-                      addFriend(code, nick);
-                    }}
-                  >
-                    친구 추가
-                  </button>
-
-                  <button
-                    className="mini"
-                    onClick={() => {
-                      const raw = prompt("친구가 준 스냅샷 JSON을 붙여넣어") ?? "";
-                      if (!raw.trim()) return;
-                      attachSnapshotToFriend(raw);
-                    }}
-                  >
-                    친구 스냅샷 붙여넣기
-                  </button>
+                  <div className="serverBackupRow">
+                    <button className="btn" onClick={uploadBackupToServer}>
+                      서버 업로드
+                    </button>
+                    <button className="btn" onClick={downloadBackupFromServer}>
+                      서버 다운로드
+                    </button>
+                  </div>
                 </div>
               )}
+
+              <div className="friendBox friendBoxTop">
+                <div className="friendRow">
+                  <div className="friendLabel">내 코드</div>
+                  <code className="friendCode">{state.profile.friendCode}</code>
+                  <button className="mini" onClick={() => navigator.clipboard.writeText(state.profile.friendCode)}>
+                    복사
+                  </button>
+
+                  {SERVER_MODE ? (
+                    <span className="pill weekly" style={{ marginLeft: 6 }}>
+                      서버모드
+                    </span>
+                  ) : (
+                    <span className="pill daily" style={{ marginLeft: 6 }}>
+                      로컬모드
+                    </span>
+                  )}
+                </div>
+                {/* ✅ 닉네임 입력 (친구에게 표시될 이름) */}
+                <div className="friendRow">
+                  <div className="friendLabel">닉네임</div>
+                  <input
+                    className="friendInput"
+                    placeholder="닉네임(친구에게 표시)"
+                    value={(state.profile.nickname ?? "")}
+                    onChange={(e) => {
+                      setNickSaveState("saving");   // ← 수정 시작하면 바로 저장중 표시
+                      setMyNickname(e.target.value);
+                    }}
+                  />
+                  {/* ✅ 저장 상태 표시 */}
+                  {nickSaveState !== "idle" && (
+                    <span
+                      className={[
+                        "pill",
+                        nickSaveState === "saving" ? "weekly" : nickSaveState === "error" ? "daily" : "weekly",
+                      ].join(" ")}
+                      style={{ marginLeft: 6 }}
+                      title={
+                        nickSaveState === "typing"
+                          ? "입력 중"
+                          : nickSaveState === "saving"
+                            ? "서버에 저장 중"
+                            : nickSaveState === "saved"
+                              ? (SERVER_MODE ? "서버 저장 완료" : "로컬 저장 완료")
+                              : "저장 실패"
+                      }
+                    >
+                      {nickSaveState === "typing" && "입력중"}
+                      {nickSaveState === "saving" && "저장중…"}
+                      {nickSaveState === "saved" && "저장됨"}
+                      {nickSaveState === "error" && "실패"}
+                    </span>
+                  )}
+                </div>
+                <div className="friendRow">
+                  <div className="friendLabel">공개</div>
+                  <select
+                    className="friendSelect"
+                    value={state.profile.shareMode}
+                    onChange={(e) => setShareMode(e.target.value as any).catch((err) => alert(String(err)))}
+                  >
+                    <option value="PUBLIC">공개</option>
+                    <option value="PRIVATE">비공개</option>
+                  </select>
+
+                  {!SERVER_MODE ? (
+                    <button
+                      className="mini"
+                      onClick={() => {
+                        try {
+                          const json = exportRaidLeftSnapshot(state, state.activeTableId);
+                          navigator.clipboard.writeText(json);
+                          alert("남은 레이드 스냅샷을 클립보드에 복사했어!");
+                        } catch (e: any) {
+                          if (String(e?.message) === "PRIVATE_MODE") alert("비공개면 스냅샷을 만들 수 없어!");
+                          else alert("스냅샷 생성 실패");
+                        }
+                      }}
+                    >
+                      남은 레이드 스냅샷 복사
+                    </button>
+                  ) : (
+                    <button
+                      className="mini"
+                      onClick={async () => {
+                        try {
+                          const snapshotJson = exportRaidLeftSnapshot(state, "ALL");
+
+                          await apiFetch2("/api/me/raid-left-snapshot", {
+                            method: "PUT",
+                            body: JSON.stringify({
+                              nickname: state.profile.nickname,
+                              snapshotJson,
+                            }),
+                          });
+
+                          alert("서버에 남은 레이드 스냅샷 업로드 완료!");
+                        } catch (e: any) {
+                          alert(`업로드 실패: ${String(e)}`);
+                        }
+                      }}
+                    >
+                      남은 레이드 서버 업로드
+                    </button>
+                  )}
+                </div>
+
+                {SERVER_MODE ? (
+                  <>
+                    <div className="friendRow">
+                      <button
+                        className="mini"
+                        onClick={async () => {
+                          const toCode = (prompt("친구 코드(FC_...) 입력") ?? "").trim();
+                          if (!toCode) return;
+
+                          try {
+                            await apiFetch2("/api/friend-requests", {
+                              method: "POST",
+                              body: JSON.stringify({ toFriendCode: toCode }),
+                            });
+                            alert("친구요청 보냄!");
+                            await refreshFriends();
+                          } catch (e: any) {
+                            alert(`친구요청 실패: ${String(e)}`);
+                          }
+                        }}
+                      >
+                        친구요청 보내기
+                      </button>
+
+                      <button className="mini" disabled={syncingFriends} onClick={() => refreshFriends().catch((e) => alert(String(e)))}>
+                        {syncingFriends ? "동기화중..." : "서버 동기화"}
+                      </button>
+                    </div>
+
+                    {incomingReqs.length > 0 && (
+                      <div className="todo-hint" style={{ marginTop: 8 }}>
+                        <div>받은 친구요청</div>
+                        <ul>
+                          {incomingReqs.map((r) => (
+                            <li key={r.id}>
+                              {r.fromFriendCode}{" "}
+                              <button
+                                className="mini"
+                                onClick={async () => {
+                                  try {
+                                    await apiFetch2(`/api/friend-requests/${r.id}/accept`, { method: "POST" });
+                                    await refreshFriends();
+                                  } catch (e: any) {
+                                    alert(`수락 실패: ${String(e)}`);
+                                  }
+                                }}
+                              >
+                                수락
+                              </button>{" "}
+                              <button
+                                className="mini"
+                                onClick={async () => {
+                                  try {
+                                    await apiFetch2(`/api/friend-requests/${r.id}/reject`, { method: "POST" });
+                                    await refreshFriends();
+                                  } catch (e: any) {
+                                    alert(`거절 실패: ${String(e)}`);
+                                  }
+                                }}
+                              >
+                                거절
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="friendRow">
+                    <input
+                      className="friendInput"
+                      placeholder="친구 코드(FC_...)"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          const code = (e.currentTarget as HTMLInputElement).value;
+                          addFriend(code, code);
+                          (e.currentTarget as HTMLInputElement).value = "";
+                        }
+                      }}
+                    />
+                    <button
+                      className="mini"
+                      onClick={() => {
+                        const code = prompt("친구 코드(FC_...) 입력") ?? "";
+                        if (!code.trim()) return;
+                        const nick = prompt("친구 별명(선택)") ?? "";
+                        addFriend(code, nick);
+                      }}
+                    >
+                      친구 추가
+                    </button>
+
+                    <button
+                      className="mini"
+                      onClick={() => {
+                        const raw = prompt("친구가 준 스냅샷 JSON을 붙여넣어") ?? "";
+                        if (!raw.trim()) return;
+                        attachSnapshotToFriend(raw);
+                      }}
+                    >
+                      친구 스냅샷 붙여넣기
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
+        </div>
         </div>
 
         <div className="todo-tabs">
@@ -2953,7 +3062,6 @@ export default function TodoTracker() {
             </div>
           );
         })()}
-      </div>
     </>
   );
 }

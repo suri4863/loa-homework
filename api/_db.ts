@@ -1,5 +1,6 @@
 import type { VercelRequest } from "@vercel/node";
 import { sql } from "@vercel/postgres";
+import crypto from "crypto";
 
 /**
  * NOTE
@@ -49,6 +50,21 @@ export async function ensureSchema() {
     create table if not exists raid_left_snapshots (
       user_id bigint primary key references users(id),
       snapshot_json text not null,
+      updated_at timestamptz not null default now()
+    );
+  `;
+    // ✅ 백업 비밀번호(해시/솔트) 컬럼
+  await sql`
+    alter table users
+    add column if not exists backup_pw_salt text,
+    add column if not exists backup_pw_hash text
+  `;
+
+  // ✅ 전체 state 백업 저장소 (유저당 1개)
+  await sql`
+    create table if not exists state_backups (
+      user_id bigint primary key references users(id),
+      state_json text not null,
       updated_at timestamptz not null default now()
     );
   `;
@@ -108,4 +124,46 @@ export function sendError(res: any, e: any) {
   const status = Number(e?.status ?? 500);
   const msg = String(e?.message ?? "Server Error");
   sendJson(res, { error: msg }, status);
+}
+
+function scryptHash(password: string, saltB64?: string) {
+  const salt = saltB64 ? Buffer.from(saltB64, "base64") : crypto.randomBytes(16);
+  const hash = crypto.scryptSync(password, salt, 32) as Buffer;
+  return { saltB64: salt.toString("base64"), hashB64: hash.toString("base64") };
+}
+
+/**
+ * ✅ 백업 비밀번호 정책
+ * - 유저가 처음 백업을 쓰는 순간 비밀번호를 "설정"해버림(첫 PUT/POST에서)
+ * - 이후부터는 해당 비밀번호가 맞아야만 업/다운 가능
+ */
+export async function ensureBackupPassword(meId: number, password: string) {
+  const row = await sql<{ backup_pw_salt: string | null; backup_pw_hash: string | null }>`
+    select backup_pw_salt, backup_pw_hash
+    from users
+    where id=${meId}
+  `;
+
+  const curSalt = row.rows[0]?.backup_pw_salt ?? null;
+  const curHash = row.rows[0]?.backup_pw_hash ?? null;
+
+  // 최초 설정
+  if (!curSalt || !curHash) {
+    const { saltB64, hashB64 } = scryptHash(password);
+    await sql`update users set backup_pw_salt=${saltB64}, backup_pw_hash=${hashB64} where id=${meId}`;
+    return { ok: true, firstSet: true };
+  }
+
+  // 검증
+  const { hashB64 } = scryptHash(password, curSalt);
+  const a = Buffer.from(hashB64, "base64");
+  const b = Buffer.from(curHash, "base64");
+  const same = a.length === b.length && crypto.timingSafeEqual(a, b);
+
+  if (!same) {
+    const err = new Error("Invalid backup password");
+    (err as any).status = 401;
+    throw err;
+  }
+  return { ok: true, firstSet: false };
 }
