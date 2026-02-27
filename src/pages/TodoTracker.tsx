@@ -268,8 +268,22 @@ export default function TodoTracker() {
             return (
               <div key={`${row.tableName ?? ""}-${row.charName}`} className="raidLeftColCard">
                 <div className="raidLeftColHeader">
-                  <div className="raidLeftColName">{row.charName}</div>
-                  {/* 필요 없으면 아래 줄 삭제 */}
+                  <div className="raidLeftColHeaderLeft">
+                    <div className="raidLeftColName">{row.charName}</div>
+
+                    {(row.charItemLevel || row.charPower) ? (
+                      <div className="raidLeftColMeta">
+                        {row.charItemLevel ? (
+                          <span className="raidBadge ilvl">Lv {row.charItemLevel}</span>
+                        ) : null}
+
+                        {row.charPower ? (
+                          <span className="raidBadge power">전투력 {row.charPower}</span>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+
                   {row.tableName ? <div className="raidLeftColSub">{row.tableName}</div> : null}
                 </div>
 

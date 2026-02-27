@@ -1567,14 +1567,55 @@ html[data-theme="dark"] .rest-input {
   padding: 12px;
 }
 
+/* ===== 친구 남은 레이드 메타 뱃지 ===== */
+
+.raidBadge{
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  margin-right: 6px;
+  white-space: nowrap;
+}
+
+/* 아이템레벨 */
+.raidBadge.ilvl{
+  background: rgba(59,130,246,0.15);
+  color: #60a5fa;
+  border: 1px solid rgba(59,130,246,0.35);
+}
+
+/* 전투력 */
+.raidBadge.power{
+  background: rgba(16,185,129,0.15);
+  color: #34d399;
+  border: 1px solid rgba(16,185,129,0.35);
+}
 
 .raidLeftColHeader {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: flex-start; /* baseline -> flex-start */
   margin-bottom: 8px;
 }
 
+.raidLeftColHeaderLeft{
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.raidLeftColMeta{
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .raidLeftColName {
   font-weight: 900;
 }
