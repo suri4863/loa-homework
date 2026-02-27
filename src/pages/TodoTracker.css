@@ -1018,7 +1018,8 @@ html[data-theme="dark"] .rest-input {
 
   background: var(--soft);
   color: var(--text);
-  -webkit-text-fill-color: var(--text); /* ✅ 크롬 계열에서 글자색 튐 방지 */
+  -webkit-text-fill-color: var(--text);
+  /* ✅ 크롬 계열에서 글자색 튐 방지 */
 }
 
 .bid-input:focus {
@@ -1417,7 +1418,8 @@ html[data-theme="dark"] .rest-input {
    ========================= */
 .friendRaidHead {
   display: flex;
-  align-items: flex-start;   /* baseline -> flex-start (2줄 표시 안정) */
+  align-items: flex-start;
+  /* baseline -> flex-start (2줄 표시 안정) */
   justify-content: space-between;
   margin-bottom: 10px;
 }
@@ -1555,7 +1557,8 @@ html[data-theme="dark"] .rest-input {
 }
 
 .raidLeftColCard {
-  flex: 0 0 170px; /* 칼럼 너비 */
+  flex: 0 0 220px;
+  /* ✅ 조금 넓혀서 뱃지 2개 안정적으로 */
   border: 1px solid var(--border);
   border-radius: 16px;
 
@@ -1569,7 +1572,7 @@ html[data-theme="dark"] .rest-input {
 
 /* ===== 친구 남은 레이드 메타 뱃지 ===== */
 
-.raidBadge{
+.raidBadge {
   display: inline-flex;
   align-items: center;
   padding: 3px 8px;
@@ -1582,37 +1585,40 @@ html[data-theme="dark"] .rest-input {
 }
 
 /* 아이템레벨 */
-.raidBadge.ilvl{
-  background: rgba(59,130,246,0.15);
+.raidBadge.ilvl {
+  background: rgba(59, 130, 246, 0.15);
   color: #60a5fa;
-  border: 1px solid rgba(59,130,246,0.35);
+  border: 1px solid rgba(59, 130, 246, 0.35);
 }
 
 /* 전투력 */
-.raidBadge.power{
-  background: rgba(16,185,129,0.15);
+.raidBadge.power {
+  background: rgba(16, 185, 129, 0.15);
   color: #34d399;
-  border: 1px solid rgba(16,185,129,0.35);
+  border: 1px solid rgba(16, 185, 129, 0.35);
 }
 
 .raidLeftColHeader {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start; /* baseline -> flex-start */
+  align-items: flex-start;
+  /* baseline -> flex-start */
   margin-bottom: 8px;
 }
 
-.raidLeftColHeaderLeft{
+.raidLeftColHeaderLeft {
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+  flex: 1;
+  /* 왼쪽 영역이 너비를 우선 확보 */
 }
 
 .raidLeftColMeta{
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+  flex-wrap: wrap; /* 줄바꿈 허용 */
+  gap: 6px;
   font-size: 11px;
   color: var(--muted);
 }
@@ -1624,6 +1630,11 @@ html[data-theme="dark"] .rest-input {
 .raidLeftColSub {
   font-size: 11px;
   color: var(--muted);
+  white-space: nowrap;
+  /* ✅ 표1이 줄바꿈 안 되게 */
+  flex: 0 0 auto;
+  /* ✅ 고정 */
+  margin-left: 10px;
 }
 
 .raidLeftColBody {
@@ -1702,19 +1713,21 @@ body,
 }
 
 /* ----------탑3 Weekly Top3 difficulty popup ---------- */
-.weekly-top3-pop{
-  position: fixed;              /* ✅ left/top 적용되게 */
-  z-index: 9999;                /* ✅ 다른 UI 위로 */
+.weekly-top3-pop {
+  position: fixed;
+  /* ✅ left/top 적용되게 */
+  z-index: 9999;
+  /* ✅ 다른 UI 위로 */
   width: 360px;
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--card);
   color: var(--text);
-  box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
   padding: 10px;
 }
 
-.weekly-top3-head{
+.weekly-top3-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1722,7 +1735,7 @@ body,
   margin-bottom: 8px;
 }
 
-.weekly-top3-head button{
+.weekly-top3-head button {
   border: 1px solid var(--border);
   background: var(--card);
   color: var(--text);
@@ -1733,22 +1746,22 @@ body,
   font-size: 12px;
 }
 
-.weekly-top3-head button:hover{
+.weekly-top3-head button:hover {
   background: var(--soft-2);
 }
 
-.weekly-top3-sum{
+.weekly-top3-sum {
   font-size: 13px;
   opacity: .9;
   margin-bottom: 8px;
 }
 
-.weekly-top3-body{
+.weekly-top3-body {
   display: grid;
   gap: 10px;
 }
 
-.weekly-top3-row{
+.weekly-top3-row {
   display: grid;
   grid-template-columns: 52px 1fr auto;
   align-items: center;
@@ -1759,17 +1772,17 @@ body,
   border: 1px solid var(--border);
 }
 
-.weekly-top3-raid{
+.weekly-top3-raid {
   font-weight: 800;
 }
 
-.weekly-top3-diffs{
+.weekly-top3-diffs {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
 }
 
-.diff-btn{
+.diff-btn {
   border: 1px solid var(--border);
   background: var(--card);
   color: var(--text);
@@ -1780,22 +1793,22 @@ body,
   font-size: 12px;
 }
 
-.diff-btn:hover{
+.diff-btn:hover {
   background: var(--soft-2);
 }
 
-.diff-btn.active{
-  border-color: rgba(59,130,246,0.55);
-  background: rgba(59,130,246,0.18);
+.diff-btn.active {
+  border-color: rgba(59, 130, 246, 0.55);
+  background: rgba(59, 130, 246, 0.18);
   font-weight: 800;
 }
 
-.diff-btn:disabled{
+.diff-btn:disabled {
   opacity: .45;
   cursor: not-allowed;
 }
 
-.weekly-top3-gold{
+.weekly-top3-gold {
   font-variant-numeric: tabular-nums;
   font-weight: 800;
 }
