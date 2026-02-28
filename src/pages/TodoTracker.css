@@ -2088,3 +2088,58 @@ body,
   flex: 1;
   min-width: 0;
 }
+
+
+.cell-top{
+  display:flex;
+  align-items:center;
+  justify-content:center;   /* 가운데 정렬 */
+  gap:8px;                  /* 버튼 간격만 유지 */
+}
+
+.cell-top .rest-input{
+  margin-left:0;            /* auto 제거 */
+}
+
+/* ===== Cell: stacked layout (1줄: 토글+휴식, 2줄: 큐브버튼) ===== */
+.cell-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+
+/* 큐브 버튼은 아래줄 왼쪽 정렬 */
+.cubeTicketBtn {
+  align-self: var(--muted);
+}
+
+/* 눌림/피드백 애니메이션 */
+.cubeTicketBtn.is-pressed {
+  animation: cube-press 280ms ease;
+}
+
+@keyframes cube-press {
+  0% { transform: scale(1); }
+  35% { transform: scale(0.96); }
+  100% { transform: scale(1); }
+}
+
+/* "눌렀다" 강조(짧게) */
+.cubeTicketBtn.is-pressed {
+  box-shadow: 0 0 0 2px rgba(80, 140, 255, 0.35);
+}
+
+/* 다크모드에서도 보이게(네가 var 쓰는 구조면 이 정도면 충분) */
+body.dark .cubeTicketBtn.is-pressed {
+  box-shadow: 0 0 0 2px rgba(120, 170, 255, 0.35);
+}
+
+.pip-cube.is-pressed {
+  box-shadow: 0 0 0 2px rgba(79,140,255,.45);
+  transform: scale(.97);
+}
+
+body.pip-dark .pip-cube.is-pressed {
+  box-shadow: 0 0 0 2px rgba(120,170,255,.45);
+}

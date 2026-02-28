@@ -160,6 +160,30 @@ export default function TodoTracker() {
   const [secondaryTableId, setSecondaryTableId] = useState<string>("");
 
   // =========================
+  // ✅ Document Picture-in-Picture (일일숙제 PIP)
+  // - 현재 보고 있는 표(state.activeTableId)
+  // - 캐릭터 1명씩 + 이전/다음
+  // =========================
+  const pipTableIdRef = useRef<string | null>(null);
+  const pipCubeFlashRef = useRef<Record<string, number>>({});
+  const pipWindowRef = useRef<any>(null);
+  const pipCharIndexRef = useRef<number>(0);
+  const stateRef = useRef<TodoState>(state);
+
+  useEffect(() => {
+    stateRef.current = state;
+    // state 변경 시 PIP가 열려있으면 화면 갱신
+    if (pipWindowRef.current) {
+      try {
+        renderDailyPip();
+      } catch {
+        // ignore
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
+  // =========================
   // ✅ Theme (light/dark)
   // =========================
   type Theme = "light" | "dark";
@@ -1562,6 +1586,54 @@ export default function TodoTracker() {
     "4해금": 1720,
   };
 
+  // =========================
+  // ✅ 쿠르잔 전선 → 큐브 해금 티켓 +1
+  // - 캐릭터 ilvl에 따라 1~4해금 자동 선택
+  // - 티켓 숙제가 없으면 "기타" 섹션에 자동 생성
+  // =========================
+  const UNLOCK_TICKET_TITLES = ["4해금", "3해금", "2해금", "1해금"] as const;
+
+  function pickUnlockTicketTitle(ilvl: number) {
+    for (const title of UNLOCK_TICKET_TITLES) {
+      const min = TASK_MIN_ILVL[title] ?? 0;
+      if (min > 0 && ilvl >= min) return title;
+    }
+    return "1해금";
+  }
+
+  function addUnlockTicketForChar(tableId: string, ch: Character, amount = 1) {
+    setState((prev) => {
+      const ilvl = getCharIlvl(ch as any);
+      const ticketTitle = pickUnlockTicketTitle(ilvl);
+
+      // 1) 티켓 Task 존재 보장 (period=NONE, cellType=TEXT)
+      let next: TodoState = prev;
+      let ticketTask = next.tasks.find((t) => t.title === ticketTitle && t.period === "NONE" && t.cellType === "TEXT");
+      if (!ticketTask) {
+        const created = createTask({
+          title: ticketTitle,
+          period: "NONE",
+          cellType: "TEXT",
+          section: "기타",
+        } as any);
+        next = { ...next, tasks: [...next.tasks, created] };
+        ticketTask = created;
+      }
+
+      // 2) 현재 값 + amount
+      const cell = getCellByTableId(next, tableId, ticketTask.id, ch.id);
+      const raw = cell?.type === "TEXT" ? cell.text : "";
+      const cur = raw === "" ? 0 : Number(String(raw).replace(/[^0-9]/g, "")) || 0;
+      const nextVal = Math.max(0, cur + amount);
+
+      return setCellByTableId(next, tableId, ticketTask, ch, {
+        type: "TEXT",
+        text: String(nextVal),
+        updatedAt: Date.now(),
+      } as any);
+    });
+  }
+
   const getCharIlvl = (ch: any) => {
     const v = ch.itemLevel ?? ch.item_level ?? ch.ilvl ?? ch.iLvl ?? ch.level ?? ch.levelLabel ?? ch.nameLevel;
     try {
@@ -1576,6 +1648,457 @@ export default function TodoTracker() {
   const CORE_DAILY_TASK_ID = "MAIN_DAILY";
   function getCoreDailyLabel(ilvl: number) {
     return ilvl >= 1730 ? "혼돈의 균열" : "쿠르잔 전선";
+  }
+
+  // =========================
+  // ✅ 일일숙제 PIP
+  // =========================
+
+  function ensurePipStyles(pipWin: Window) {
+    const doc = pipWin.document;
+    if (doc.getElementById("pip-style")) return;
+
+    const style = doc.createElement("style");
+    style.id = "pip-style";
+    style.textContent = `
+    :root{
+      --bg: #ffffff;
+      --text: #0f172a;
+      --muted: rgba(15,23,42,.7);
+      --card: rgba(0,0,0,.03);
+      --border: rgba(0,0,0,.12);
+      --btn: #ffffff;
+      --okBg: rgba(34,197,94,.14);
+      --okDot: rgba(34,197,94,.9);
+      --shadow: 0 10px 22px rgba(0,0,0,.12);
+      --ring: 0 0 0 2px rgba(79,140,255,.35);
+    }
+
+    body.pip-dark{
+      --bg: #0b1220;
+      --text: #e5e7eb;
+      --muted: rgba(229,231,235,.72);
+      --card: rgba(255,255,255,.06);
+      --border: rgba(255,255,255,.12);
+      --btn: rgba(255,255,255,.06);
+      --shadow: 0 10px 22px rgba(0,0,0,.35);
+      --ring: 0 0 0 2px rgba(120,170,255,.35);
+    }
+
+    body{
+      margin:0;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .pip-wrap{
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      padding: 12px;
+    }
+
+    .pip-top{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .pip-title{
+      font-size: 14px;
+      font-weight: 800;
+      line-height: 1.1;
+    }
+
+    .pip-sub{
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+
+    .pip-actions{
+      display:flex;
+      gap: 6px;
+    }
+
+    .pip-btn{
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--btn);
+      color: var(--text);
+      cursor: pointer;
+      box-shadow: none;
+      transition: transform .12s ease, box-shadow .12s ease;
+    }
+
+    .pip-btn:active{
+      transform: scale(.97);
+    }
+
+    .pip-list{
+      display:flex;
+      flex-direction:column;
+      gap: 8px;
+    }
+
+    .pip-rowbtn{
+      width:100%;
+      text-align:left;
+      padding: 10px 10px;
+      border: 1px solid rgba(0,0,0,0); /* 카드 느낌 */
+      border-radius: 12px;
+      background: var(--card);
+      color: var(--text);
+      cursor: pointer;
+      transition: transform .12s ease;
+    }
+    body.pip-dark .pip-rowbtn{
+      border: 1px solid rgba(255,255,255,.06);
+    }
+    .pip-rowbtn:active{ transform: scale(.99); }
+
+    .pip-checkdot{
+      display:inline-block;
+      width:10px;height:10px;
+      border-radius:3px;
+      border:1px solid var(--border);
+      margin-right:8px;
+      vertical-align:middle;
+      background: transparent;
+    }
+      
+    .pip-checkdot.on{
+     background: rgba(59,130,246,.9);
+     border-color: rgba(59,130,246,.9);
+    }
+
+    .pip-rowbtn.on{
+      background: rgba(59,130,246,.18);
+    }
+
+    .pip-counterRow{
+      display:flex;
+      gap: 8px;
+      align-items:center;
+    }
+
+    .pip-counterRow .pip-rowbtn{
+      flex: 1;
+    }
+
+    .pip-cube{
+      padding: 10px 10px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--btn);
+      color: var(--text);
+      cursor: pointer;
+      transition: transform .12s ease, box-shadow .12s ease;
+      white-space: nowrap;
+    }
+    .pip-cube:active{ transform: scale(.97); }
+
+    /* ✅ “눌렀다” 피드백 */
+    .pip-cube.is-pressed{
+      box-shadow: var(--ring);
+      transform: scale(.97);
+    }
+
+    .pip-select{
+     max-width: 160px;
+       padding: 8px 10px;
+       border-radius: 10px;
+       border: 1px solid var(--border);
+       background: var(--btn);
+       color: var(--text);
+       cursor: pointer;
+      }
+      body.pip-dark .pip-select{
+        background: rgba(255,255,255,.06);
+      }
+        /* ===== Table Select (표 선택) ===== */
+.pip-select{
+  width: 140px;
+  max-width: 160px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--btn);
+  color: var(--text);
+  cursor: pointer;
+  outline: none;
+  appearance: none;            /* 기본 화살표 스타일 줄이기(브라우저마다 다름) */
+}
+
+/* 포커스 링 */
+.pip-select:focus{
+  box-shadow: var(--ring);
+}
+
+/* ✅ 옵션(드롭다운 목록) 다크에서 하얗게 뜨는 문제 해결 */
+.pip-select option{
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* 다크모드에서 select 자체 */
+body.pip-dark .pip-select{
+  background: rgba(255,255,255,.06);
+  border-color: rgba(255,255,255,.14);
+  color: var(--text);
+}
+
+/* ✅ 다크모드에서 option도 어둡게 */
+body.pip-dark .pip-select option{
+  background: #0b1220;         /* PIP 다크 배경과 맞춤 */
+  color: #e5e7eb;
+}
+  `;
+    doc.head.appendChild(style);
+  }
+
+
+  function getDailyTasksForPip(s: TodoState) {
+    return s.tasks.filter((t) => t.period === "DAILY");
+  }
+
+  function pipIsDark() {
+    return document.documentElement.getAttribute("data-theme") === "dark";
+  }
+
+  function syncPipDark(pipWin: Window) {
+    pipWin.document.body.classList.toggle("pip-dark", pipIsDark());
+  }
+
+  function renderDailyPip() {
+    const pipWin = pipWindowRef.current;
+    if (!pipWin) return;
+
+    // ✅ PIP 스타일 주입 + 다크 동기화
+    ensurePipStyles(pipWin);
+    syncPipDark(pipWin);
+
+    const s = stateRef.current;
+    const effectiveTableId = pipTableIdRef.current ?? s.activeTableId;
+    const table = getTableById(s, effectiveTableId);
+    const characters = table.characters;
+
+    if (!characters.length) {
+      pipWin.document.body.innerHTML = `<div class="pip-wrap" style="opacity:.8">캐릭터가 없어.</div>`;
+      return;
+    }
+
+    const idx = clamp(pipCharIndexRef.current, 0, characters.length - 1);
+    pipCharIndexRef.current = idx;
+    const ch = characters[idx];
+
+    const dailyTasks = getDailyTasksForPip(s);
+
+    const rowsHtml = dailyTasks
+      .map((t) => {
+        const cell = getCellByTableId(s, table.id, t.id, ch.id);
+
+        if (t.cellType === "CHECK") {
+          const on = cell?.type === "CHECK" ? cell.checked : false;
+          return `
+          <button data-act="toggle" data-task="${t.id}" class="pip-rowbtn ${on ? "on" : ""}">
+            <span class="pip-checkdot ${on ? "on" : ""}"></span>
+            <span style="vertical-align:middle">${t.title}</span>
+          </button>
+        `;
+        }
+
+        if (t.cellType === "COUNTER") {
+          const max = Math.max(1, t.max ?? 1);
+          const count = cell?.type === "COUNTER" ? (cell.count ?? 0) : 0;
+          const done = count >= max; // ✅ 완료 색칠용
+
+          const isCore = t.id === CORE_DAILY_TASK_ID;
+          const ilvl = getCharIlvl(ch as any);
+          const coreLabel = isCore ? getCoreDailyLabel(ilvl) : "";
+          const showCubeBtn = isCore && coreLabel === "쿠르잔 전선";
+          const flashKey = `${table.id}:${ch.id}:cube`;
+          const flashOn =
+            (pipCubeFlashRef.current[flashKey] ?? 0) > Date.now() - 1500;
+
+          return `
+          <div class="pip-counterRow">
+            <button data-act="toggle" data-task="${t.id}" class="pip-rowbtn ${done ? "on" : ""}">
+              <b>${isCore ? coreLabel : t.title}</b>
+              <span style="opacity:.8;margin-left:8px">${count}/${max}</span>
+            </button>
+            ${showCubeBtn
+              ? `<button data-act="cube" class="pip-cube ${flashOn ? "is-pressed" : ""}" title="쿠르잔 전선 보상: 큐브 해금 티켓 +1">큐브티켓+1</button>`
+              : ""
+            }
+          </div>
+        `;
+        }
+
+        if (t.cellType === "TEXT") {
+          const v = cell?.type === "TEXT" ? (cell.text ?? "") : "";
+          return `<div class="pip-rowbtn" style="cursor:default"><b>${t.title}</b><span style="opacity:.8;margin-left:8px">${String(
+            v
+          )}</span></div>`;
+        }
+
+        if (t.cellType === "SELECT") {
+          const v = cell?.type === "SELECT" ? (cell.value ?? "") : "";
+          return `<div class="pip-rowbtn" style="cursor:default"><b>${t.title}</b><span style="opacity:.8;margin-left:8px">${String(
+            v
+          )}</span></div>`;
+        }
+
+        return `<div class="pip-rowbtn" style="cursor:default">${t.title}</div>`;
+      })
+      .join("");
+
+    const tableOptions = s.tables
+      .map((t) => {
+        const selected = t.id === effectiveTableId ? "selected" : "";
+        const name = (t.name ?? "표").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        return `<option value="${t.id}" ${selected}>${name}</option>`;
+      })
+      .join("");
+
+    pipWin.document.body.innerHTML = `
+  <div class="pip-wrap">
+    <div class="pip-top">
+      <div>
+        <div class="pip-title">${ch.name}</div>
+        <div class="pip-sub">${table.name ?? "표"} · ${idx + 1}/${characters.length}</div>
+      </div>
+
+      <!-- ✅ 여기: 표 선택 -->
+      <select data-act="table" class="pip-select">
+        ${tableOptions}
+      </select>
+
+      <div class="pip-actions">
+        <button data-act="prev" class="pip-btn">◀</button>
+        <button data-act="next" class="pip-btn">▶</button>
+      </div>
+    </div>
+
+    <div class="pip-list">
+      ${rowsHtml}
+    </div>
+  </div>
+`;
+  }
+
+  async function openDailyPip() {
+    const anyWin = window as any;
+    if (!anyWin.documentPictureInPicture) {
+      alert("이 브라우저는 Document PIP를 지원하지 않습니다. (크롬 권장)");
+      return;
+    }
+
+    // 이미 열려있으면 포커스만
+    if (pipWindowRef.current) {
+      try {
+        pipWindowRef.current.focus?.();
+      } catch {
+        // ignore
+      }
+      return;
+    }
+
+    const pipWin = await anyWin.documentPictureInPicture.requestWindow({
+      width: 380,
+      height: 640,
+    });
+
+    pipWindowRef.current = pipWin;
+    pipTableIdRef.current = stateRef.current.activeTableId; // 현재 표로 시작
+    pipCharIndexRef.current = 0;
+
+    // ✅ 닫히면 ref 정리
+    pipWin.addEventListener("pagehide", () => {
+      pipWindowRef.current = null;
+    });
+
+    // ✅ PIP 내부 클릭 핸들러(한 번만)
+    pipWin.document.body.addEventListener("click", (e: any) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+
+      const btn = target.closest("button") as HTMLButtonElement | null;
+      if (!btn) return;
+
+      const act = btn.getAttribute("data-act");
+      if (!act) return;
+
+      const s = stateRef.current;
+      const table = getTableById(s, s.activeTableId);
+      const characters = table.characters;
+      if (!characters.length) return;
+
+      const idx = clamp(pipCharIndexRef.current, 0, characters.length - 1);
+      pipCharIndexRef.current = idx;
+      const ch = characters[idx];
+
+      if (act === "prev") {
+        pipCharIndexRef.current = Math.max(0, idx - 1);
+        renderDailyPip();
+        return;
+      }
+
+      if (act === "next") {
+        pipCharIndexRef.current = Math.min(characters.length - 1, idx + 1);
+        renderDailyPip();
+        return;
+      }
+
+      if (act === "toggle") {
+        const taskId = btn.getAttribute("data-task") || "";
+        const task = s.tasks.find((t) => t.id === taskId);
+        if (!task) return;
+
+        // ✅ 기존 로직 재사용(체크/카운터 토글)
+        onCellClick(table.id, task, ch);
+
+        // 상태 반영 후 UI 갱신(즉시 느낌 주기)
+        setTimeout(() => renderDailyPip(), 0);
+        return;
+      }
+
+      if (act === "cube") {
+        const flashKey = `${table.id}:${ch.id}:cube`;
+        pipCubeFlashRef.current[flashKey] = Date.now(); // ✅ 1.5초 유지
+
+        addUnlockTicketForChar(table.id, ch, 1);
+
+        renderDailyPip(); // ✅ 즉시 재렌더(새 버튼에 is-pressed가 붙음)
+        return;
+      }
+    });
+
+    pipWin.document.body.addEventListener("change", (e: any) => {
+      const el = e.target as any;
+      if (!el) return;
+
+      // ✅ PIP(다른 window)에서도 안전한 판별
+      if (el?.tagName === "SELECT" && el.getAttribute?.("data-act") === "table") {
+        const nextTableId = String(el.value || "");
+
+        // ✅ PIP 전용 표 선택값 저장
+        pipTableIdRef.current = nextTableId;
+
+        // ✅ 표 바꾸면 캐릭 인덱스 리셋
+        pipCharIndexRef.current = 0;
+
+        // (선택) 메인 표도 같이 바꾸고 싶으면 유지
+        setState((prev) =>
+          prev.activeTableId === nextTableId ? prev : { ...prev, activeTableId: nextTableId }
+        );
+
+        // ✅ 마지막에 렌더
+        renderDailyPip();
+      }
+    });
+    renderDailyPip();
   }
 
   function pickBestDiff(ilvl: number, raid: RaidDef): RaidDifficulty | null {
@@ -2252,6 +2775,10 @@ export default function TodoTracker() {
                                       const isCore = task.id === CORE_DAILY_TASK_ID;
                                       const isGuardian = task.title === "가디언 토벌";
 
+                                      const ilvl = getCharIlvl(ch as any);
+                                      const coreLabel = isCore ? getCoreDailyLabel(ilvl) : "";
+                                      const showCubeTicketBtn = isCore && coreLabel === "쿠르잔 전선";
+
                                       const restValue = isCore
                                         ? (table.restGauges?.[ch.id]?.chaos ?? 0)
                                         : isGuardian
@@ -2268,29 +2795,54 @@ export default function TodoTracker() {
                                           data-task-id={task.id}
                                           data-ch-id={ch.id}
                                           onClick={() => onCellClick(tableId, task, ch)}
-                                          title={task.id === CORE_DAILY_TASK_ID ? getCoreDailyLabel(getCharIlvl(ch)) : "클릭 토글"}
+                                          title={isCore ? coreLabel : "클릭 토글"}
                                         >
-                                          <div className="cell-inline">
-                                            <CounterDots max={max} count={count} />
+                                          <div className="cell-stack">
+                                            {/* 1줄: 체크/카운터 + 휴식게이지 */}
+                                            <div className="cell-top">
+                                              <CounterDots max={max} count={count} />
 
-                                            {(isCore || isGuardian) && (
-                                              <input
-                                                inputMode="numeric"
-                                                className="rest-input"
-                                                value={String(restValue)}
-                                                onChange={(e) => {
-                                                  const raw = e.target.value.replace(/[^0-9]/g, "");
-                                                  const n = raw === "" ? 0 : Number(raw);
-                                                  const clamped = clamp(Number.isFinite(n) ? n : 0, 0, restMax);
+                                              {(isCore || isGuardian) && (
+                                                <input
+                                                  inputMode="numeric"
+                                                  className="rest-input"
+                                                  value={String(restValue)}
+                                                  onChange={(e) => {
+                                                    const raw = e.target.value.replace(/[^0-9]/g, "");
+                                                    const n = raw === "" ? 0 : Number(raw);
+                                                    const clamped = clamp(Number.isFinite(n) ? n : 0, 0, restMax);
 
-                                                  setRestGaugeInTable(tableId, ch.id, {
-                                                    chaos: isCore ? clamped : undefined,
-                                                    guardian: isGuardian ? clamped : undefined,
-                                                  });
+                                                    setRestGaugeInTable(tableId, ch.id, {
+                                                      chaos: isCore ? clamped : undefined,
+                                                      guardian: isGuardian ? clamped : undefined,
+                                                    });
+                                                  }}
+                                                  title={isCore ? "핵심 콘텐츠 휴식(0~200)" : "가디언 휴식(0~100)"}
+                                                  onClick={(e) => e.stopPropagation()}
+                                                />
+                                              )}
+                                            </div>
+
+                                            {/* 2줄: 큐브티켓+1 */}
+                                            {showCubeTicketBtn && (
+                                              <button
+                                                type="button"
+                                                className="mini cubeTicketBtn"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  addUnlockTicketForChar(tableId, ch, 1);
+
+                                                  // ✅ 눌림 표시(잠깐)
+                                                  const btn = e.currentTarget as HTMLButtonElement;
+                                                  btn.classList.remove("is-pressed");
+                                                  // reflow
+                                                  void btn.offsetWidth;
+                                                  btn.classList.add("is-pressed");
                                                 }}
-                                                title={isCore ? "핵심 콘텐츠 휴식(0~200)" : "가디언 휴식(0~100)"}
-                                                onClick={(e) => e.stopPropagation()}
-                                              />
+                                                title="쿠르잔 전선 보상: 큐브 해금 티켓 +1"
+                                              >
+                                                큐브티켓+1
+                                              </button>
                                             )}
                                           </div>
                                         </td>
@@ -2526,58 +3078,62 @@ export default function TodoTracker() {
           <div className="topbar-center">
             {/* ✅ 주간 레이드 골드 진행률(Top3 합산) */}
             <div className="weeklyGoldSummary" title="모든 표/모든 캐릭터의 주간 레이드 Top3(아이템레벨 기준) 합산">
-                <div className="weeklyGoldTitle">주간 레이드 골드</div>
+              <div className="weeklyGoldTitle">주간 레이드 골드</div>
 
-                {weeklyGoldProgress.total > 0 ? (
-                  <div className="weeklyGoldValue">
-                    <span className="weeklyGoldNum">{weeklyGoldProgress.done.toLocaleString()}</span>
-                    <span className="weeklyGoldSep">/</span>
-                    <span className="weeklyGoldNum">{weeklyGoldProgress.total.toLocaleString()}</span>
-                    <span className="weeklyGoldPct">({weeklyGoldProgress.pct}%)</span>
-                  </div>
-                ) : (
-                  <div className="weeklyGoldValue muted">아이템레벨 입력 필요</div>
-                )}
+              {weeklyGoldProgress.total > 0 ? (
+                <div className="weeklyGoldValue">
+                  <span className="weeklyGoldNum">{weeklyGoldProgress.done.toLocaleString()}</span>
+                  <span className="weeklyGoldSep">/</span>
+                  <span className="weeklyGoldNum">{weeklyGoldProgress.total.toLocaleString()}</span>
+                  <span className="weeklyGoldPct">({weeklyGoldProgress.pct}%)</span>
+                </div>
+              ) : (
+                <div className="weeklyGoldValue muted">아이템레벨 입력 필요</div>
+              )}
 
-                <div className="weeklyGoldHint">Top3 기준 · 체크하면 자동 합산</div>
-              </div>
+              <div className="weeklyGoldHint">Top3 기준 · 체크하면 자동 합산</div>
+            </div>
             <div className="todo-actions actions-row">
-                <button className="btn" onClick={addCharacter}>
-                  + 캐릭 추가
-                </button>
-                <button className="btn" onClick={() => addTask("DAILY")}>
-                  + 일일 숙제
-                </button>
-                <button className="btn" onClick={() => addTask("WEEKLY")}>
-                  + 주간 숙제
-                </button>
-                <button className="btn" onClick={() => addTask("NONE")}>
-                  + 기타 숙제
-                </button>
+              <button className="btn" onClick={addCharacter}>
+                + 캐릭 추가
+              </button>
+              <button className="btn" onClick={() => addTask("DAILY")}>
+                + 일일 숙제
+              </button>
+              <button className="btn" onClick={() => addTask("WEEKLY")}>
+                + 주간 숙제
+              </button>
+              <button className="btn" onClick={() => addTask("NONE")}>
+                + 기타 숙제
+              </button>
 
-                <BidPopover />
+              <BidPopover />
+
+              <button className="btn" onClick={openDailyPip} title="현재 표의 일일숙제를 PIP로 띄우기(캐릭 1명씩)">
+                일일숙제 PIP
+              </button>
 
 
-                <div className="divider" />
-                <button className="btn" onClick={() => manualReset("DAILY")}>
-                  일일 초기화
-                </button>
-                <button className="btn" onClick={() => manualReset("WEEKLY")}>
-                  주간 초기화
-                </button>
+              <div className="divider" />
+              <button className="btn" onClick={() => manualReset("DAILY")}>
+                일일 초기화
+              </button>
+              <button className="btn" onClick={() => manualReset("WEEKLY")}>
+                주간 초기화
+              </button>
 
-                <div className="divider" />
-                <button className="btn" onClick={doExport}>JSON백업</button>
-                <button className="btn" onClick={doImport}>JSON복원</button>
-                <button className="btn" onClick={toggleTheme} title="테마 전환">
-                  {theme === "dark" ? "☀️ 화이트모드" : "🌙 다크모드"}
-                </button>
-              </div>
+              <div className="divider" />
+              <button className="btn" onClick={doExport}>JSON백업</button>
+              <button className="btn" onClick={doImport}>JSON복원</button>
+              <button className="btn" onClick={toggleTheme} title="테마 전환">
+                {theme === "dark" ? "☀️ 화이트모드" : "🌙 다크모드"}
+              </button>
+            </div>
           </div>
 
           <div className="topbar-right">
             <div className="topbar-cards">
-                            {SERVER_MODE && (
+              {SERVER_MODE && (
                 <div className="serverBackupPanel">
                   <div className="serverBackupRow">
                     <input
@@ -2826,242 +3382,242 @@ export default function TodoTracker() {
             </div>
           </div>
         </div>
-        </div>
+      </div>
 
-        <div className="todo-tabs">
-          <button className={`tab ${periodTab === "ALL" ? "active" : ""}`} onClick={() => setPeriodTab("ALL")}>
-            전체
-          </button>
-          <button className={`tab ${periodTab === "DAILY" ? "active" : ""}`} onClick={() => setPeriodTab("DAILY")}>
-            일일
-          </button>
-          <button className={`tab ${periodTab === "WEEKLY" ? "active" : ""}`} onClick={() => setPeriodTab("WEEKLY")}>
-            주간
-          </button>
-          <button className={`tab ${periodTab === "NONE" ? "active" : ""}`} onClick={() => setPeriodTab("NONE")}>
-            기타
-          </button>
-          <button className={`tab ${periodTab === "RAID_LEFT" ? "active" : ""}`} onClick={() => setPeriodTab("RAID_LEFT")}>
-            남은 레이드
-          </button>
-          {periodTab === "RAID_LEFT" && (
-            <>
-              <div className="raidLeftToolbar">
-                <select
-                  className="friendSelect"
-                  value={raidLeftView}
-                  onChange={(e) => setRaidLeftView(e.target.value as any)}
-                >
-                  <option value="ME">내 남은 레이드</option>
-                  <option value="FRIEND">친구 남은 레이드</option>
-                </select>
-
-                {raidLeftView === "FRIEND" && (
-                  <>
-                    <select
-                      className="friendSelect"
-                      value={selectedFriendCode}
-                      onChange={(e) => setSelectedFriendCode(e.target.value)}
-                    >
-                      <option value="">친구 선택</option>
-                      {state.friends.map((f) => (
-                        <option key={f.code} value={f.code}>
-                          {f.nickname}
-                        </option>
-                      ))}
-                    </select>
-
-                    {SERVER_MODE && (
-                      <button
-                        className="mini"
-                        disabled={!selectedFriendCode}
-                        onClick={async () => {
-                          try {
-                            const data = await apiFetch2(
-                              `/api/raid-left-snapshot?friendCode=${encodeURIComponent(selectedFriendCode)}`
-                            );
-                            const snapAny = (data as any).snapshotJson;
-                            const snapStr = typeof snapAny === "string" ? snapAny : JSON.stringify(snapAny);
-                            attachSnapshotToFriend(snapStr, selectedFriendCode);
-
-                            alert("친구 남은 레이드 불러오기 완료!");
-                          } catch (e: any) {
-                            alert("불러오기 실패(비공개이거나 친구가 아닐 수 있어)");
-                          }
-                        }}
-                      >
-                        서버에서 불러오기
-                      </button>
-                    )}
-                  </>
-                )}
-              </div>
-            </>
-          )}
-
-          <div className="todo-progress">
-            진행률(체크/카운터): <b>{totalProgress.done}</b> / {totalProgress.all}
-          </div>
-        </div>
-
-
-        {/* ✅ 표 영역 wrapper: 요일별 + 표 그리드를 한 컨테이너로 묶기 */}
-        <div className="todo-table-area">
-          {/* ✅ 요일별 콘텐츠(계정 공용) - 전체/일일 탭에서 */}
-          {(periodTab === "ALL" || periodTab === "DAILY") && (
-            secondaryTableId ? (
-              <div
-                className="accountDailyGrid"
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 12,
-                  alignItems: "start",
-                  marginBottom: 8,
-                }}
+      <div className="todo-tabs">
+        <button className={`tab ${periodTab === "ALL" ? "active" : ""}`} onClick={() => setPeriodTab("ALL")}>
+          전체
+        </button>
+        <button className={`tab ${periodTab === "DAILY" ? "active" : ""}`} onClick={() => setPeriodTab("DAILY")}>
+          일일
+        </button>
+        <button className={`tab ${periodTab === "WEEKLY" ? "active" : ""}`} onClick={() => setPeriodTab("WEEKLY")}>
+          주간
+        </button>
+        <button className={`tab ${periodTab === "NONE" ? "active" : ""}`} onClick={() => setPeriodTab("NONE")}>
+          기타
+        </button>
+        <button className={`tab ${periodTab === "RAID_LEFT" ? "active" : ""}`} onClick={() => setPeriodTab("RAID_LEFT")}>
+          남은 레이드
+        </button>
+        {periodTab === "RAID_LEFT" && (
+          <>
+            <div className="raidLeftToolbar">
+              <select
+                className="friendSelect"
+                value={raidLeftView}
+                onChange={(e) => setRaidLeftView(e.target.value as any)}
               >
-                <AccountDailyPanel tableId={state.activeTableId} />
-                <AccountDailyPanel tableId={secondaryTableId} />
-              </div>
-            ) : (
-              <AccountDailyPanel tableId={state.activeTableId} />
-            )
-          )}
+                <option value="ME">내 남은 레이드</option>
+                <option value="FRIEND">친구 남은 레이드</option>
+              </select>
 
-          {/* ✅ 두 표 동시 렌더 */}
-          {periodTab === "RAID_LEFT" ? (
-            raidLeftView === "FRIEND" ? (
-              <div className="tablePane" style={{ height: "100%", minHeight: 0 }}>
-                <div style={{ padding: 12 }}>{renderFriendRaidLeftColumns()}</div> {/* ✅ 교체 */}
-              </div>
-            ) : (
-              <div className="raid-left-hscroll">
-                <div style={{ width: "max-content" }}>{renderRaidLeftUnifiedTable()}</div>
-              </div>
-            )
-          ) : (
+              {raidLeftView === "FRIEND" && (
+                <>
+                  <select
+                    className="friendSelect"
+                    value={selectedFriendCode}
+                    onChange={(e) => setSelectedFriendCode(e.target.value)}
+                  >
+                    <option value="">친구 선택</option>
+                    {state.friends.map((f) => (
+                      <option key={f.code} value={f.code}>
+                        {f.nickname}
+                      </option>
+                    ))}
+                  </select>
+
+                  {SERVER_MODE && (
+                    <button
+                      className="mini"
+                      disabled={!selectedFriendCode}
+                      onClick={async () => {
+                        try {
+                          const data = await apiFetch2(
+                            `/api/raid-left-snapshot?friendCode=${encodeURIComponent(selectedFriendCode)}`
+                          );
+                          const snapAny = (data as any).snapshotJson;
+                          const snapStr = typeof snapAny === "string" ? snapAny : JSON.stringify(snapAny);
+                          attachSnapshotToFriend(snapStr, selectedFriendCode);
+
+                          alert("친구 남은 레이드 불러오기 완료!");
+                        } catch (e: any) {
+                          alert("불러오기 실패(비공개이거나 친구가 아닐 수 있어)");
+                        }
+                      }}
+                    >
+                      서버에서 불러오기
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          </>
+        )}
+
+        <div className="todo-progress">
+          진행률(체크/카운터): <b>{totalProgress.done}</b> / {totalProgress.all}
+        </div>
+      </div>
+
+
+      {/* ✅ 표 영역 wrapper: 요일별 + 표 그리드를 한 컨테이너로 묶기 */}
+      <div className="todo-table-area">
+        {/* ✅ 요일별 콘텐츠(계정 공용) - 전체/일일 탭에서 */}
+        {(periodTab === "ALL" || periodTab === "DAILY") && (
+          secondaryTableId ? (
             <div
+              className="accountDailyGrid"
               style={{
                 display: "grid",
-                gridTemplateColumns: secondaryTableId ? "1fr 1fr" : "1fr",
+                gridTemplateColumns: "1fr 1fr",
                 gap: 12,
-                alignItems: "stretch",
-                minHeight: 0,
-                flex: "1 1 auto",
+                alignItems: "start",
+                marginBottom: 8,
               }}
-              className="todo-two-table-grid"
             >
-              {renderTodoTable(state.activeTableId, "왼쪽(편집)")}
-              {secondaryTableId && renderTodoTable(secondaryTableId, "오른쪽")}
+              <AccountDailyPanel tableId={state.activeTableId} />
+              <AccountDailyPanel tableId={secondaryTableId} />
             </div>
-          )}
-        </div>
+          ) : (
+            <AccountDailyPanel tableId={state.activeTableId} />
+          )
+        )}
 
-
-        <div className="todo-hint">
-          <div>팁</div>
-          <ul>
-            <li>카운터 셀: 클릭으로 토글</li>
-            <li>핵심 콘텐츠/가디언: 카운터 옆 휴식게이지(숫자) 입력 가능</li>
-            <li>일일 초기화: 휴식게이지 갱신 후 일일 체크 초기화</li>
-            <li>리셋: 일일 6시 / 주간 수요일 6시 자동 적용(앱 켜둔 상태에서도)</li>
-          </ul>
-        </div>
-
-        {raidGoldPopup && (
+        {/* ✅ 두 표 동시 렌더 */}
+        {periodTab === "RAID_LEFT" ? (
+          raidLeftView === "FRIEND" ? (
+            <div className="tablePane" style={{ height: "100%", minHeight: 0 }}>
+              <div style={{ padding: 12 }}>{renderFriendRaidLeftColumns()}</div> {/* ✅ 교체 */}
+            </div>
+          ) : (
+            <div className="raid-left-hscroll">
+              <div style={{ width: "max-content" }}>{renderRaidLeftUnifiedTable()}</div>
+            </div>
+          )
+        ) : (
           <div
-            className="raid-gold-pop"
             style={{
-              left: raidGoldPopup.x + 12,
-              top: raidGoldPopup.y + 12,
+              display: "grid",
+              gridTemplateColumns: secondaryTableId ? "1fr 1fr" : "1fr",
+              gap: 12,
+              alignItems: "stretch",
+              minHeight: 0,
+              flex: "1 1 auto",
             }}
+            className="todo-two-table-grid"
           >
-            <div className="raid-gold-head">
-              <b>{raidGoldPopup.title}</b>
-              <button onClick={() => setRaidGoldPopup(null)}>닫기</button>
-            </div>
-
-            <div className="raid-gold-body">
-              {RAID_CLEAR_GOLD[raidGoldPopup.title].normal !== undefined && (
-                <div>노말: {RAID_CLEAR_GOLD[raidGoldPopup.title].normal!.toLocaleString()} G</div>
-              )}
-              {RAID_CLEAR_GOLD[raidGoldPopup.title].hard !== undefined && (
-                <div>하드: {RAID_CLEAR_GOLD[raidGoldPopup.title].hard!.toLocaleString()} G</div>
-              )}
-              {RAID_CLEAR_GOLD[raidGoldPopup.title].nightmare !== undefined && (
-                <div>나이트메어: {RAID_CLEAR_GOLD[raidGoldPopup.title].nightmare!.toLocaleString()} G</div>
-              )}
-            </div>
+            {renderTodoTable(state.activeTableId, "왼쪽(편집)")}
+            {secondaryTableId && renderTodoTable(secondaryTableId, "오른쪽")}
           </div>
         )}
-        {(() => {
-          const popup = weeklyTop3Popup;
+      </div>
 
-          if (popup === null) {
-            return null;
-          }
 
-          const charKey = weeklyCharKey(popup.tableId, popup.charId);
-          const picked = weeklyDiffByChar[charKey] ?? {};
-          const r = calcWeeklyTop3GoldWithPick(popup.ilvl, picked);
+      <div className="todo-hint">
+        <div>팁</div>
+        <ul>
+          <li>카운터 셀: 클릭으로 토글</li>
+          <li>핵심 콘텐츠/가디언: 카운터 옆 휴식게이지(숫자) 입력 가능</li>
+          <li>일일 초기화: 휴식게이지 갱신 후 일일 체크 초기화</li>
+          <li>리셋: 일일 6시 / 주간 수요일 6시 자동 적용(앱 켜둔 상태에서도)</li>
+        </ul>
+      </div>
 
-          // popup이 null 아닌 블록(분기) 안에서만 실행되게 되어있다는 전제
-          const tableId = popup.tableId;
-          const charId = popup.charId;
+      {raidGoldPopup && (
+        <div
+          className="raid-gold-pop"
+          style={{
+            left: raidGoldPopup.x + 12,
+            top: raidGoldPopup.y + 12,
+          }}
+        >
+          <div className="raid-gold-head">
+            <b>{raidGoldPopup.title}</b>
+            <button onClick={() => setRaidGoldPopup(null)}>닫기</button>
+          </div>
 
-          function setPick(raidName: string, diff: DiffName) {
-            setWeeklyDiffByChar((prev) => {
-              const nextChar = { ...(prev[charKey] ?? {}), [raidName]: diff };
-              const next = { ...prev, [charKey]: nextChar };
+          <div className="raid-gold-body">
+            {RAID_CLEAR_GOLD[raidGoldPopup.title].normal !== undefined && (
+              <div>노말: {RAID_CLEAR_GOLD[raidGoldPopup.title].normal!.toLocaleString()} G</div>
+            )}
+            {RAID_CLEAR_GOLD[raidGoldPopup.title].hard !== undefined && (
+              <div>하드: {RAID_CLEAR_GOLD[raidGoldPopup.title].hard!.toLocaleString()} G</div>
+            )}
+            {RAID_CLEAR_GOLD[raidGoldPopup.title].nightmare !== undefined && (
+              <div>나이트메어: {RAID_CLEAR_GOLD[raidGoldPopup.title].nightmare!.toLocaleString()} G</div>
+            )}
+          </div>
+        </div>
+      )}
+      {(() => {
+        const popup = weeklyTop3Popup;
 
-              saveWeeklyDiff(tableId, charId, nextChar); // ✅ popup 안 씀 → null 경고 사라짐
-              return next;
-            });
-          }
+        if (popup === null) {
+          return null;
+        }
 
-          return (
-            <div className="weekly-top3-pop" style={{ left: popup.x + 12, top: popup.y + 12 }}>
-              <div className="weekly-top3-head">
-                <b>{popup.charName} · Top3 골드</b>
-                <button onClick={() => setWeeklyTop3Popup(null)}>닫기</button>
-              </div>
+        const charKey = weeklyCharKey(popup.tableId, popup.charId);
+        const picked = weeklyDiffByChar[charKey] ?? {};
+        const r = calcWeeklyTop3GoldWithPick(popup.ilvl, picked);
 
-              <div className="weekly-top3-sum">
-                합계: <b>{r.sum.toLocaleString()} G</b>
-              </div>
+        // popup이 null 아닌 블록(분기) 안에서만 실행되게 되어있다는 전제
+        const tableId = popup.tableId;
+        const charId = popup.charId;
 
-              <div className="weekly-top3-body">
-                {r.top3.map((x) => (
-                  <div key={x.raid} className="weekly-top3-row">
-                    <div className="weekly-top3-raid">{x.raid}</div>
+        function setPick(raidName: string, diff: DiffName) {
+          setWeeklyDiffByChar((prev) => {
+            const nextChar = { ...(prev[charKey] ?? {}), [raidName]: diff };
+            const next = { ...prev, [charKey]: nextChar };
 
-                    <div className="weekly-top3-diffs">
-                      {(["노말", "하드", "나이트메어"] as DiffName[]).map((d) => {
-                        const enabled = x.avail.includes(d);
-                        const active = (picked?.[x.raid] ?? x.diff) === d;
+            saveWeeklyDiff(tableId, charId, nextChar); // ✅ popup 안 씀 → null 경고 사라짐
+            return next;
+          });
+        }
 
-                        return (
-                          <button
-                            key={d}
-                            type="button"
-                            className={`diff-btn ${active ? "active" : ""}`}
-                            disabled={!enabled}
-                            onClick={() => setPick(x.raid, d)}
-                            title={enabled ? `${getGoldByDiffName(x.raid, d).toLocaleString()} G` : "아이템레벨 부족"}
-                          >
-                            {d}
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    <div className="weekly-top3-gold">{x.gold.toLocaleString()} G</div>
-                  </div>
-                ))}
-              </div>
+        return (
+          <div className="weekly-top3-pop" style={{ left: popup.x + 12, top: popup.y + 12 }}>
+            <div className="weekly-top3-head">
+              <b>{popup.charName} · Top3 골드</b>
+              <button onClick={() => setWeeklyTop3Popup(null)}>닫기</button>
             </div>
-          );
-        })()}
+
+            <div className="weekly-top3-sum">
+              합계: <b>{r.sum.toLocaleString()} G</b>
+            </div>
+
+            <div className="weekly-top3-body">
+              {r.top3.map((x) => (
+                <div key={x.raid} className="weekly-top3-row">
+                  <div className="weekly-top3-raid">{x.raid}</div>
+
+                  <div className="weekly-top3-diffs">
+                    {(["노말", "하드", "나이트메어"] as DiffName[]).map((d) => {
+                      const enabled = x.avail.includes(d);
+                      const active = (picked?.[x.raid] ?? x.diff) === d;
+
+                      return (
+                        <button
+                          key={d}
+                          type="button"
+                          className={`diff-btn ${active ? "active" : ""}`}
+                          disabled={!enabled}
+                          onClick={() => setPick(x.raid, d)}
+                          title={enabled ? `${getGoldByDiffName(x.raid, d).toLocaleString()} G` : "아이템레벨 부족"}
+                        >
+                          {d}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="weekly-top3-gold">{x.gold.toLocaleString()} G</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
     </>
   );
 }
