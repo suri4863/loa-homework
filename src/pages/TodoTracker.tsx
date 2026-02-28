@@ -1854,6 +1854,32 @@ body.pip-dark .pip-select option{
   background: #0b1220;         /* PIP 다크 배경과 맞춤 */
   color: #e5e7eb;
 }
+  .pip-azena{
+  margin-top: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pip-azena-check{
+  display:inline-flex;
+  width: 16px;
+  height: 16px;
+  align-items:center;
+  justify-content:center;
+  border-radius: 6px;
+  background: var(--okDot);
+  color: white;
+  font-size: 12px;
+  line-height: 1;
+}
   `;
     doc.head.appendChild(style);
   }
@@ -1893,6 +1919,9 @@ body.pip-dark .pip-select option{
     pipCharIndexRef.current = idx;
     const ch = characters[idx];
 
+    // ✅ 아제나 ON 여부 (Character에 azenaEnabled가 있다고 했던 구조 기준)
+    const azenaOn = !!(ch as any).azenaEnabled;
+
     const dailyTasks = getDailyTasksForPip(s);
 
     const rowsHtml = dailyTasks
@@ -1912,15 +1941,15 @@ body.pip-dark .pip-select option{
         if (t.cellType === "COUNTER") {
           const max = Math.max(1, t.max ?? 1);
           const count = cell?.type === "COUNTER" ? (cell.count ?? 0) : 0;
-          const done = count >= max; // ✅ 완료 색칠용
+          const done = count >= max;
 
           const isCore = t.id === CORE_DAILY_TASK_ID;
           const ilvl = getCharIlvl(ch as any);
           const coreLabel = isCore ? getCoreDailyLabel(ilvl) : "";
           const showCubeBtn = isCore && coreLabel === "쿠르잔 전선";
+
           const flashKey = `${table.id}:${ch.id}:cube`;
-          const flashOn =
-            (pipCubeFlashRef.current[flashKey] ?? 0) > Date.now() - 1500;
+          const flashOn = (pipCubeFlashRef.current[flashKey] ?? 0) > Date.now() - 1500;
 
           return `
           <div class="pip-counterRow">
@@ -1963,29 +1992,37 @@ body.pip-dark .pip-select option{
       .join("");
 
     pipWin.document.body.innerHTML = `
-  <div class="pip-wrap">
-    <div class="pip-top">
-      <div>
-        <div class="pip-title">${ch.name}</div>
-        <div class="pip-sub">${table.name ?? "표"} · ${idx + 1}/${characters.length}</div>
+    <div class="pip-wrap">
+      <div class="pip-top">
+        <div>
+          <div class="pip-title">${ch.name}</div>
+
+          ${azenaOn
+        ? `<div class="pip-azena">
+                   <span class="pip-azena-check"></span>
+                   <span>아제나</span>
+                 </div>`
+        : ""
+      }
+
+          <div class="pip-sub">${table.name ?? "표"} · ${idx + 1}/${characters.length}</div>
+        </div>
+
+        <select data-act="table" class="pip-select">
+          ${tableOptions}
+        </select>
+
+        <div class="pip-actions">
+          <button data-act="prev" class="pip-btn">◀</button>
+          <button data-act="next" class="pip-btn">▶</button>
+        </div>
       </div>
 
-      <!-- ✅ 여기: 표 선택 -->
-      <select data-act="table" class="pip-select">
-        ${tableOptions}
-      </select>
-
-      <div class="pip-actions">
-        <button data-act="prev" class="pip-btn">◀</button>
-        <button data-act="next" class="pip-btn">▶</button>
+      <div class="pip-list">
+        ${rowsHtml}
       </div>
     </div>
-
-    <div class="pip-list">
-      ${rowsHtml}
-    </div>
-  </div>
-`;
+  `;
   }
 
   async function openDailyPip() {
