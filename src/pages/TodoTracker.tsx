@@ -1766,7 +1766,7 @@ export default function TodoTracker() {
     "4막": { normal: 33000, hard: 42000 },
     "종막": { normal: 40000, hard: 52000 },
     "세르카": { normal: 35000, hard: 44000, nightmare: 54000 },
-    "지평의 성당": { normal: 35000, hard: 44000, nightmare: 54000 },
+    //"지평의 성당": { normal: 35000, hard: 44000, nightmare: 54000 },
   };
 
   type RaidPopup = { title: string; x: number; y: number } | null;
@@ -1990,7 +1990,7 @@ export default function TodoTracker() {
     "4막": 1700,
     "종막": 1710,
     "세르카": 1710,
-    "지평의 성당": 1710,
+    //"지평의 성당": 1710,
     "1해금": 1640,
     "2해금": 1680,
     "3해금": 1700,
