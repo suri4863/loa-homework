@@ -569,15 +569,24 @@ export default function TodoTracker() {
       return ilvl >= baseLevel && ilvl <= baseLevel + 9; // ✅ 1710~1719
     };
 
-    // ✅ 내 스냅샷은 현재 state에서 즉시 생성 (ALL 기준)
+    // ✅ 내 스냅샷은 현재 state에서 즉시 생성 (ALL 기준) 
     // exportRaidLeftSnapshot은 "JSON 문자열"을 리턴하므로 반드시 JSON.parse 필요
+    // ✅ 내 스냅샷은 매칭용이므로 "내 공유모드"가 PRIVATE여도 생성되게 처리
     let mySnap: any = null;
     try {
-      mySnap = JSON.parse(exportRaidLeftSnapshot(state, "ALL"));
+      const tmpState = {
+        ...state,
+        profile: { ...state.profile, shareMode: "PUBLIC" as any }, // ✅ 여기만 강제로 PUBLIC로 바꿔서 생성
+      };
+
+      mySnap = JSON.parse(exportRaidLeftSnapshot(tmpState, "ALL"));
     } catch {
       mySnap = null;
     }
-    const myRows: any[] = Array.isArray(mySnap?.data) ? mySnap.data.filter((r: any) => r && r.charName) : [];
+
+    const myRows: any[] = Array.isArray(mySnap?.data)
+      ? mySnap.data.filter((r: any) => r && r.charName)
+      : [];
 
     const myCandidates = myRows.filter(inBand);
     const friendCandidates = rows.filter(inBand);
