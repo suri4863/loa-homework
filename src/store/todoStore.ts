@@ -219,9 +219,9 @@ function makeDefaultState(): TodoState {
     createTask({ title: "메모", period: "WEEKLY", cellType: "TEXT", section: "주간 교환", order: baseOrder + 104 }),
 
     // 주간 레이드
-    createTask({ title: "1막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
-    createTask({ title: "2막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
-    createTask({ title: "3막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+    //createTask({ title: "1막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+    //createTask({ title: "2막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+    //createTask({ title: "3막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
     createTask({ title: "4막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
     createTask({ title: "종막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
     createTask({ title: "세르카", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
@@ -350,14 +350,11 @@ function normalizeState(parsed: any): TodoState {
     ensureTask({ title: "큐브", period: "NONE", cellType: "TEXT", section: "기타" });
 
 
-    // ✅ 주간 레이드 기본 항목들(마이그레이션): 예전 유저(localStorage)에 누락된 레이드가 많아서
-    //    스냅샷/깐부매칭에서 Top3가 2개만 보이는 문제(예: 4막 누락)를 막기 위해 모두 보강.
-    ensureTask({ title: "1막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 1 });
-    ensureTask({ title: "2막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 2 });
-    ensureTask({ title: "3막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 3 });
-    ensureTask({ title: "4막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 4 });
-    ensureTask({ title: "종막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 5 });
-    ensureTask({ title: "세르카", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 6 });
+    // ✅ 주간 레이드 보강: 매칭/스냅샷에 필요한 최신 레이드만
+    //ensureTask({ title: "3막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
+    ensureTask({ title: "4막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
+    ensureTask({ title: "종막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
+    ensureTask({ title: "세르카", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
 
     // ✅ 3) order 강제 세팅 (여기 숫자만 보면 됨: 작을수록 위)
     const base = 10_000; // 다른 task order와 겹치지 않게 큰 값 사용
