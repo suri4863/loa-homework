@@ -207,9 +207,9 @@ export default function TodoTracker() {
   const [raidLeftView, setRaidLeftView] = useState<"ME" | "FRIEND">("ME");
   const [selectedFriendCode, setSelectedFriendCode] = useState<string>("");
 
-  // ✅ 깐부 매칭 입력
-  const [buddyLevel, setBuddyLevel] = useState<string>("1710");      // 레벨 입력(구간 시작)
-  const [buddyMinAvgPower, setBuddyMinAvgPower] = useState<string>("2500"); // 깐평 입력(평균 전투력)
+  // ✅ 깐부 매칭(친구 남은 레이드에서)
+  const [kkanbuLevelRange, setKkanbuLevelRange] = useState<string>("1710~1719");
+  const [kkanbuAvgPowerMin, setKkanbuAvgPowerMin] = useState<string>("2500");
 
   const [friendsDockOpen, setFriendsDockOpen] = useState<boolean>(() => {
     try {
@@ -525,235 +525,163 @@ export default function TodoTracker() {
     if (snap.shareMode === "PRIVATE") return <div className="todo-hint">친구가 비공개야.</div>;
 
     const rows = (snap.data as any[]).filter((r) => r && r.charName);
-    if (!rows.length) return <div className="todo-hint">✅ 친구는 상위 3개 레이드가 전부 완료된 상태야.</div>;
 
-    // ==========================
-    // ✅ 깐부 매칭(레벨구간 + 평균전투력 + 레이드3개 동일)
-    // ==========================
-    const parseNum = (v: any): number | null => {
-      if (v == null) return null;
-      const s = String(v).trim();
-      if (!s) return null;
-      const m = s.match(/(\d+(\.\d+)?)/);
-      if (!m) return null;
-      const n = Number(m[1]);
-      return Number.isFinite(n) ? n : null;
+    // ✅ 입력 파서
+    const parseRange = (raw: string): { min?: number; max?: number } => {
+      const s = String(raw ?? "").trim();
+      if (!s) return {};
+      const cleaned = s.replace(/\s/g, "");
+      const parts = cleaned.split(/~|-/).filter(Boolean);
+      const min = Number(parts[0]);
+      if (!Number.isFinite(min)) return {};
+      if (parts.length >= 2) {
+        const max = Number(parts[1]);
+        if (Number.isFinite(max)) return { min, max };
+        return { min, max: min + 9 };
+      }
+      return { min, max: min + 9 };
     };
 
-    const raidsKey = (row: any): string => {
-      const raids = Array.isArray(row?.remainingRaids) ? row.remainingRaids.slice(0, 3) : [];
-
-      const order = (label: string) => {
-        const base = String(label).trim().split(/\s+/)[0];
-
-        if (base === "세르카") return 0;
-        if (base === "종막") return 1;
-        if (base === "4막") return 2;
-
-        return 999;
-      };
-
-      const norm = raids.map((x: string) => String(x).trim()).filter(Boolean);
-
-      norm.sort((a: string, b: string) => order(a) - order(b) || a.localeCompare(b, "ko"));
-
-      return norm.join(" | ");
+    // ✅ "2500+" 같은 문자열도 숫자로 변환
+    const parseNum = (raw?: string): number => {
+      if (!raw) return NaN;
+      const n = Number(String(raw).replace(/[^\d.]/g, ""));
+      return Number.isFinite(n) ? n : NaN;
     };
 
-    const baseLevel = parseNum(buddyLevel) ?? 0;
-    const minAvg = parseNum(buddyMinAvgPower) ?? 0;
+    const range = parseRange(kkanbuLevelRange);
+    const avgMin = parseNum(kkanbuAvgPowerMin);
 
-    const inBand = (row: any) => {
-      const ilvl = parseNum(row?.charItemLevel);
-      if (ilvl == null) return false;
-      return ilvl >= baseLevel && ilvl <= baseLevel + 9; // ✅ 1710~1719
-    };
-
-    // ✅ 내 스냅샷은 현재 state에서 즉시 생성 (ALL 기준) 
-    // exportRaidLeftSnapshot은 "JSON 문자열"을 리턴하므로 반드시 JSON.parse 필요
-    // ✅ 내 스냅샷은 매칭용이므로 "내 공유모드"가 PRIVATE여도 생성되게 처리
-    let mySnap: any = null;
-    try {
-      const tmpState = {
-        ...state,
-        profile: { ...state.profile, shareMode: "PUBLIC" as any }, // ✅ 여기만 강제로 PUBLIC로 바꿔서 생성
-      };
-
-      mySnap = JSON.parse(exportRaidLeftSnapshot(tmpState, "ALL"));
-    } catch {
-      mySnap = null;
+    // ✅ 내 남은 레이드(Top3 기준) 후보 만들기: 모든 표/모든 캐릭 (3회 미만)
+    const weeklyRaidTitleToId = new Map<string, string>();
+    for (const t of state.tasks) {
+      if (t.period === "WEEKLY" && t.section === "주간 레이드" && t.cellType === "CHECK") {
+        weeklyRaidTitleToId.set(t.title, t.id);
+      }
     }
 
-    const myRows: any[] = Array.isArray(mySnap?.data)
-      ? mySnap.data.filter((r: any) => r && r.charName)
-      : [];
+    const myCandidates = state.tables.flatMap((tbl) =>
+      tbl.characters
+        .filter((ch) => getWeeklyRaidCheckedCount(tbl.id, ch.id) < 3)
+        .map((ch) => {
+          const ilvl = parseIlvl(ch.itemLevel);
+          const top3 = Number.isFinite(ilvl) ? calcWeeklyTop3Gold(ilvl).top3.map((x) => x.raid) : [];
+          const remaining = top3.filter((title) => {
+            const taskId = weeklyRaidTitleToId.get(title);
+            if (!taskId) return false;
+            const v = getCellByTableId(state, tbl.id, taskId, ch.id);
+            return !(v && v.type === "CHECK" && v.checked);
+          });
 
-    const myCandidates = myRows.filter(inBand);
-    const friendCandidates = rows.filter(inBand);
+          return {
+            tableId: tbl.id,
+            tableName: tbl.name ?? tbl.id,
+            name: ch.name,
+            ilvl,
+            power: parseNum(ch.power),
+            remaining,
+          };
+        })
+    );
 
-    // 그룹핑: (레이드3개 완전 동일 키)
-    const groupByKey = (arr: any[]) => {
-      const m = new Map<string, any[]>();
-      for (const r of arr) {
-        const k = raidsKey(r);
-        if (!k) continue;
-        const bucket = m.get(k);
-        if (bucket) bucket.push(r);
-        else m.set(k, [r]);
-      }
-      return m;
+    const myFiltered = myCandidates.filter((m) => {
+      if (range.min != null && Number.isFinite(range.min) && (!Number.isFinite(m.ilvl) || m.ilvl < range.min!)) return false;
+      if (range.max != null && Number.isFinite(range.max) && (!Number.isFinite(m.ilvl) || m.ilvl > range.max!)) return false;
+      return true;
+    });
+
+    // ✅ 레이드 목록은 “순서 무시(Set 비교)”
+    const sameRaidSet = (a: string[], b: string[]) => {
+      if (a.length !== b.length) return false;
+      const sa = new Set(a.map((x) => String(x).trim()));
+      const sb = new Set(b.map((x) => String(x).trim()));
+      if (sa.size !== sb.size) return false;
+      for (const x of sa) if (!sb.has(x)) return false;
+      return true;
     };
 
-    const myByKey = groupByKey(myCandidates);
-    const frByKey = groupByKey(friendCandidates);
+    // ✅ 친구 row -> 매칭되는 내 캐릭들 찾기
+    const matched = rows
+      .map((row: any) => {
+        const friendIlvl = parseNum(row.charItemLevel);
+        const friendPower = parseNum(row.charPower);
+        const raids = Array.isArray(row.remainingRaids) ? row.remainingRaids.slice(0, 3) : [];
 
-    type Match = {
-      key: string;
-      me: any;
-      fr: any;
-      meP: number;
-      frP: number;
-      avg: number;
-    };
+        // 레벨 필터(친구도 같이 적용)
+        if (range.min != null && Number.isFinite(range.min) && (!Number.isFinite(friendIlvl) || friendIlvl < range.min!)) return null;
+        if (range.max != null && Number.isFinite(range.max) && (!Number.isFinite(friendIlvl) || friendIlvl > range.max!)) return null;
 
-    const matches: Match[] = [];
+        const hits = myFiltered.filter((me) => {
+          if (!sameRaidSet(me.remaining, raids)) return false;
 
-    // ✅ 매칭: 같은 key 안에서만 / 평균전투력 >= minAvg / 1:1 / friend 중복 사용 X
-    // 전략: 내 캐릭을 높은 전투력부터, 친구는 낮은 전투력부터 보며
-    //       조건 만족하는 "가장 낮은 친구"를 붙여서 매칭 수를 늘리는 그리디
-    for (const [key, myListRaw] of myByKey.entries()) {
-      const frListRaw = frByKey.get(key) ?? [];
-      if (!frListRaw.length) continue;
-
-      const myList = myListRaw
-        .map((r) => ({ r, p: parseNum(r.charPower) ?? 0 }))
-        .filter((x) => x.p > 0)
-        .sort((a, b) => b.p - a.p);
-
-      const frList = frListRaw
-        .map((r) => ({ r, p: parseNum(r.charPower) ?? 0 }))
-        .filter((x) => x.p > 0)
-        .sort((a, b) => a.p - b.p);
-
-      const used = new Set<number>();
-
-      for (const me of myList) {
-        let pick = -1;
-        let avgPick = -1;
-
-        for (let i = 0; i < frList.length; i++) {
-          if (used.has(i)) continue;
-          const fr = frList[i];
-          const avg = (me.p + fr.p) / 2;
-          if (avg >= minAvg) {
-            pick = i;
-            avgPick = avg;
-            break;
+          // 간평(평균 전투력) 조건: 입력이 있으면, 둘 다 숫자일 때만 판정
+          if (Number.isFinite(avgMin) && avgMin > 0) {
+            if (!Number.isFinite(me.power) || !Number.isFinite(friendPower)) return false;
+            const avg = (me.power + friendPower) / 2;
+            if (avg < avgMin) return false;
           }
-        }
+          return true;
+        });
 
-        if (pick >= 0) {
-          used.add(pick);
-          const fr = frList[pick];
-          matches.push({ key, me: me.r, fr: fr.r, meP: me.p, frP: fr.p, avg: avgPick });
-        }
-      }
-    }
-
-    // 보기 좋게: 평균 높은 순
-    matches.sort((a, b) => b.avg - a.avg);
+        if (!hits.length) return null;
+        return { row, raids, hits };
+      })
+      .filter(Boolean) as Array<{ row: any; raids: string[]; hits: any[] }>;
 
     return (
       <div className="raidLeftColsWrap">
-        {/* ✅ 깐부 매칭 패널 */}
-        <div className="buddyPanel">
-          <div className="buddyHeader">
-            <div className="buddyTitle">깐부 매칭</div>
-          </div>
+        <div className="raidLeftColsTitle">친구 남은 레이드</div>
 
-          <div className="buddyRow">
-            <div className="buddyField">
-              <div className="buddyLabel">레벨 입력</div>
+        {/* ✅ 깐부 매칭 컨트롤 */}
+        <div style={{ padding: "8px 12px 0" }}>
+          <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 6, opacity: 0.9 }}>깐부 매칭</div>
+
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ fontSize: 12, opacity: 0.75 }}>레벨 입력</div>
               <input
-                className="buddyInput"
-                value={buddyLevel}
-                onChange={(e) => setBuddyLevel(e.target.value)}
-                placeholder="예: 1710"
-                inputMode="numeric"
+                className="friendInput"
+                value={kkanbuLevelRange}
+                onChange={(e) => setKkanbuLevelRange(e.target.value)}
+                placeholder="예: 1710~1719"
+                style={{ width: 140 }}
               />
-              <div className="buddyHint">입력 레벨 ~ +9 까지만 (예: 1710~1719)</div>
+              <div style={{ fontSize: 11, opacity: 0.7 }}>입력 레벨 ~ +9 까지만 (예: 1710~1719)</div>
             </div>
 
-            <div className="buddyField">
-              <div className="buddyLabel">깐평 입력</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ fontSize: 12, opacity: 0.75 }}>간평 입력</div>
               <input
-                className="buddyInput"
-                value={buddyMinAvgPower}
-                onChange={(e) => setBuddyMinAvgPower(e.target.value)}
+                className="friendInput"
+                value={kkanbuAvgPowerMin}
+                onChange={(e) => setKkanbuAvgPowerMin(e.target.value)}
                 placeholder="예: 2500"
-                inputMode="numeric"
+                style={{ width: 120 }}
               />
-              <div className="buddyHint">(내 전투력 + 친구 전투력) / 2 ≥ 깐평</div>
+              <div style={{ fontSize: 11, opacity: 0.7 }}>(내 전투력 + 친구 전투력) / 2 ≥ 간평</div>
             </div>
-          </div>
-
-          <div className="buddyResult">
-            {matches.length ? (
-              <>
-                <div className="buddyResultTitle">매칭 결과 ({matches.length})</div>
-                <div className="buddyMatchList">
-                  {matches.map((m, idx) => (
-                    <div key={`${m.key}-${idx}`} className="buddyMatchCard">
-                      <div className="buddyMatchTop">
-                        <div className="buddyMatchNames">
-                          <span className="raidBadge">{m.me.charName}</span>
-                          <span className="buddyArrow">↔</span>
-                          <span className="raidBadge">{m.fr.charName}</span>
-                        </div>
-                        <div className="buddyMatchAvg">
-                          평균 <span className="raidBadge power">{Math.floor(m.avg)}</span>
-                        </div>
-                      </div>
-
-                      <div className="buddyMatchMeta">
-                        <span className="raidBadge ilvl">내 Lv {m.me.charItemLevel ?? "-"}</span>
-                        <span className="raidBadge ilvl">친구 Lv {m.fr.charItemLevel ?? "-"}</span>
-                        <span className="raidBadge">내 {m.meP}</span>
-                        <span className="raidBadge">친구 {m.frP}</span>
-                      </div>
-
-                      <div className="buddyMatchRaids">{m.key}</div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <div className="todo-hint" style={{ marginTop: 8 }}>
-                조건 만족 매칭 없음 (레벨/깐평을 조정해봐)
-              </div>
-            )}
           </div>
         </div>
 
-        {/* ✅ 기존: 친구 남은 레이드 */}
-        <div className="raidLeftColsTitle">친구 남은 레이드</div>
+        {!matched.length ? (
+          <div className="todo-hint" style={{ padding: 12, opacity: 0.8 }}>
+            조건 만족 매칭 없음 (레벨/간평을 조정해봐)
+          </div>
+        ) : null}
 
         <div className="raidLeftCols">
-          {rows.map((row: any) => {
-            const raids = Array.isArray(row.remainingRaids) ? row.remainingRaids.slice(0, 3) : [];
+          {matched.map(({ row, raids, hits }) => {
+            const myNames = hits.map((h: any) => h.name).join(", ");
             return (
               <div key={`${row.tableName ?? ""}-${row.charName}`} className="raidLeftColCard">
                 <div className="raidLeftColHeader">
                   <div className="raidLeftColHeaderLeft">
-                    <div className="raidLeftColNameRow">
-                      <div className="raidLeftColName">{row.charName}</div>
+                    <div className="raidLeftColName">{row.charName}</div>
 
-                      {row.charItemLevel ? <span className="raidBadge ilvl">Lv {row.charItemLevel}</span> : null}
-                    </div>
-
-                    {row.charPower ? (
-                      <div className="raidLeftColPower">
-                        <span className="raidBadge power">전투력 {row.charPower}</span>
+                    {(row.charItemLevel || row.charPower) ? (
+                      <div className="raidLeftColMeta">
+                        {row.charItemLevel ? <span className="raidBadge ilvl">Lv {row.charItemLevel}</span> : null}
+                        {row.charPower ? <span className="raidBadge power">전투력 {row.charPower}</span> : null}
                       </div>
                     ) : null}
                   </div>
@@ -771,6 +699,10 @@ export default function TodoTracker() {
                   ) : (
                     <div className="raidLeftColEmpty">-</div>
                   )}
+                </div>
+
+                <div style={{ padding: "10px 12px 12px", fontSize: 12, opacity: 0.85 }}>
+                  <span style={{ opacity: 0.7 }}>매칭:</span> <b>{myNames}</b>
                 </div>
               </div>
             );
