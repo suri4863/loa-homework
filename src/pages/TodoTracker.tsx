@@ -206,6 +206,11 @@ export default function TodoTracker() {
   // =========================
   const [raidLeftView, setRaidLeftView] = useState<"ME" | "FRIEND">("ME");
   const [selectedFriendCode, setSelectedFriendCode] = useState<string>("");
+
+  // ✅ 깐부 매칭 입력
+  const [buddyLevel, setBuddyLevel] = useState<string>("1710");      // 레벨 입력(구간 시작)
+  const [buddyMinAvgPower, setBuddyMinAvgPower] = useState<string>("2500"); // 깐평 입력(평균 전투력)
+
   const [friendsDockOpen, setFriendsDockOpen] = useState<boolean>(() => {
     try {
       return localStorage.getItem("friendsDockOpen:v1") === "1";
@@ -472,7 +477,28 @@ export default function TodoTracker() {
 
     alert("서버 복원 완료!");
   }
+  function parseNum(v: any): number | null {
+    if (v == null) return null;
+    const s = String(v).trim();
+    if (!s) return null;
+    // "2500+" 같은 형태도 숫자만 뽑기
+    const m = s.match(/(\d+(\.\d+)?)/);
+    if (!m) return null;
+    const n = Number(m[1]);
+    return Number.isFinite(n) ? n : null;
+  }
 
+  function raidsKey(row: any): string {
+    const raids = Array.isArray(row?.remainingRaids) ? row.remainingRaids.slice(0, 3) : [];
+    // 난이도까지 동일해야 하므로 "문자열 3개가 완전히 같음" 기준으로 키 생성
+    return raids.join(" | ");
+  }
+
+  function inLevelBand(row: any, base: number): boolean {
+    const ilvl = parseNum(row?.charItemLevel);
+    if (ilvl == null) return false;
+    return ilvl >= base && ilvl <= base + 9;
+  }
 
   function renderFriendRaidLeftColumns() {
     if (!selectedFriendCode) return <div className="todo-hint">친구를 선택해줘.</div>;
@@ -485,11 +511,187 @@ export default function TodoTracker() {
     if (snap.shareMode === "PRIVATE") return <div className="todo-hint">친구가 비공개야.</div>;
 
     const rows = (snap.data as any[]).filter((r) => r && r.charName);
-
     if (!rows.length) return <div className="todo-hint">✅ 친구는 상위 3개 레이드가 전부 완료된 상태야.</div>;
+
+    // ==========================
+    // ✅ 깐부 매칭(레벨구간 + 평균전투력 + 레이드3개 동일)
+    // ==========================
+    const parseNum = (v: any): number | null => {
+      if (v == null) return null;
+      const s = String(v).trim();
+      if (!s) return null;
+      const m = s.match(/(\d+(\.\d+)?)/);
+      if (!m) return null;
+      const n = Number(m[1]);
+      return Number.isFinite(n) ? n : null;
+    };
+
+    const raidsKey = (row: any): string => {
+      const raids = Array.isArray(row?.remainingRaids) ? row.remainingRaids.slice(0, 3) : [];
+      return raids.join(" | "); // ✅ 난이도 포함 문자열 3개가 완전 동일해야 같은 키
+    };
+
+    const baseLevel = parseNum(buddyLevel) ?? 0;
+    const minAvg = parseNum(buddyMinAvgPower) ?? 0;
+
+    const inBand = (row: any) => {
+      const ilvl = parseNum(row?.charItemLevel);
+      if (ilvl == null) return false;
+      return ilvl >= baseLevel && ilvl <= baseLevel + 9; // ✅ 1710~1719
+    };
+
+    // ✅ 내 스냅샷은 현재 state에서 즉시 생성 (ALL 기준)
+    const mySnap: any = exportRaidLeftSnapshot(state, "ALL");
+    const myRows: any[] = Array.isArray(mySnap?.data) ? mySnap.data.filter((r: any) => r && r.charName) : [];
+
+    const myCandidates = myRows.filter(inBand);
+    const friendCandidates = rows.filter(inBand);
+
+    // 그룹핑: (레이드3개 완전 동일 키)
+    const groupByKey = (arr: any[]) => {
+      const m = new Map<string, any[]>();
+      for (const r of arr) {
+        const k = raidsKey(r);
+        if (!k) continue;
+        const bucket = m.get(k);
+        if (bucket) bucket.push(r);
+        else m.set(k, [r]);
+      }
+      return m;
+    };
+
+    const myByKey = groupByKey(myCandidates);
+    const frByKey = groupByKey(friendCandidates);
+
+    type Match = {
+      key: string;
+      me: any;
+      fr: any;
+      meP: number;
+      frP: number;
+      avg: number;
+    };
+
+    const matches: Match[] = [];
+
+    // ✅ 매칭: 같은 key 안에서만 / 평균전투력 >= minAvg / 1:1 / friend 중복 사용 X
+    // 전략: 내 캐릭을 높은 전투력부터, 친구는 낮은 전투력부터 보며
+    //       조건 만족하는 "가장 낮은 친구"를 붙여서 매칭 수를 늘리는 그리디
+    for (const [key, myListRaw] of myByKey.entries()) {
+      const frListRaw = frByKey.get(key) ?? [];
+      if (!frListRaw.length) continue;
+
+      const myList = myListRaw
+        .map((r) => ({ r, p: parseNum(r.charPower) ?? 0 }))
+        .filter((x) => x.p > 0)
+        .sort((a, b) => b.p - a.p);
+
+      const frList = frListRaw
+        .map((r) => ({ r, p: parseNum(r.charPower) ?? 0 }))
+        .filter((x) => x.p > 0)
+        .sort((a, b) => a.p - b.p);
+
+      const used = new Set<number>();
+
+      for (const me of myList) {
+        let pick = -1;
+        let avgPick = -1;
+
+        for (let i = 0; i < frList.length; i++) {
+          if (used.has(i)) continue;
+          const fr = frList[i];
+          const avg = (me.p + fr.p) / 2;
+          if (avg >= minAvg) {
+            pick = i;
+            avgPick = avg;
+            break;
+          }
+        }
+
+        if (pick >= 0) {
+          used.add(pick);
+          const fr = frList[pick];
+          matches.push({ key, me: me.r, fr: fr.r, meP: me.p, frP: fr.p, avg: avgPick });
+        }
+      }
+    }
+
+    // 보기 좋게: 평균 높은 순
+    matches.sort((a, b) => b.avg - a.avg);
 
     return (
       <div className="raidLeftColsWrap">
+        {/* ✅ 깐부 매칭 패널 */}
+        <div className="buddyPanel">
+          <div className="buddyHeader">
+            <div className="buddyTitle">깐부 매칭</div>
+          </div>
+
+          <div className="buddyRow">
+            <div className="buddyField">
+              <div className="buddyLabel">레벨 입력</div>
+              <input
+                className="buddyInput"
+                value={buddyLevel}
+                onChange={(e) => setBuddyLevel(e.target.value)}
+                placeholder="예: 1710"
+                inputMode="numeric"
+              />
+              <div className="buddyHint">입력 레벨 ~ +9 까지만 (예: 1710~1719)</div>
+            </div>
+
+            <div className="buddyField">
+              <div className="buddyLabel">깐평 입력</div>
+              <input
+                className="buddyInput"
+                value={buddyMinAvgPower}
+                onChange={(e) => setBuddyMinAvgPower(e.target.value)}
+                placeholder="예: 2500"
+                inputMode="numeric"
+              />
+              <div className="buddyHint">(내 전투력 + 친구 전투력) / 2 ≥ 깐평</div>
+            </div>
+          </div>
+
+          <div className="buddyResult">
+            {matches.length ? (
+              <>
+                <div className="buddyResultTitle">매칭 결과 ({matches.length})</div>
+                <div className="buddyMatchList">
+                  {matches.map((m, idx) => (
+                    <div key={`${m.key}-${idx}`} className="buddyMatchCard">
+                      <div className="buddyMatchTop">
+                        <div className="buddyMatchNames">
+                          <span className="raidBadge">{m.me.charName}</span>
+                          <span className="buddyArrow">↔</span>
+                          <span className="raidBadge">{m.fr.charName}</span>
+                        </div>
+                        <div className="buddyMatchAvg">
+                          평균 <span className="raidBadge power">{Math.floor(m.avg)}</span>
+                        </div>
+                      </div>
+
+                      <div className="buddyMatchMeta">
+                        <span className="raidBadge ilvl">내 Lv {m.me.charItemLevel ?? "-"}</span>
+                        <span className="raidBadge ilvl">친구 Lv {m.fr.charItemLevel ?? "-"}</span>
+                        <span className="raidBadge">내 {m.meP}</span>
+                        <span className="raidBadge">친구 {m.frP}</span>
+                      </div>
+
+                      <div className="buddyMatchRaids">{m.key}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="todo-hint" style={{ marginTop: 8 }}>
+                조건 만족 매칭 없음 (레벨/깐평을 조정해봐)
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ✅ 기존: 친구 남은 레이드 */}
         <div className="raidLeftColsTitle">친구 남은 레이드</div>
 
         <div className="raidLeftCols">
@@ -502,9 +704,7 @@ export default function TodoTracker() {
                     <div className="raidLeftColNameRow">
                       <div className="raidLeftColName">{row.charName}</div>
 
-                      {row.charItemLevel ? (
-                        <span className="raidBadge ilvl">Lv {row.charItemLevel}</span>
-                      ) : null}
+                      {row.charItemLevel ? <span className="raidBadge ilvl">Lv {row.charItemLevel}</span> : null}
                     </div>
 
                     {row.charPower ? (
@@ -535,8 +735,6 @@ export default function TodoTracker() {
       </div>
     );
   }
-
-
 
   async function refreshFriends() {
     if (!SERVER_MODE) return;
