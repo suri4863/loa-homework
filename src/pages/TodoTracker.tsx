@@ -570,7 +570,13 @@ export default function TodoTracker() {
     };
 
     // ✅ 내 스냅샷은 현재 state에서 즉시 생성 (ALL 기준)
-    const mySnap: any = exportRaidLeftSnapshot(state, "ALL");
+    // exportRaidLeftSnapshot은 "JSON 문자열"을 리턴하므로 반드시 JSON.parse 필요
+    let mySnap: any = null;
+    try {
+      mySnap = JSON.parse(exportRaidLeftSnapshot(state, "ALL"));
+    } catch {
+      mySnap = null;
+    }
     const myRows: any[] = Array.isArray(mySnap?.data) ? mySnap.data.filter((r: any) => r && r.charName) : [];
 
     const myCandidates = myRows.filter(inBand);
