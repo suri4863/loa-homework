@@ -569,7 +569,7 @@ export default function TodoTracker() {
 
       weeklyRaidTitleToId.set(title, t.id);
     }
-    console.log("weeklyRaidTitleToId keys =", Array.from(weeklyRaidTitleToId.keys()));
+    
 
     const weeklyRaidTaskIds = Array.from(weeklyRaidTitleToId.values());
 
