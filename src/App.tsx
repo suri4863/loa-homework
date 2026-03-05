@@ -36,7 +36,7 @@ export default function App() {
             <div className="h-9 w-9 rounded-2xl bg-neutral-900" />
             <div className="min-w-0">
               <h1 className="appTitle truncate text-lg font-semibold">로스트아크 트래커</h1>
-              <p className="appSub truncate text-sm">보석 현황 + 숙제 체크리스트(일일/주간 리셋)</p>
+              <p className="appSub truncate text-sm">원정대 보석 현황 + 숙제 체크리스트(일일/주간 리셋)</p>
             </div>
           </div>
 

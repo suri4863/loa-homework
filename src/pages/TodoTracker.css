@@ -1628,23 +1628,16 @@ html[data-theme="dark"] .rest-input {
   color: var(--text);
 }
 
-/* ✅ 남은 레이드 자동 업로드 UI */
-.friendAutoToggle{
+/* ✅ 남은 레이드 자동 업로드 UI (정식 스타일은 하단 friendRow 섹션에 있음) */
+.friendAutoToggle {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-left: 6px;
 }
 
-.friendAutoInterval{
-  max-width: 120px;
-  margin-left: 6px;
-}
+.friendAutoInterval {}
 
-.friendAutoLast{
-  font-size: 12px;
-  opacity: 0.8;
-  margin-left: 8px;
+.friendAutoLast {
   white-space: nowrap;
 }
 
@@ -2230,6 +2223,12 @@ body,
   /* 🔥 줄바꿈 방지 */
 }
 
+/* ✅ 필요한 줄만 줄바꿈 허용 (자동 업로드 줄 등) */
+.friendRow.friendRowWrap {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
 /* 🔥 라벨 폭 고정 */
 .friendLabel {
   width: 60px;
@@ -2265,6 +2264,36 @@ body,
 .friendInput,
 .friendSelect {
   flex: 1;
+}
+
+/* 자동 업로드 UI */
+.friendAutoToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px;
+  height: 30px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--soft);
+  font-size: 12px;
+  flex: 0 0 auto;
+}
+
+.friendAutoToggle input {
+  transform: translateY(0.5px);
+}
+
+.friendAutoInterval {
+  flex: 0 0 auto;
+  width: 88px;
+}
+
+.friendAutoLast {
+  font-size: 12px;
+  color: var(--muted);
+  margin-left: 6px;
+  white-space: nowrap;
 }
 
 .friendRow:first-child {
@@ -2342,4 +2371,199 @@ body.dark .cubeTicketBtn.is-pressed {
 
 body.pip-dark .pip-cube.is-pressed {
   box-shadow: 0 0 0 2px rgba(120, 170, 255, .45);
+}
+
+/*전투력*/
+.raidLeftColNameRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.raidLeftColName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.raidLeftColPower {
+  margin-top: 2px;
+}
+
+/*메모장*/
+.memoOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+  z-index: 9999;
+}
+
+.memoModal {
+  width: 520px;
+  max-width: 100%;
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 14px;
+}
+
+.memoHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  gap: 10px;
+}
+
+.memoTitle {
+  font-weight: 900;
+  font-size: 14px;
+}
+
+.memoTextarea {
+  width: 100%;
+  min-height: 220px;
+  resize: vertical;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--soft);
+  color: var(--text);
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  outline: none;
+}
+
+.memoTextarea:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-soft);
+}
+
+.memoFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/*친구 리스트 */
+/* ---------- Friend list (Raid Left - FRIEND) ---------- */
+.friendListWrap {
+  width: 100%;
+  margin-left: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.friendListHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.friendListTitle {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.friendListHint {
+  font-size: 12px;
+  color: var(--muted);
+  opacity: .85;
+}
+
+.friendList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ✅ 오른쪽 패널에서는 세로 리스트가 보기 좋아서 column으로 */
+.friendList.friendListPanel {
+  flex-direction: column;
+  flex-wrap: nowrap;
+}
+
+.friendListWrap.friendListWrapPanel .friendItem {
+  min-width: 0;
+  width: 100%;
+}
+
+.friendItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 220px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  cursor: pointer;
+  transition: transform .06s ease, border-color .15s ease;
+}
+
+.friendItem:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, .18);
+}
+
+.friendItem.active {
+  border-color: rgba(120, 180, 255, .55);
+  box-shadow: 0 0 0 2px rgba(120, 180, 255, .12) inset;
+}
+
+.friendItemMain {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.friendItemName {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.friendItemCode {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.friendItemActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.mini.danger {
+  border-color: rgba(255, 80, 80, .35);
+  color: rgba(255, 120, 120, .95);
+}
+
+.mini.danger:hover {
+  border-color: rgba(255, 80, 80, .55);
 }

@@ -146,7 +146,6 @@ function getNextAzenaExpiryMs(state: TodoState): number | null {
 }
 
 export default function TodoTracker() {
-  const SERVER_MODE = String((import.meta as any)?.env?.VITE_SERVER_MODE ?? "") === "1";
   const [state, setState] = useState<TodoState>(() => {
     const loaded = DEFAULT_TODO_STATE.load();
     return loaded ?? DEFAULT_TODO_STATE.make();
@@ -207,6 +206,21 @@ export default function TodoTracker() {
   // =========================
   const [raidLeftView, setRaidLeftView] = useState<"ME" | "FRIEND">("ME");
   const [selectedFriendCode, setSelectedFriendCode] = useState<string>("");
+  const [friendsDockOpen, setFriendsDockOpen] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("friendsDockOpen:v1") === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("friendsDockOpen:v1", friendsDockOpen ? "1" : "0");
+    } catch {
+      // ignore
+    }
+  }, [friendsDockOpen]);
 
   // =========================
   // ✅ 서버 친구/요청 (SERVER_MODE일 때만)
@@ -272,6 +286,27 @@ export default function TodoTracker() {
     if (ct.includes("application/json")) return res.json();
     return (await res.text()) as any;
   }
+
+  // ✅ 메모장 (표별 간단 메모)
+  const memoKey = useMemo(() => `todoMemo:v1:${state.activeTableId}`, [state.activeTableId]);
+  const [memoOpen, setMemoOpen] = useState(false);
+  const [memoText, setMemoText] = useState<string>("");
+
+  useEffect(() => {
+    try {
+      setMemoText(localStorage.getItem(memoKey) ?? "");
+    } catch {
+      setMemoText("");
+    }
+  }, [memoKey]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(memoKey, memoText);
+    } catch {
+      // ignore
+    }
+  }, [memoKey, memoText]);
 
   // =========================
   // ✅ 남은 레이드 스냅샷 업로드 (수동/자동)
@@ -464,17 +499,17 @@ export default function TodoTracker() {
               <div key={`${row.tableName ?? ""}-${row.charName}`} className="raidLeftColCard">
                 <div className="raidLeftColHeader">
                   <div className="raidLeftColHeaderLeft">
-                    <div className="raidLeftColName">{row.charName}</div>
+                    <div className="raidLeftColNameRow">
+                      <div className="raidLeftColName">{row.charName}</div>
 
-                    {(row.charItemLevel || row.charPower) ? (
-                      <div className="raidLeftColMeta">
-                        {row.charItemLevel ? (
-                          <span className="raidBadge ilvl">Lv {row.charItemLevel}</span>
-                        ) : null}
+                      {row.charItemLevel ? (
+                        <span className="raidBadge ilvl">Lv {row.charItemLevel}</span>
+                      ) : null}
+                    </div>
 
-                        {row.charPower ? (
-                          <span className="raidBadge power">전투력 {row.charPower}</span>
-                        ) : null}
+                    {row.charPower ? (
+                      <div className="raidLeftColPower">
+                        <span className="raidBadge power">전투력 {row.charPower}</span>
                       </div>
                     ) : null}
                   </div>
@@ -616,6 +651,36 @@ export default function TodoTracker() {
     });
   }
 
+  async function removeFriend(friendCode: string) {
+    const code = String(friendCode ?? "").trim();
+    if (!code) return;
+
+    const ok = window.confirm(`친구(${code})를 삭제할까?`);
+    if (!ok) return;
+
+    // 1) 로컬 state에서 즉시 제거
+    setState((prev) => ({ ...prev, friends: prev.friends.filter((f) => f.code !== code) }));
+
+    // 선택 중이던 친구면 선택 해제
+    setSelectedFriendCode((cur) => (cur === code ? "" : cur));
+
+    // 2) 서버모드면 서버에서도 삭제 + 최종 재동기화
+    if (SERVER_MODE) {
+      try {
+        await apiFetch2(`/api/friends?friendCode=${encodeURIComponent(code)}`, { method: "DELETE" });
+      } catch {
+        // 서버 삭제 실패여도 로컬은 이미 지워졌으니 경고만
+        alert("서버에서 친구 삭제 실패(네트워크/권한 확인)");
+      }
+
+      try {
+        await refreshFriends();
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   function attachSnapshotToFriend(snapshotRaw: string, targetFriendCode?: string) {
     let snap;
     try {
@@ -654,55 +719,6 @@ export default function TodoTracker() {
       return { ...prev, friends: nextFriends };
     });
   }
-
-  function renderFriendRaidLeft() {
-    const f = state.friends.find((x) => x.code === selectedFriendCode);
-    if (!f) return <div className="todo-hint">친구를 선택해줘.</div>;
-    if (!f.lastSnapshot) return <div className="todo-hint">친구 스냅샷이 없어. 스냅샷을 붙여넣어줘.</div>;
-    if (f.lastSnapshot.shareMode === "PRIVATE") return <div className="todo-hint">친구가 비공개야.</div>;
-
-    return (
-      <div className="friendRaidGrid">
-        {f.lastSnapshot.data.map((row, idx) => {
-          if (idx === 0) console.log("[friend snapshot row0]", row);
-          return (
-            <div key={row.charName} className="friendRaidCard">
-              <div className="friendRaidHead">
-                <div className="friendRaidName">
-                  {row.charName}
-
-                  {!!row.charItemLevel && (
-                    <span className="friendRaidIlvl">{row.charItemLevel}</span>
-                  )}
-
-                  {!!row.charPower && (
-                    <span className="friendRaidPower">전투력 {row.charPower}</span>
-                  )}
-                </div>
-                <div className="friendRaidMeta">
-                  {!!row.tableName && <div className="friendRaidTable">{row.tableName}</div>}
-                  <div>
-                    {row.clearedCount}/{row.totalCount}
-                  </div>
-                </div>
-              </div>
-
-              {row.remainingRaids.length === 0 ? (
-                <div className="friendRaidDone">이번 주 레이드 끝!</div>
-              ) : (
-                <ul className="friendRaidList">
-                  {row.remainingRaids.map((r) => (
-                    <li key={r}>{r}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )
-        })}
-      </div>
-    );
-  }
-
 
   useEffect(() => {
     const t = setInterval(() => forceTick((x) => x + 1), 30_000);
@@ -3183,6 +3199,29 @@ body.pip-dark .pip-select option{
         </div>
       )}
 
+      {memoOpen && (
+        <div className="memoOverlay" onClick={() => setMemoOpen(false)} role="dialog" aria-modal="true">
+          <div className="memoModal" onClick={(e) => e.stopPropagation()}>
+            <div className="memoHeader">
+              <div className="memoTitle">메모장</div>
+              <button className="btn mini" onClick={() => setMemoOpen(false)}>닫기</button>
+            </div>
+
+            <textarea
+              className="memoTextarea"
+              value={memoText}
+              onChange={(e) => setMemoText(e.target.value)}
+              placeholder="여기에 간단히 메모해두기 (표별로 저장됨)"
+            />
+
+            <div className="memoFooter">
+              <button className="btn" onClick={() => setMemoText("")}>비우기</button>
+              <button className="btn" onClick={() => setMemoOpen(false)}>저장</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="todo-page">
         <div className="todo-topbar">
           <div className="topbar-left">
@@ -3241,7 +3280,6 @@ body.pip-dark .pip-select option{
                       </option>
                     ))}
                 </select>
-
                 <button className="btn" onClick={addTable}>
                   + 표 추가
                 </button>
@@ -3251,6 +3289,20 @@ body.pip-dark .pip-select option{
                 <button className="btn" onClick={deleteTable}>
                   표 삭제
                 </button>
+                <div className="todo-actions actions-row">
+                  <button className="btn" onClick={addCharacter}>
+                    + 캐릭 추가
+                  </button>
+                  <button className="btn" onClick={() => addTask("DAILY")}>
+                    + 일일 숙제
+                  </button>
+                  <button className="btn" onClick={() => addTask("WEEKLY")}>
+                    + 주간 숙제
+                  </button>
+                  <button className="btn" onClick={() => addTask("NONE")}>
+                    + 기타 숙제
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -3274,27 +3326,6 @@ body.pip-dark .pip-select option{
               <div className="weeklyGoldHint">Top3 기준 · 체크하면 자동 합산</div>
             </div>
             <div className="todo-actions actions-row">
-              <button className="btn" onClick={addCharacter}>
-                + 캐릭 추가
-              </button>
-              <button className="btn" onClick={() => addTask("DAILY")}>
-                + 일일 숙제
-              </button>
-              <button className="btn" onClick={() => addTask("WEEKLY")}>
-                + 주간 숙제
-              </button>
-              <button className="btn" onClick={() => addTask("NONE")}>
-                + 기타 숙제
-              </button>
-
-              <BidPopover />
-
-              <button className="btn" onClick={openDailyPip} title="현재 표의 일일숙제를 PIP로 띄우기(캐릭 1명씩)">
-                일일숙제 PIP
-              </button>
-
-
-              <div className="divider" />
               <button className="btn" onClick={() => manualReset("DAILY")}>
                 일일 초기화
               </button>
@@ -3305,6 +3336,14 @@ body.pip-dark .pip-select option{
               <div className="divider" />
               <button className="btn" onClick={doExport}>JSON백업</button>
               <button className="btn" onClick={doImport}>JSON복원</button>
+              <div className="divider" />
+              <button className="btn" onClick={openDailyPip} title="현재 표의 일일숙제를 PIP로 띄우기(캐릭 1명씩)">
+                일일숙제 PIP
+              </button>
+              <button className="btn" onClick={() => setMemoOpen(true)} title="간단 메모장">
+                📝 메모장
+              </button>
+              <BidPopover />
               <button className="btn" onClick={toggleTheme} title="테마 전환">
                 {theme === "dark" ? "☀️ 화이트모드" : "🌙 다크모드"}
               </button>
@@ -3603,11 +3642,119 @@ body.pip-dark .pip-select option{
                     </button>
                   </div>
                 )}
+
+                {/* ✅ 친구 목록은 왼쪽 '친구 패널'로 이동 (오른쪽 패널은 관리 액션만) */}
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* ✅ 왼쪽 친구 패널: 남은 레이드 탭 전용 (단일 관리 UI) */}
+      {periodTab === "RAID_LEFT" && (
+        <div className={["friendsDock", friendsDockOpen ? "open" : ""].join(" ")}>
+          <div className="friendsDockHeader">
+            <button className="btn mini" onClick={() => setFriendsDockOpen((v) => !v)}>
+              {friendsDockOpen ? "◀ 친구 목록" : "▶ 친구 목록"}
+            </button>
+
+            {friendsDockOpen && (
+              <div className="friendsDockHeaderActions">
+                <button
+                  className={["btn", "mini", raidLeftView === "ME" ? "active" : ""].join(" ")}
+                  onClick={() => {
+                    setRaidLeftView("ME");
+                    setSelectedFriendCode("");
+                  }}
+                  title="내 남은 레이드 보기"
+                >
+                  나
+                </button>
+                <button
+                  className={["btn", "mini", raidLeftView === "FRIEND" ? "active" : ""].join(" ")}
+                  onClick={() => setRaidLeftView("FRIEND")}
+                  title="친구 남은 레이드 보기"
+                >
+                  친구
+                </button>
+              </div>
+            )}
+          </div>
+
+          {friendsDockOpen && (
+            <div className="friendsDockBody">
+              <div className="friendsDockHint">{SERVER_MODE ? "서버 친구(동기화됨)" : "로컬 친구(브라우저 저장)"}</div>
+
+              {state.friends.length === 0 ? (
+                <div className="todo-hint" style={{ marginTop: 8 }}>
+                  친구가 없어. 오른쪽 패널에서 친구요청을 보내거나 추가해줘.
+                </div>
+              ) : (
+                <div className="friendList friendListPanel">
+                  {state.friends.map((f) => {
+                    const active = f.code === selectedFriendCode;
+                    return (
+                      <div
+                        key={f.code}
+                        className={["friendItem", active ? "active" : ""].join(" ")}
+                        onClick={() => {
+                          setSelectedFriendCode(f.code);
+                          setRaidLeftView("FRIEND");
+                        }}
+                        role="button"
+                        tabIndex={0}
+                      >
+                        <div className="friendItemMain">
+                          <div className="friendItemName">{f.nickname || f.code}</div>
+                          <div className="friendItemCode">{f.code}</div>
+                        </div>
+
+                        <div className="friendItemActions">
+                          {SERVER_MODE && (
+                            <button
+                              className="mini"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  const data = await apiFetch2(
+                                    `/api/raid-left-snapshot?friendCode=${encodeURIComponent(f.code)}`
+                                  );
+                                  const snapAny = (data as any).snapshotJson;
+                                  const snapStr = typeof snapAny === "string" ? snapAny : JSON.stringify(snapAny);
+                                  attachSnapshotToFriend(snapStr, f.code);
+                                  setSelectedFriendCode(f.code);
+                                  setRaidLeftView("FRIEND");
+                                  alert("친구 남은 레이드 불러오기 완료!");
+                                } catch {
+                                  alert("불러오기 실패(비공개이거나 친구가 아닐 수 있어)");
+                                }
+                              }}
+                              title="서버에서 최신 남은 레이드 스냅샷 불러오기"
+                            >
+                              불러오기
+                            </button>
+                          )}
+
+                          <button
+                            className="mini danger"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeFriend(f.code);
+                            }}
+                            title={SERVER_MODE ? "서버에서도 친구가 삭제됨" : "로컬 친구 목록에서만 삭제됨"}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="todo-tabs">
         <button className={`tab ${periodTab === "ALL" ? "active" : ""}`} onClick={() => setPeriodTab("ALL")}>
@@ -3637,45 +3784,7 @@ body.pip-dark .pip-select option{
                 <option value="FRIEND">친구 남은 레이드</option>
               </select>
 
-              {raidLeftView === "FRIEND" && (
-                <>
-                  <select
-                    className="friendSelect"
-                    value={selectedFriendCode}
-                    onChange={(e) => setSelectedFriendCode(e.target.value)}
-                  >
-                    <option value="">친구 선택</option>
-                    {state.friends.map((f) => (
-                      <option key={f.code} value={f.code}>
-                        {f.nickname}
-                      </option>
-                    ))}
-                  </select>
-
-                  {SERVER_MODE && (
-                    <button
-                      className="mini"
-                      disabled={!selectedFriendCode}
-                      onClick={async () => {
-                        try {
-                          const data = await apiFetch2(
-                            `/api/raid-left-snapshot?friendCode=${encodeURIComponent(selectedFriendCode)}`
-                          );
-                          const snapAny = (data as any).snapshotJson;
-                          const snapStr = typeof snapAny === "string" ? snapAny : JSON.stringify(snapAny);
-                          attachSnapshotToFriend(snapStr, selectedFriendCode);
-
-                          alert("친구 남은 레이드 불러오기 완료!");
-                        } catch (e: any) {
-                          alert("불러오기 실패(비공개이거나 친구가 아닐 수 있어)");
-                        }
-                      }}
-                    >
-                      서버에서 불러오기
-                    </button>
-                  )}
-                </>
-              )}
+              {/* ✅ 친구 목록 UI는 왼쪽 '친구 패널'로 이동 */}
             </div>
           </>
         )}
