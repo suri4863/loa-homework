@@ -514,250 +514,255 @@ export default function TodoTracker() {
     return ilvl >= base && ilvl <= base + 9;
   }
 
-function renderFriendRaidLeftColumns() {
-  if (!selectedFriendCode) return <div className="todo-hint">친구를 선택해줘.</div>;
+  function renderFriendRaidLeftColumns() {
+    if (!selectedFriendCode) return <div className="todo-hint">친구를 선택해줘.</div>;
 
-  const f = state.friends.find((x) => x.code === selectedFriendCode);
-  if (!f) return <div className="todo-hint">친구를 찾을 수 없어.</div>;
+    const f = state.friends.find((x) => x.code === selectedFriendCode);
+    if (!f) return <div className="todo-hint">친구를 찾을 수 없어.</div>;
 
-  const snap: any = (f as any).lastSnapshot;
-  if (!snap?.data) return <div className="todo-hint">친구 스냅샷이 없어. (서버에서 불러오기 또는 스냅샷 붙여넣기)</div>;
-  if (snap.shareMode === "PRIVATE") return <div className="todo-hint">친구가 비공개야.</div>;
+    const snap: any = (f as any).lastSnapshot;
+    if (!snap?.data) return <div className="todo-hint">친구 스냅샷이 없어. (서버에서 불러오기 또는 스냅샷 붙여넣기)</div>;
+    if (snap.shareMode === "PRIVATE") return <div className="todo-hint">친구가 비공개야.</div>;
 
-  const rows = (snap.data as any[]).filter((r) => r && r.charName);
-  if (!rows.length) return <div className="todo-hint">✅ 친구는 상위 3개 레이드가 전부 완료된 상태야.</div>;
+    const rows = (snap.data as any[]).filter((r) => r && r.charName);
+    if (!rows.length) return <div className="todo-hint">✅ 친구는 상위 3개 레이드가 전부 완료된 상태야.</div>;
 
-  // ==========================
-  // ✅ 깐부 매칭(레벨구간 + 간평 + 레이드3개 동일)
-  // - 레벨 입력: "1710~1719" / "1710-1719" / "1710" 모두 허용 (단독이면 +9 자동)
-  // - 간평 입력: 비우면 무시
-  // ==========================
-  const parseRange = (raw: string): { min?: number; max?: number } => {
-    const s = String(raw ?? "").trim();
-    if (!s) return {};
-    const cleaned = s.replace(/\s/g, "");
-    const parts = cleaned.split(/~|-/).filter(Boolean);
-    const min = Number(parts[0]);
-    if (!Number.isFinite(min)) return {};
-    if (parts.length >= 2) {
-      const max = Number(parts[1]);
-      if (Number.isFinite(max)) return { min, max };
+    // ==========================
+    // ✅ 깐부 매칭(레벨구간 + 간평 + 레이드3개 동일)
+    // - 레벨 입력: "1710~1719" / "1710-1719" / "1710" 모두 허용 (단독이면 +9 자동)
+    // - 간평 입력: 비우면 무시
+    // ==========================
+    const parseRange = (raw: string): { min?: number; max?: number } => {
+      const s = String(raw ?? "").trim();
+      if (!s) return {};
+      const cleaned = s.replace(/\s/g, "");
+      const parts = cleaned.split(/~|-/).filter(Boolean);
+      const min = Number(parts[0]);
+      if (!Number.isFinite(min)) return {};
+      if (parts.length >= 2) {
+        const max = Number(parts[1]);
+        if (Number.isFinite(max)) return { min, max };
+        return { min, max: min + 9 };
+      }
       return { min, max: min + 9 };
+    };
+
+    // "2500+" 같은 문자열도 숫자로 변환
+    const parseNum = (raw?: any): number => {
+      if (raw == null) return NaN;
+      const n = Number(String(raw).replace(/[^\d.]/g, ""));
+      return Number.isFinite(n) ? n : NaN;
+    };
+
+    const range = parseRange(kkanbuLevelRange);
+    const avgMin = parseNum(kkanbuAvgPowerMin);
+
+    // ✅ 내 남은 레이드(Top3 기준) 후보 만들기: 모든 표/모든 캐릭 (3회 미만)
+    const weeklyRaidTitleToId = new Map<string, string>();
+    for (const t of state.tasks) {
+      if (t.period === "WEEKLY" && t.section === "주간 레이드" && t.cellType === "CHECK") {
+        weeklyRaidTitleToId.set(t.title, t.id);
+      }
     }
-    return { min, max: min + 9 };
-  };
 
-  // "2500+" 같은 문자열도 숫자로 변환
-  const parseNum = (raw?: any): number => {
-    if (raw == null) return NaN;
-    const n = Number(String(raw).replace(/[^\d.]/g, ""));
-    return Number.isFinite(n) ? n : NaN;
-  };
+    const myCandidates = state.tables.flatMap((tbl) =>
+      tbl.characters
+        .filter((ch) => getWeeklyRaidCheckedCount(tbl.id, ch.id) < 3)
+        .map((ch) => {
+          const ilvl = parseIlvl(ch.itemLevel);
+          const top3 = Number.isFinite(ilvl) ? calcWeeklyTop3Gold(ilvl).top3.map((x) => x.raid) : [];
+          const remaining = top3.filter((title) => {
+            const taskId =
+              weeklyRaidTitleToId.get(title) ||
+              weeklyRaidTitleToId.get(title.replace(" 노말", "").replace(" 하드", ""));
+            if (!taskId) return false;
+            const v = getCellByTableId(state, tbl.id, taskId, ch.id);
+            return !(v && v.type === "CHECK" && v.checked);
+          });
 
-  const range = parseRange(kkanbuLevelRange);
-  const avgMin = parseNum(kkanbuAvgPowerMin);
+          return {
+            tableId: tbl.id,
+            tableName: tbl.name ?? tbl.id,
+            name: ch.name,
+            ilvl,
+            power: parseNum((ch as any).power),
+            remaining,
+          };
+        })
+    );
 
-  // ✅ 내 남은 레이드(Top3 기준) 후보 만들기: 모든 표/모든 캐릭 (3회 미만)
-  const weeklyRaidTitleToId = new Map<string, string>();
-  for (const t of state.tasks) {
-    if (t.period === "WEEKLY" && t.section === "주간 레이드" && t.cellType === "CHECK") {
-      weeklyRaidTitleToId.set(t.title, t.id);
-    }
-  }
+    // 내 캐릭 레벨 필터
+    const myFiltered = myCandidates.filter((m) => {
+      if (range.min != null && Number.isFinite(range.min) && (!Number.isFinite(m.ilvl) || m.ilvl < range.min!)) return false;
+      if (range.max != null && Number.isFinite(range.max) && (!Number.isFinite(m.ilvl) || m.ilvl > range.max!)) return false;
+      return true;
+    });
 
-  const myCandidates = state.tables.flatMap((tbl) =>
-    tbl.characters
-      .filter((ch) => getWeeklyRaidCheckedCount(tbl.id, ch.id) < 3)
-      .map((ch) => {
-        const ilvl = parseIlvl(ch.itemLevel);
-        const top3 = Number.isFinite(ilvl) ? calcWeeklyTop3Gold(ilvl).top3.map((x) => x.raid) : [];
-        const remaining = top3.filter((title) => {
-          const taskId = weeklyRaidTitleToId.get(title);
-          if (!taskId) return false;
-          const v = getCellByTableId(state, tbl.id, taskId, ch.id);
-          return !(v && v.type === "CHECK" && v.checked);
+    // 레이드 목록은 “순서 무시(Set 비교)”
+    const sameRaidSet = (a: string[], b: string[]) => {
+      if (a.length !== b.length) return false;
+      const sa = new Set(a.map((x) => String(x).trim()));
+      const sb = new Set(b.map((x) => String(x).trim()));
+      if (sa.size !== sb.size) return false;
+      for (const x of sa) if (!sb.has(x)) return false;
+      return true;
+    };
+
+    console.log("myCandidates", myCandidates);
+    console.log("myFiltered", myFiltered);
+    console.log("rows", rows);
+    // 친구 row -> 매칭되는 내 캐릭들 찾기
+    const matched = rows
+      .map((row: any) => {
+        const friendIlvl = parseNum(row.charItemLevel);
+        const friendPower = parseNum(row.charPower);
+        const raids = Array.isArray(row.remainingRaids) ? row.remainingRaids.slice(0, 3) : [];
+
+        // 레벨 필터(친구도 같이 적용)
+        if (range.min != null && Number.isFinite(range.min) && (!Number.isFinite(friendIlvl) || friendIlvl < range.min!)) return null;
+        if (range.max != null && Number.isFinite(range.max) && (!Number.isFinite(friendIlvl) || friendIlvl > range.max!)) return null;
+
+        const hits = myFiltered.filter((me) => {
+          if (!sameRaidSet(me.remaining, raids)) return false;
+
+          // 간평(평균 전투력) 조건: 입력이 있으면, 둘 다 숫자일 때만 판정
+          if (Number.isFinite(avgMin) && avgMin > 0) {
+            if (!Number.isFinite(me.power) || !Number.isFinite(friendPower)) return false;
+            const avg = (me.power + friendPower) / 2;
+            if (avg < avgMin) return false;
+          }
+          return true;
         });
 
-        return {
-          tableId: tbl.id,
-          tableName: tbl.name ?? tbl.id,
-          name: ch.name,
-          ilvl,
-          power: parseNum((ch as any).power),
-          remaining,
-        };
+        if (!hits.length) return null;
+        return { row, raids, hits };
       })
-  );
+      .filter(Boolean) as Array<{ row: any; raids: string[]; hits: any[] }>;
 
-  // 내 캐릭 레벨 필터
-  const myFiltered = myCandidates.filter((m) => {
-    if (range.min != null && Number.isFinite(range.min) && (!Number.isFinite(m.ilvl) || m.ilvl < range.min!)) return false;
-    if (range.max != null && Number.isFinite(range.max) && (!Number.isFinite(m.ilvl) || m.ilvl > range.max!)) return false;
-    return true;
-  });
+    return (
+      <div className="raidLeftColsWrap">
+        <div className="raidLeftColsTitle">친구 남은 레이드</div>
 
-  // 레이드 목록은 “순서 무시(Set 비교)”
-  const sameRaidSet = (a: string[], b: string[]) => {
-    if (a.length !== b.length) return false;
-    const sa = new Set(a.map((x) => String(x).trim()));
-    const sb = new Set(b.map((x) => String(x).trim()));
-    if (sa.size !== sb.size) return false;
-    for (const x of sa) if (!sb.has(x)) return false;
-    return true;
-  };
+        {/* ✅ 깐부 매칭 컨트롤 */}
+        <div style={{ padding: "8px 12px 0" }}>
+          <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 6, opacity: 0.9 }}>깐부 매칭</div>
 
-  // 친구 row -> 매칭되는 내 캐릭들 찾기
-  const matched = rows
-    .map((row: any) => {
-      const friendIlvl = parseNum(row.charItemLevel);
-      const friendPower = parseNum(row.charPower);
-      const raids = Array.isArray(row.remainingRaids) ? row.remainingRaids.slice(0, 3) : [];
-
-      // 레벨 필터(친구도 같이 적용)
-      if (range.min != null && Number.isFinite(range.min) && (!Number.isFinite(friendIlvl) || friendIlvl < range.min!)) return null;
-      if (range.max != null && Number.isFinite(range.max) && (!Number.isFinite(friendIlvl) || friendIlvl > range.max!)) return null;
-
-      const hits = myFiltered.filter((me) => {
-        if (!sameRaidSet(me.remaining, raids)) return false;
-
-        // 간평(평균 전투력) 조건: 입력이 있으면, 둘 다 숫자일 때만 판정
-        if (Number.isFinite(avgMin) && avgMin > 0) {
-          if (!Number.isFinite(me.power) || !Number.isFinite(friendPower)) return false;
-          const avg = (me.power + friendPower) / 2;
-          if (avg < avgMin) return false;
-        }
-        return true;
-      });
-
-      if (!hits.length) return null;
-      return { row, raids, hits };
-    })
-    .filter(Boolean) as Array<{ row: any; raids: string[]; hits: any[] }>;
-
-  return (
-    <div className="raidLeftColsWrap">
-      <div className="raidLeftColsTitle">친구 남은 레이드</div>
-
-      {/* ✅ 깐부 매칭 컨트롤 */}
-      <div style={{ padding: "8px 12px 0" }}>
-        <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 6, opacity: 0.9 }}>깐부 매칭</div>
-
-        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-end" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <div style={{ fontSize: 12, opacity: 0.75 }}>레벨 입력</div>
-            <input
-              className="friendInput"
-              value={kkanbuLevelRange}
-              onChange={(e) => setKkanbuLevelRange(e.target.value)}
-              placeholder="예: 1710~1719"
-              style={{ width: 140 }}
-            />
-            <div style={{ fontSize: 11, opacity: 0.7 }}>입력 레벨 ~ +9 까지만 (예: 1710~1719)</div>
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <div style={{ fontSize: 12, opacity: 0.75 }}>간평 입력</div>
-            <input
-              className="friendInput"
-              value={kkanbuAvgPowerMin}
-              onChange={(e) => setKkanbuAvgPowerMin(e.target.value)}
-              placeholder="예: 2500"
-              style={{ width: 120 }}
-            />
-            <div style={{ fontSize: 11, opacity: 0.7 }}>(내 전투력 + 친구 전투력) / 2 ≥ 간평</div>
-          </div>
-        </div>
-      </div>
-
-      {/* ✅ 매칭 결과 */}
-      {!matched.length ? (
-        <div className="todo-hint" style={{ padding: 12, opacity: 0.8 }}>
-          조건 만족 매칭 없음 (레벨/간평을 조정해봐)
-        </div>
-      ) : (
-        <div style={{ padding: "10px 12px 0" }}>
-          <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>매칭 결과 ({matched.length})</div>
-          <div className="raidLeftCols" style={{ marginBottom: 10 }}>
-            {matched.map(({ row, raids, hits }) => {
-              const myNames = hits.map((h: any) => h.name).join(", ");
-              return (
-                <div key={`match-${row.tableName ?? ""}-${row.charName}`} className="raidLeftColCard">
-                  <div className="raidLeftColHeader">
-                    <div className="raidLeftColHeaderLeft">
-                      <div className="raidLeftColName">{row.charName}</div>
-
-                      {(row.charItemLevel || row.charPower) ? (
-                        <div className="raidLeftColMeta">
-                          {row.charItemLevel ? <span className="raidBadge ilvl">Lv {row.charItemLevel}</span> : null}
-                          {row.charPower ? <span className="raidBadge power">전투력 {row.charPower}</span> : null}
-                        </div>
-                      ) : null}
-                    </div>
-
-                    {row.tableName ? <div className="raidLeftColSub">{row.tableName}</div> : null}
-                  </div>
-
-                  <div className="raidLeftColBody">
-                    {raids.length ? (
-                      raids.map((r: string, i: number) => (
-                        <div key={`${row.charName}-${i}`} className="raidLeftColItem">
-                          {r}
-                        </div>
-                      ))
-                    ) : (
-                      <div className="raidLeftColEmpty">-</div>
-                    )}
-                  </div>
-
-                  <div style={{ padding: "10px 12px 12px", fontSize: 12, opacity: 0.9 }}>
-                    <span style={{ opacity: 0.7 }}>매칭:</span> <b>{myNames}</b>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* ✅ 전체 친구 남은 레이드 카드 (항상 표시) */}
-      <div className="raidLeftCols">
-        {rows.map((row: any) => {
-          const raids = Array.isArray(row.remainingRaids) ? row.remainingRaids.slice(0, 3) : [];
-          return (
-            <div key={`${row.tableName ?? ""}-${row.charName}`} className="raidLeftColCard">
-              <div className="raidLeftColHeader">
-                <div className="raidLeftColHeaderLeft">
-                  <div className="raidLeftColName">{row.charName}</div>
-
-                  {(row.charItemLevel || row.charPower) ? (
-                    <div className="raidLeftColMeta">
-                      {row.charItemLevel ? <span className="raidBadge ilvl">Lv {row.charItemLevel}</span> : null}
-                      {row.charPower ? <span className="raidBadge power">전투력 {row.charPower}</span> : null}
-                    </div>
-                  ) : null}
-                </div>
-
-                {row.tableName ? <div className="raidLeftColSub">{row.tableName}</div> : null}
-              </div>
-
-              <div className="raidLeftColBody">
-                {raids.length ? (
-                  raids.map((r: string, i: number) => (
-                    <div key={`${row.charName}-${i}`} className="raidLeftColItem">
-                      {r}
-                    </div>
-                  ))
-                ) : (
-                  <div className="raidLeftColEmpty">-</div>
-                )}
-              </div>
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ fontSize: 12, opacity: 0.75 }}>레벨 입력</div>
+              <input
+                className="friendInput"
+                value={kkanbuLevelRange}
+                onChange={(e) => setKkanbuLevelRange(e.target.value)}
+                placeholder="예: 1710~1719"
+                style={{ width: 140 }}
+              />
+              <div style={{ fontSize: 11, opacity: 0.7 }}>입력 레벨 ~ +9 까지만 (예: 1710~1719)</div>
             </div>
-          );
-        })}
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ fontSize: 12, opacity: 0.75 }}>간평 입력</div>
+              <input
+                className="friendInput"
+                value={kkanbuAvgPowerMin}
+                onChange={(e) => setKkanbuAvgPowerMin(e.target.value)}
+                placeholder="예: 2500"
+                style={{ width: 120 }}
+              />
+              <div style={{ fontSize: 11, opacity: 0.7 }}>(내 전투력 + 친구 전투력) / 2 ≥ 간평</div>
+            </div>
+          </div>
+        </div>
+
+        {/* ✅ 매칭 결과 */}
+        {!matched.length ? (
+          <div className="todo-hint" style={{ padding: 12, opacity: 0.8 }}>
+            조건 만족 매칭 없음 (레벨/간평을 조정해봐)
+          </div>
+        ) : (
+          <div style={{ padding: "10px 12px 0" }}>
+            <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>매칭 결과 ({matched.length})</div>
+            <div className="raidLeftCols" style={{ marginBottom: 10 }}>
+              {matched.map(({ row, raids, hits }) => {
+                const myNames = hits.map((h: any) => h.name).join(", ");
+                return (
+                  <div key={`match-${row.tableName ?? ""}-${row.charName}`} className="raidLeftColCard">
+                    <div className="raidLeftColHeader">
+                      <div className="raidLeftColHeaderLeft">
+                        <div className="raidLeftColName">{row.charName}</div>
+
+                        {(row.charItemLevel || row.charPower) ? (
+                          <div className="raidLeftColMeta">
+                            {row.charItemLevel ? <span className="raidBadge ilvl">Lv {row.charItemLevel}</span> : null}
+                            {row.charPower ? <span className="raidBadge power">전투력 {row.charPower}</span> : null}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {row.tableName ? <div className="raidLeftColSub">{row.tableName}</div> : null}
+                    </div>
+
+                    <div className="raidLeftColBody">
+                      {raids.length ? (
+                        raids.map((r: string, i: number) => (
+                          <div key={`${row.charName}-${i}`} className="raidLeftColItem">
+                            {r}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="raidLeftColEmpty">-</div>
+                      )}
+                    </div>
+
+                    <div style={{ padding: "10px 12px 12px", fontSize: 12, opacity: 0.9 }}>
+                      <span style={{ opacity: 0.7 }}>매칭:</span> <b>{myNames}</b>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ✅ 전체 친구 남은 레이드 카드 (항상 표시) */}
+        <div className="raidLeftCols">
+          {rows.map((row: any) => {
+            const raids = Array.isArray(row.remainingRaids) ? row.remainingRaids.slice(0, 3) : [];
+            return (
+              <div key={`${row.tableName ?? ""}-${row.charName}`} className="raidLeftColCard">
+                <div className="raidLeftColHeader">
+                  <div className="raidLeftColHeaderLeft">
+                    <div className="raidLeftColName">{row.charName}</div>
+
+                    {(row.charItemLevel || row.charPower) ? (
+                      <div className="raidLeftColMeta">
+                        {row.charItemLevel ? <span className="raidBadge ilvl">Lv {row.charItemLevel}</span> : null}
+                        {row.charPower ? <span className="raidBadge power">전투력 {row.charPower}</span> : null}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {row.tableName ? <div className="raidLeftColSub">{row.tableName}</div> : null}
+                </div>
+
+                <div className="raidLeftColBody">
+                  {raids.length ? (
+                    raids.map((r: string, i: number) => (
+                      <div key={`${row.charName}-${i}`} className="raidLeftColItem">
+                        {r}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="raidLeftColEmpty">-</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
 
   async function refreshFriends() {
