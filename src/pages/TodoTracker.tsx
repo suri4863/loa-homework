@@ -220,6 +220,10 @@ export default function TodoTracker() {
   const [nickSaveState, setNickSaveState] = useState<"idle" | "typing" | "saving" | "saved" | "error">("idle");
   const nickSaveTimerRef = useRef<number | null>(null);
   const nickLastSentRef = useRef<string>("");
+  const [raidSnapUploadState, setRaidSnapUploadState] = useState<"idle" | "uploading" | "ok" | "error">("idle");
+  const [lastRaidSnapUploadedAt, setLastRaidSnapUploadedAt] = useState<number | null>(null);
+  const raidSnapUploadingRef = useRef(false);
+  const raidSnapAutoTimerRef = useRef<number | null>(null);
   useEffect(() => {
     return () => {
       if (nickSaveTimerRef.current) {
@@ -268,6 +272,93 @@ export default function TodoTracker() {
     if (ct.includes("application/json")) return res.json();
     return (await res.text()) as any;
   }
+
+  // =========================
+  // ✅ 남은 레이드 스냅샷 업로드 (수동/자동)
+  // =========================
+  function setAutoRaidLeftUploadEnabled(enabled: boolean) {
+    setState((prev) => ({
+      ...prev,
+      profile: {
+        ...prev.profile,
+        autoRaidLeftUploadEnabled: enabled,
+        autoRaidLeftUploadMinutes: prev.profile.autoRaidLeftUploadMinutes ?? 60,
+      },
+    }));
+  }
+
+  function setAutoRaidLeftUploadMinutes(minutes: number) {
+    const m = Number(minutes);
+    setState((prev) => ({
+      ...prev,
+      profile: {
+        ...prev.profile,
+        autoRaidLeftUploadMinutes: Number.isFinite(m) && m > 0 ? m : 60,
+      },
+    }));
+  }
+
+  async function uploadRaidLeftSnapshot(source: "manual" | "auto") {
+    if (!SERVER_MODE) return;
+    if (raidSnapUploadingRef.current) return;
+
+    raidSnapUploadingRef.current = true;
+    setRaidSnapUploadState("uploading");
+
+    try {
+      const s = stateRef.current;
+      const snapshotJson = exportRaidLeftSnapshot(s, "ALL");
+
+      await apiFetch2("/api/me/raid-left-snapshot", {
+        method: "PUT",
+        body: JSON.stringify({
+          nickname: s.profile.nickname,
+          snapshotJson,
+          source,
+        }),
+      });
+
+      setLastRaidSnapUploadedAt(Date.now());
+      setRaidSnapUploadState("ok");
+      window.setTimeout(() => setRaidSnapUploadState("idle"), 1200);
+    } catch (e) {
+      setRaidSnapUploadState("error");
+      window.setTimeout(() => setRaidSnapUploadState("idle"), 2000);
+
+      // 자동 업로드는 조용히 실패(알림 스팸 방지)
+      if (source === "manual") throw e;
+    } finally {
+      raidSnapUploadingRef.current = false;
+    }
+  }
+
+  // ✅ 자동 업로드 타이머 (서버모드에서만)
+  useEffect(() => {
+    if (!SERVER_MODE) return;
+
+    // 기존 타이머 정리
+    if (raidSnapAutoTimerRef.current) {
+      window.clearInterval(raidSnapAutoTimerRef.current);
+      raidSnapAutoTimerRef.current = null;
+    }
+
+    if (!state.profile.autoRaidLeftUploadEnabled) return;
+
+    const minutes = Number(state.profile.autoRaidLeftUploadMinutes ?? 60);
+    const intervalMs = (Number.isFinite(minutes) && minutes > 0 ? minutes : 60) * 60_000;
+
+    const id = window.setInterval(() => {
+      uploadRaidLeftSnapshot("auto").catch(() => { });
+    }, intervalMs);
+
+    raidSnapAutoTimerRef.current = id;
+
+    return () => {
+      window.clearInterval(id);
+      if (raidSnapAutoTimerRef.current === id) raidSnapAutoTimerRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [SERVER_MODE, state.profile.autoRaidLeftUploadEnabled, state.profile.autoRaidLeftUploadMinutes]);
 
   // ✅ 서버 백업 비밀번호
   const [backupPassword, setBackupPassword] = useState("");
@@ -1162,8 +1253,49 @@ export default function TodoTracker() {
   // =========================
   // 숙제 CRUD (템플릿 공유: state.tasks)
   // =========================
+
+  // ✅ "기본은 숨김, 추가할 때만 보이게"용 프리셋
+  // - 기본 상태/마이그레이션에서는 만들지 않지만,
+  // - 사용자가 "추가" 할 때는 빠르게 선택할 수 있게 제공
+  const WEEKLY_EXCHANGE_PRESETS = [
+    { title: "천상", cellType: "CHECK" as const },
+    { title: "혈석 교환", cellType: "CHECK" as const },
+    { title: "클리어메달 교환", cellType: "CHECK" as const },
+    { title: "해적주화 교환", cellType: "CHECK" as const },
+  ];
   function addTask(period: "DAILY" | "WEEKLY" | "NONE") {
     const label = period === "DAILY" ? "일일" : period === "WEEKLY" ? "주간" : "기타";
+
+    // ✅ 주간일 때: "주간 교환"은 프리셋(숨김 포함)으로 빠르게 추가
+    // - 숫자 선택: 1~N
+    // - 빈칸/그 외 입력: 기존처럼 직접 입력
+    if (period === "WEEKLY") {
+      const pick = prompt(
+        [
+          "주간 숙제 추가",
+          "(선택) 주간 교환 프리셋 번호를 입력하면 자동 추가됩니다.",
+          ...WEEKLY_EXCHANGE_PRESETS.map((p, i) => `${i + 1}. ${p.title}`),
+          "\n- 위 번호를 입력하면: 섹션=주간 교환 / 타입=CHECK 로 추가",
+          "- 그냥 엔터/그 외 입력이면: 기존 방식(직접 입력)으로 진행",
+        ].join("\n")
+      )
+        ?.trim();
+
+      const idx = pick ? Number(pick) : NaN;
+      if (Number.isFinite(idx) && idx >= 1 && idx <= WEEKLY_EXCHANGE_PRESETS.length) {
+        const preset = WEEKLY_EXCHANGE_PRESETS[idx - 1];
+        const t = createTask({
+          title: preset.title,
+          period: "WEEKLY" as any,
+          cellType: preset.cellType as any,
+          section: "주간 교환",
+        });
+        setState((prev) => ({ ...prev, tasks: [...prev.tasks, t] }));
+        return;
+      }
+      // pick이 숫자가 아니면 그대로 아래 직접 입력 흐름으로 넘어감
+    }
+
     const title = prompt(`${label} 숙제 이름`)?.trim();
     if (!title) return;
 
@@ -1359,6 +1491,7 @@ export default function TodoTracker() {
     "4막": { normal: 33000, hard: 42000 },
     "종막": { normal: 40000, hard: 52000 },
     "세르카": { normal: 35000, hard: 44000, nightmare: 54000 },
+    "지평의 성당": { normal: 35000, hard: 44000, nightmare: 54000 },
   };
 
   type RaidPopup = { title: string; x: number; y: number } | null;
@@ -1436,6 +1569,7 @@ export default function TodoTracker() {
     "4막": 4,
     "종막": 5,
     "세르카": 6,
+    "지평의 성당": 7,
   };
 
 
@@ -1564,6 +1698,7 @@ export default function TodoTracker() {
     { key: "ACT4", name: "4막", diffs: [{ name: "노말", minIlvl: 1700, gold: 33000 }, { name: "하드", minIlvl: 1720, gold: 42000 }] },
     { key: "FINAL", name: "종막", diffs: [{ name: "노말", minIlvl: 1710, gold: 40000 }, { name: "하드", minIlvl: 1730, gold: 52000 }] },
     { key: "SERKA", name: "세르카", diffs: [{ name: "노말", minIlvl: 1710, gold: 35000 }, { name: "하드", minIlvl: 1730, gold: 44000 }, { name: "나이트메어", minIlvl: 1740, gold: 54000 }] },
+    // 업데이트 { key: "SERKA", name: "지평의 성당", diffs: [{ name: "노말", minIlvl: 1710, gold: 35000 }, { name: "하드", minIlvl: 1730, gold: 44000 }, { name: "나이트메어", minIlvl: 1740, gold: 54000 }] },
   ];
 
   function parseIlvl(raw?: string): number {
@@ -1580,6 +1715,7 @@ export default function TodoTracker() {
     "4막": 1700,
     "종막": 1710,
     "세르카": 1710,
+    "지평의 성당": 1710,
     "1해금": 1640,
     "2해금": 1680,
     "3해금": 1700,
@@ -2840,23 +2976,30 @@ body.pip-dark .pip-select option{
                                               <CounterDots max={max} count={count} />
 
                                               {(isCore || isGuardian) && (
-                                                <input
-                                                  inputMode="numeric"
-                                                  className="rest-input"
-                                                  value={String(restValue)}
-                                                  onChange={(e) => {
-                                                    const raw = e.target.value.replace(/[^0-9]/g, "");
-                                                    const n = raw === "" ? 0 : Number(raw);
-                                                    const clamped = clamp(Number.isFinite(n) ? n : 0, 0, restMax);
+                                                <div className="rest-wrap" onClick={(e) => e.stopPropagation()}>
+                                                  <input
+                                                    inputMode="numeric"
+                                                    className="rest-input"
+                                                    value={String(restValue)}
+                                                    onChange={(e) => {
+                                                      const raw = e.target.value.replace(/[^0-9]/g, "");
+                                                      const n = raw === "" ? 0 : Number(raw);
+                                                      const clamped = clamp(Number.isFinite(n) ? n : 0, 0, restMax);
 
-                                                    setRestGaugeInTable(tableId, ch.id, {
-                                                      chaos: isCore ? clamped : undefined,
-                                                      guardian: isGuardian ? clamped : undefined,
-                                                    });
-                                                  }}
-                                                  title={isCore ? "핵심 콘텐츠 휴식(0~200)" : "가디언 휴식(0~100)"}
-                                                  onClick={(e) => e.stopPropagation()}
-                                                />
+                                                      setRestGaugeInTable(tableId, ch.id, {
+                                                        chaos: isCore ? clamped : undefined,
+                                                        guardian: isGuardian ? clamped : undefined,
+                                                      });
+                                                    }}
+                                                    title={isCore ? "핵심 콘텐츠 휴식(0~200)" : "가디언 휴식(0~100)"}
+                                                  />
+
+                                                  {restMax > 0 && restValue >= restMax && (
+                                                    <span className="rest-alert" title="휴식게이지가 최대예요. 오늘 돌아주면 좋아요!">
+                                                      !
+                                                    </span>
+                                                  )}
+                                                </div>
                                               )}
                                             </div>
 
@@ -3285,30 +3428,75 @@ body.pip-dark .pip-select option{
                       남은 레이드 스냅샷 복사
                     </button>
                   ) : (
-                    <button
-                      className="mini"
-                      onClick={async () => {
-                        try {
-                          const snapshotJson = exportRaidLeftSnapshot(state, "ALL");
-
-                          await apiFetch2("/api/me/raid-left-snapshot", {
-                            method: "PUT",
-                            body: JSON.stringify({
-                              nickname: state.profile.nickname,
-                              snapshotJson,
-                            }),
-                          });
-
-                          alert("서버에 남은 레이드 스냅샷 업로드 완료!");
-                        } catch (e: any) {
-                          alert(`업로드 실패: ${String(e)}`);
-                        }
-                      }}
-                    >
-                      남은 레이드 서버 업로드
-                    </button>
+                    <>
+                      <button
+                        className="mini"
+                        onClick={async () => {
+                          try {
+                            await uploadRaidLeftSnapshot("manual");
+                            alert("서버에 남은 레이드 스냅샷 업로드 완료!");
+                          } catch (e: any) {
+                            alert(`업로드 실패: ${String(e)}`);
+                          }
+                        }}
+                      >
+                        남은 레이드 서버 업로드
+                      </button>
+                    </>
                   )}
                 </div>
+
+                {/* ✅ 자동 업로드 설정 (서버모드에서만) */}
+                {SERVER_MODE && (
+                  <div className="friendRow friendRowWrap" style={{ marginTop: 4 }}>
+                    <div className="friendLabel">자동</div>
+
+                    <label className="friendAutoToggle" title="남은 레이드 스냅샷을 주기적으로 서버에 업로드">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(state.profile.autoRaidLeftUploadEnabled)}
+                        onChange={(e) => setAutoRaidLeftUploadEnabled(e.target.checked)}
+                      />
+                      <span>켜기</span>
+                    </label>
+
+                    <select
+                      className="friendSelect friendAutoInterval"
+                      value={String(state.profile.autoRaidLeftUploadMinutes ?? 60)}
+                      onChange={(e) => setAutoRaidLeftUploadMinutes(Number(e.target.value))}
+                      disabled={!state.profile.autoRaidLeftUploadEnabled}
+                      title="자동 업로드 간격(분)"
+                    >
+                      <option value="15">15분</option>
+                      <option value="30">30분</option>
+                      <option value="60">1시간</option>
+                      <option value="120">2시간</option>
+                    </select>
+
+                    {raidSnapUploadState !== "idle" && (
+                      <span
+                        className={["pill", raidSnapUploadState === "error" ? "daily" : "weekly"].join(" ")}
+                        title={
+                          raidSnapUploadState === "uploading"
+                            ? "업로드 중"
+                            : raidSnapUploadState === "ok"
+                              ? "업로드 완료"
+                              : "업로드 실패"
+                        }
+                      >
+                        {raidSnapUploadState === "uploading" && "업로드중…"}
+                        {raidSnapUploadState === "ok" && "완료"}
+                        {raidSnapUploadState === "error" && "실패"}
+                      </span>
+                    )}
+
+                    {lastRaidSnapUploadedAt && (
+                      <span className="friendAutoLast">
+                        마지막: {new Date(lastRaidSnapUploadedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {SERVER_MODE ? (
                   <>

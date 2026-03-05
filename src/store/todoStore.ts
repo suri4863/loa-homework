@@ -68,8 +68,12 @@ export type UserProfile = {
   friendCode: string; // 내 공유 코드
   shareMode: ShareMode; // 공개/비공개
   nickname?: string; // (선택) 내 표시용 닉네임
-};
 
+  // ✅ 남은 레이드 스냅샷 자동 업로드(서버모드에서만 동작)
+  autoRaidLeftUploadEnabled?: boolean;
+  /** 자동 업로드 간격(분). 예: 60=1시간 */
+  autoRaidLeftUploadMinutes?: number;
+};
 
 export type RaidLeftSnapshotPayload = {
   version: 2;
@@ -207,11 +211,11 @@ function makeDefaultState(): TodoState {
       order: baseOrder + 3,
     },
 
-    // 주간 교환 (원하는 순서: 천상 → 혈석 → 클리어 → 해적 → 메모)
+    // 주간 교환 (원하는 순서: 천상 → 혈석 → 클리어 → (해적) → 메모)
     createTask({ title: "천상", period: "WEEKLY", cellType: "CHECK", section: "주간 교환", order: baseOrder + 100 }),
     createTask({ title: "혈석 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환", order: baseOrder + 101 }),
     createTask({ title: "클리어메달 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환", order: baseOrder + 102 }),
-    createTask({ title: "해적주화 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환", order: baseOrder + 103 }),
+    // createTask({ title: "해적주화 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환", order: baseOrder + 103 }),
     createTask({ title: "메모", period: "WEEKLY", cellType: "TEXT", section: "주간 교환", order: baseOrder + 104 }),
 
     // 주간 레이드
@@ -221,6 +225,7 @@ function makeDefaultState(): TodoState {
     createTask({ title: "4막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
     createTask({ title: "종막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
     createTask({ title: "세르카", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+    createTask({ title: "지평의 성당", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
 
     // 기타 (원하는 순서: 4해금 → 3해금 → 2해금 → 1해금 → 낙원트리)
     createTask({ title: "4해금", period: "NONE", cellType: "TEXT", section: "기타", order: baseOrder + 200 }),
@@ -258,6 +263,8 @@ function makeDefaultState(): TodoState {
     friendCode: `FC_${Math.random().toString(16).slice(2, 8)}_${Date.now().toString(16)}`,
     shareMode: "PUBLIC",
     nickname: "",
+    autoRaidLeftUploadEnabled: false,
+    autoRaidLeftUploadMinutes: 60,
   };
 
   return {
@@ -284,6 +291,10 @@ function normalizeState(parsed: any): TodoState {
     } else {
       st.profile.shareMode = st.profile.shareMode ?? "PUBLIC";
       st.profile.nickname = (st.profile.nickname ?? "").toString();
+      // ✅ 자동 업로드 설정 기본값 보정
+      st.profile.autoRaidLeftUploadEnabled = Boolean(st.profile.autoRaidLeftUploadEnabled ?? false);
+      const m = Number(st.profile.autoRaidLeftUploadMinutes);
+      st.profile.autoRaidLeftUploadMinutes = Number.isFinite(m) && m > 0 ? m : 60;
     }
     if (!Array.isArray((st as any).friends)) (st as any).friends = [];
 
@@ -325,7 +336,7 @@ function normalizeState(parsed: any): TodoState {
     ensureTask({ title: "천상", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" });
     ensureTask({ title: "혈석 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" });
     ensureTask({ title: "클리어메달 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" });
-    ensureTask({ title: "해적주화 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" });
+    // ensureTask({ title: "해적주화 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" });
     ensureTask({ title: "메모", period: "WEEKLY", cellType: "TEXT", section: "주간 교환" });
 
     // ✅ 2) 누락된 기본 항목들 추가 (기타)
@@ -348,7 +359,7 @@ function normalizeState(parsed: any): TodoState {
     setOrder("천상", "WEEKLY", "주간 교환", base + 1);
     setOrder("혈석 교환", "WEEKLY", "주간 교환", base + 2);
     setOrder("클리어메달 교환", "WEEKLY", "주간 교환", base + 3);
-    setOrder("해적주화 교환", "WEEKLY", "주간 교환", base + 4);
+    // setOrder("해적주화 교환", "WEEKLY", "주간 교환", base + 4);
     setOrder("메모", "WEEKLY", "주간 교환", base + 5);
 
     // 기타: 4해금 → 3해금 → 2해금 → 1해금 → 낙원 트리
@@ -552,6 +563,7 @@ export function exportRaidLeftSnapshot(state: TodoState, tableId?: string | "ALL
     { name: "4막", diffs: [{ minIlvl: 1700, gold: 33000 }, { minIlvl: 1720, gold: 42000 }] },
     { name: "종막", diffs: [{ minIlvl: 1710, gold: 40000 }, { minIlvl: 1730, gold: 52000 }] },
     { name: "세르카", diffs: [{ minIlvl: 1710, gold: 35000 }, { minIlvl: 1730, gold: 44000 }, { minIlvl: 1740, gold: 54000 }] },
+    { name: "지평의 성당", diffs: [{ minIlvl: 1710, gold: 35000 }, { minIlvl: 1730, gold: 44000 }, { minIlvl: 1740, gold: 54000 }] },
   ];
 
   const parseIlvl = (raw?: string) => {

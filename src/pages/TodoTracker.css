@@ -21,6 +21,9 @@
 
   --warning: #f59e0b;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+
+  --rest-alert: #a855f7;
+  /* 휴식 최대 알림 */
 }
 
 html,
@@ -100,12 +103,12 @@ body {
 
 /* ---------- Topbar ---------- */
 .todo-topbar {
-  /* ✅ 3영역 고정 배치: [왼쪽]=표/제목, [가운데]=버튼들, [오른쪽]=friendBox */
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  /* ✅ TSX 구조(topbar-left/center/right)에 맞춘 3분할 */
+  grid-template-columns: minmax(260px, 1fr) minmax(520px, 2fr) minmax(360px, 1fr);
   column-gap: 16px;
   row-gap: 12px;
-  align-items: end;
+  align-items: start;
 
   padding: 14px;
   border: 1px solid var(--border);
@@ -114,25 +117,46 @@ body {
   box-shadow: var(--shadow);
 }
 
-/* 왼쪽 영역 */
-.todo-topbar > .todo-title {
-  justify-self: start;
+.topbar-left {
   min-width: 0;
 }
 
-/* 가운데 버튼 줄(첫 번째 todo-actions) */
-.todo-topbar > .todo-actions:nth-of-type(1) {
-  justify-self: center;
-  align-self: end;
-  max-width: min(860px, 100%);
+.topbar-center {
+  min-width: 0;
+  /* ✅ 주간 골드(위) + 버튼들(아래) 2줄 */
+  display: grid;
+  grid-template-rows: auto auto;
+  row-gap: 10px;
+  justify-items: center;
+  align-items: start;
 }
 
-/* 오른쪽(friendBox 포함 두 번째 todo-actions) */
-.todo-topbar > .todo-actions:nth-of-type(2) {
+.actions-row {
+  width: 100%;
+  justify-content: center;
+}
+
+/* ✅ 우측 카드(서버백업/내코드)는 세로로 쌓이게 */
+.topbar-right {
+  min-width: 0;
   justify-self: end;
-  align-self: start;
+
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-end;
 }
 
+/* TSX의 topbar-cards 래퍼도 세로 스택 */
+.topbar-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-end;
+  width: 100%;
+}
+
+/* 버튼 줄 공통 */
 .todo-actions {
   display: flex;
   flex-wrap: wrap;
@@ -154,49 +178,50 @@ body {
   align-items: center;
 }
 
-/* 화면이 좁아지면 자연스럽게 세로 스택 */
-@media (max-width: 980px) {
-  .todo-topbar {
-    grid-template-columns: 1fr;
-  }
-  .todo-topbar > .todo-actions:nth-of-type(1),
-  .todo-topbar > .todo-actions:nth-of-type(2) {
-    justify-self: start;
-  }
-}
-/* 왼쪽 영역은 무조건 세로로 쌓이게 고정 */
+/* 왼쪽 영역(제목/설명/표 선택)은 무조건 세로로 쌓이게 */
 .todo-title {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
 }
 
-/* 버튼/셀렉트 줄을 아래로 확실히 내림 */
+/* 버튼/셀렉트 줄: 과한 강제 마진 제거 */
 .topbar-controls {
-  margin-top: 60px !important;
-  /* ✅ 아래 여백 확보 */
+  margin-top: 10px;
 }
 
+/* 화면이 좁아지면 세로 스택 */
+@media (max-width: 980px) {
+  .todo-topbar {
+    grid-template-columns: 1fr;
+  }
 
-/* 제목(할 일 To-do) 색상 */
-.todo-title h2 {
-  color: var(--text);
-  /* 라이트: 진한 글자 / 다크: 흰색 계열 */
+  .topbar-center {
+    justify-items: start;
+  }
+
+  .actions-row {
+    justify-content: flex-start;
+  }
+
+  .topbar-right {
+    justify-self: start;
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .topbar-cards {
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .serverBackupPanel,
+  .friendBox {
+    width: 100%;
+    max-width: 100%;
+  }
 }
 
-
-.todo-sub {
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.todo-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
 
 /* =========================
    Weekly Gold Summary (FINAL)
@@ -204,14 +229,14 @@ body {
 
 
 
-/* 중앙 고정 카드 */
+/* 중앙 카드(주간 골드): topbar-center의 1행에 놓임 */
 .weeklyGoldSummary {
-  position: absolute;
-  left: 50%;
-  top: 10px;
-  /* 버튼과 적당히 간격 */
-  transform: translateX(-50%);
-  z-index: 3;
+  position: static;
+  /* ✅ absolute 제거(겹침 방지) */
+  left: auto;
+  top: auto;
+  transform: none;
+  z-index: 1;
 
   min-width: 260px;
   padding: 10px 16px;
@@ -221,6 +246,7 @@ body {
   background: var(--soft);
   text-align: center;
 }
+
 
 /* 제목 */
 .weeklyGoldTitle {
@@ -714,6 +740,32 @@ html[data-theme="dark"] .rest-input {
 
 .todo-table-scroll::-webkit-scrollbar-thumb:hover {
   background: #cbd5e1;
+}
+
+/* ✅ 휴식게이지 최대 경고 뱃지 */
+.rest-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.rest-alert {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--rest-alert);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 18px;
+  text-align: center;
+  border: 2px solid var(--card);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.18);
+  cursor: help;
+  user-select: none;
 }
 
 /* =========================================================
@@ -1576,6 +1628,26 @@ html[data-theme="dark"] .rest-input {
   color: var(--text);
 }
 
+/* ✅ 남은 레이드 자동 업로드 UI */
+.friendAutoToggle{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 6px;
+}
+
+.friendAutoInterval{
+  max-width: 120px;
+  margin-left: 6px;
+}
+
+.friendAutoLast{
+  font-size: 12px;
+  opacity: 0.8;
+  margin-left: 8px;
+  white-space: nowrap;
+}
+
 .friendRaidCard {
   background: var(--card);
   color: var(--text);
@@ -1659,9 +1731,10 @@ html[data-theme="dark"] .rest-input {
   /* 왼쪽 영역이 너비를 우선 확보 */
 }
 
-.raidLeftColMeta{
+.raidLeftColMeta {
   display: flex;
-  flex-wrap: wrap; /* 줄바꿈 허용 */
+  flex-wrap: wrap;
+  /* 줄바꿈 허용 */
   gap: 6px;
   font-size: 11px;
   color: var(--muted);
@@ -1858,19 +1931,14 @@ body,
 }
 
 /* ✅ friendBox를 상단 우측으로 띄우기 (주간 골드 오른쪽 위 느낌) */
-.todo-topbar { position: relative; }
-
-.friendBoxTop{
-  position: absolute;
-  right: 16px;
-  top: 8px;
-  z-index: 5;
-  width: 360px;          /* 필요시 320~420 조절 */
-  max-width: calc(100vw - 24px);
+.todo-topbar {
+  position: relative;
 }
 
+
+
 /* ✅ 서버 백업 도킹(오른쪽 하단) */
-.backupDock{
+.backupDock {
   position: fixed;
   right: 16px;
   bottom: 16px;
@@ -1885,106 +1953,188 @@ body,
   display: flex;
   flex-direction: column;
   gap: 8px;
-  min-width: 520px; /* 줄바꿈 원하면 줄여도 됨 */
+  min-width: 520px;
+  /* 줄바꿈 원하면 줄여도 됨 */
   max-width: calc(100vw - 32px);
 }
 
-.backupDockRow{
+.backupDockRow {
   display: flex;
   gap: 8px;
   align-items: center;
 }
 
-.backupDockRow .friendInput{
+.backupDockRow .friendInput {
   flex: 1 1 auto;
   min-width: 180px;
 }
 
-  /* 서버 백업 패널 */
-  .serverBackupPanel{
-    position: absolute;
-    top: 12px;
-    right: 380px;  /* friendBox 폭 + 여백 */
-  
-  
-    
-  
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+/* ✅ 우측 카드(서버백업/내코드)는 topbar-right 안에서 세로로 쌓이게 */
+.topbar-right {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  justify-self: end;
+  align-self: start;
 
-    padding: 10px 12px;
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    background: var(--soft);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-end;
+}
 
-    min-width: 380px;
-    z-index: 4;
-  }
+/* TSX에 있는 topbar-cards 래퍼도 세로 스택 */
+.topbar-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-end;
+  width: 100%;
+}
 
-  .todo-topbar{
-    position: relative;
-  }
+/* ✅ 내 코드 박스: absolute 제거 */
+.friendBoxTop {
+  position: static;
+  right: auto;
+  top: auto;
+  z-index: 5;
+  width: 360px;
+  max-width: 100%;
+}
 
-  .serverBackupRow{
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    flex-wrap: wrap;
-  }
+/* ✅ 서버 백업 패널: absolute 제거 (겹침 해결) */
+.serverBackupPanel {
+  position: static;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 
-  .serverBackupPanel .friendInput{
-    max-width: 140px; /* 필요시 220~260으로 */
-    
-  }
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--soft);
 
-  
+  width: 360px;
+  max-width: 100%;
+  min-width: 0;
+  /* 창모드에서 삐져나오는 원인 제거 */
+  z-index: 4;
+}
+
+.todo-topbar {
+  position: relative;
+}
+
+.serverBackupRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.serverBackupPanel .friendInput {
+  max-width: 140px;
+  /* 필요시 220~260으로 */
+
+}
+
+
 
 /* =========================================================
    TOPBAR LAYOUT (FINAL)
    - JSX 변경 후(topbar-left / topbar-center / topbar-right 3분할) 기준
    ========================================================= */
-.todo-topbar{
+.todo-topbar {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  /* ✅ 창이 어중간하게 좁아질 때(센터 auto가 폭을 다 먹어버려 좌측 제목이 세로로 깨지는 문제 방지)
+     - 좌/중/우 모두 최소 폭을 보장하는 minmax 사용
+     - 가운데는 auto가 아니라 minmax로 제한해서 과도 확장 방지 */
+  grid-template-columns: minmax(260px, 1fr) minmax(520px, 2fr) minmax(360px, 1fr);
   grid-template-rows: auto auto;
   column-gap: 16px;
   row-gap: 10px;
   align-items: end;
 }
 
-.topbar-left{
+.topbar-left {
   grid-column: 1;
   grid-row: 1 / span 2;
   min-width: 0;
 }
 
-.topbar-center{
+.topbar-center {
   grid-column: 2;
   grid-row: 1 / span 2;
   justify-self: center;
-  align-self: start;        /* 🔥 end → start 로 변경 */
+  align-self: start;
+  /* 🔥 end → start 로 변경 */
 
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;                /* 🔥 10 → 16 */
-  margin-top: 6px;          /* 🔥 카드와 간격 확보 */
+  gap: 16px;
+  /* 🔥 10 → 16 */
+  margin-top: 6px;
+  /* 🔥 카드와 간격 확보 */
 }
 
-.topbar-center .todo-actions{
+/* ✅ 좌측 제목/설명은 한 글자씩 세로로 깨지지 않게 */
+.todo-title h2,
+.todo-sub {
+  word-break: keep-all;
+  overflow-wrap: normal;
+}
+
+/* ✅ 1200px 근처 “어중간 창모드”에서는 3분할 유지보다 세로 스택이 더 깔끔함 */
+@media (max-width: 1220px) {
+  .todo-topbar {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
+    align-items: start;
+  }
+
+  .topbar-left {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .topbar-center {
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: start;
+    align-items: flex-start;
+  }
+
+  .topbar-center .todo-actions {
+    justify-content: flex-start;
+  }
+
+  .topbar-right {
+    grid-column: 1;
+    grid-row: 3;
+    justify-self: start;
+    align-items: flex-start;
+    width: 100%;
+  }
+
+  .topbar-cards {
+    align-items: flex-start;
+    width: 100%;
+  }
+
+  .topbar-right .friendBoxTop,
+  .topbar-right .serverBackupPanel {
+    width: 100%;
+    max-width: 100%;
+  }
+}
+
+.topbar-center .todo-actions {
   justify-content: center;
 }
 
-.topbar-right{
-  grid-column: 3;
-  grid-row: 1 / span 2;
-  justify-self: end;
-  align-self: start;
-}
 
 /* 주간 골드 카드: topbar-center 상단 */
-.topbar-center .weeklyGoldSummary{
+.topbar-center .weeklyGoldSummary {
   position: static !important;
   left: auto !important;
   top: auto !important;
@@ -1992,113 +2142,155 @@ body,
   margin: 0 !important;
 }
 
-.todo-topbar .divider{
+.todo-topbar .divider {
   margin: 0 10px;
 }
 
 /* 좁아지면 세로 스택 */
-@media (max-width: 980px){
-  .todo-topbar{
+@media (max-width: 980px) {
+  .todo-topbar {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto auto;
   }
-  .topbar-left{ grid-column: 1; grid-row: 1; }
-  .topbar-center{ grid-column: 1; grid-row: 2; justify-self: start; align-items: flex-start; }
-  .topbar-center .todo-actions{ justify-content: flex-start; }
-  .topbar-right{ grid-column: 1; grid-row: 3; justify-self: start; }
+
+  .topbar-left {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .topbar-center {
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: start;
+    align-items: flex-start;
+  }
+
+  .topbar-center .todo-actions {
+    justify-content: flex-start;
+  }
+
+  .topbar-right {
+    grid-column: 1;
+    grid-row: 3;
+    justify-self: start;
+
+    align-items: flex-start;
+    width: 100%;
+  }
+
+  .topbar-cards {
+    align-items: flex-start;
+    width: 100%;
+  }
+
+  .topbar-right .friendBoxTop,
+  .topbar-right .serverBackupPanel {
+    width: 100%;
+    max-width: 100%;
+  }
 }
 
 /* ==============================
    friendBox 높이 줄이기
    ============================== */
 
-.serverBackupPanel{
+.serverBackupPanel {
   padding: 8px 10px !important;
   border-radius: 10px !important;
 }
 
-.serverBackupRow{
+.serverBackupRow {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
 }
 
-.serverBackupPanel input{
+.serverBackupPanel input {
   height: 30px !important;
   font-size: 12px !important;
   padding: 0 8px !important;
 }
 
-.serverBackupPanel .btn{
+.serverBackupPanel .btn {
   height: 30px !important;
   font-size: 12px !important;
   padding: 0 10px !important;
 }
 
-.friendBox{
+.friendBox {
   padding: 10px 12px !important;
 }
 
 /* friendRow는 한 줄 고정 */
-.friendRow{
+.friendRow {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: nowrap;   /* 🔥 줄바꿈 방지 */
+  flex-wrap: nowrap;
+  /* 🔥 줄바꿈 방지 */
 }
 
 /* 🔥 라벨 폭 고정 */
-.friendLabel{
-  width: 60px;         /* 원하는 만큼 조절 (55~70 사이 추천) */
+.friendLabel {
+  width: 60px;
+  /* 원하는 만큼 조절 (55~70 사이 추천) */
   min-width: 60px;
-  text-align: right;   /* 깔끔하게 정렬 */
+  text-align: right;
+  /* 깔끔하게 정렬 */
   font-size: 13px;
-  flex-shrink: 0;      /* 줄어들지 않게 */
+  flex-shrink: 0;
+  /* 줄어들지 않게 */
 }
 
 /* 내 코드 줄만 정렬 보정 */
-.friendRow:first-child{
+.friendRow:first-child {
   align-items: center;
 }
 
 /* friendCode + 복사 버튼 정렬 */
-.friendCode{
-  max-width: 180px;          /* 🔥 코드 영역 제한 */
+.friendCode {
+  max-width: 180px;
+  /* 🔥 코드 영역 제한 */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.friendRow .mini{
-  flex-shrink: 0;            /* 🔥 복사 버튼 줄어들지 않게 */
+.friendRow .mini {
+  flex-shrink: 0;
+  /* 🔥 복사 버튼 줄어들지 않게 */
 }
 
 /* 입력창이 남는 공간 먹도록 */
 .friendInput,
-.friendSelect{
+.friendSelect {
   flex: 1;
 }
-.friendRow:first-child{
+
+.friendRow:first-child {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.friendRow:first-child .friendCode{
+.friendRow:first-child .friendCode {
   flex: 1;
   min-width: 0;
 }
 
 
-.cell-top{
-  display:flex;
-  align-items:center;
-  justify-content:center;   /* 가운데 정렬 */
-  gap:8px;                  /* 버튼 간격만 유지 */
+.cell-top {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 가운데 정렬 */
+  gap: 8px;
+  /* 버튼 간격만 유지 */
 }
 
-.cell-top .rest-input{
-  margin-left:0;            /* auto 제거 */
+.cell-top .rest-input {
+  margin-left: 0;
+  /* auto 제거 */
 }
 
 /* ===== Cell: stacked layout (1줄: 토글+휴식, 2줄: 큐브버튼) ===== */
@@ -2120,9 +2312,17 @@ body,
 }
 
 @keyframes cube-press {
-  0% { transform: scale(1); }
-  35% { transform: scale(0.96); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(1);
+  }
+
+  35% {
+    transform: scale(0.96);
+  }
+
+  100% {
+    transform: scale(1);
+  }
 }
 
 /* "눌렀다" 강조(짧게) */
@@ -2136,10 +2336,10 @@ body.dark .cubeTicketBtn.is-pressed {
 }
 
 .pip-cube.is-pressed {
-  box-shadow: 0 0 0 2px rgba(79,140,255,.45);
+  box-shadow: 0 0 0 2px rgba(79, 140, 255, .45);
   transform: scale(.97);
 }
 
 body.pip-dark .pip-cube.is-pressed {
-  box-shadow: 0 0 0 2px rgba(120,170,255,.45);
+  box-shadow: 0 0 0 2px rgba(120, 170, 255, .45);
 }
