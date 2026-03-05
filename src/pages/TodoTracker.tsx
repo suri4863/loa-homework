@@ -565,6 +565,17 @@ export default function TodoTracker() {
       }
     }
 
+    const weeklyRaidTaskIds = Array.from(weeklyRaidTitleToId.values());
+
+    const getCheckedWeeklyRaidCountStrict = (tableId: string, charId: string) => {
+      let n = 0;
+      for (const taskId of weeklyRaidTaskIds) {
+        const v = getCellByTableId(state, tableId, taskId, charId);
+        if (v && v.type === "CHECK" && v.checked) n++;
+      }
+      return n;
+    };
+
     // ✅ "4막 노말" / "세르카 나이트메어" 같은 표기를 "4막" / "세르카"로 통일
     const normalizeRaidName = (s: string) =>
       String(s ?? "")
@@ -574,7 +585,7 @@ export default function TodoTracker() {
 
     const myCandidates = state.tables.flatMap((tbl) =>
       tbl.characters
-        .filter((ch) => getWeeklyRaidCheckedCount(tbl.id, ch.id) < 3)
+        .filter((ch) => getCheckedWeeklyRaidCountStrict(tbl.id, ch.id) < 3)
         .map((ch) => {
           // ✅ itemLevel 파싱은 프로젝트에 있는 getCharIlvl 사용 (Lv. / 소수 / 문자열 변형 안전)
           const ilvl = getCharIlvl(ch);
