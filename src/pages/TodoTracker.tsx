@@ -560,9 +560,14 @@ export default function TodoTracker() {
     // ✅ 내 남은 레이드(Top3 기준) 후보 만들기: 모든 표/모든 캐릭 (3회 미만)
     const weeklyRaidTitleToId = new Map<string, string>();
     for (const t of state.tasks) {
-      if (t.period === "WEEKLY" && t.section === "주간 레이드" && t.cellType === "CHECK") {
-        weeklyRaidTitleToId.set(t.title, t.id);
-      }
+      if (t.period !== "WEEKLY") continue;
+      if (t.cellType !== "CHECK") continue;
+
+      const title = String(t.title ?? "").trim();
+      // ✅ 섹션 상관없이 "4막/종막/세르카..." 레이드 타이틀이면 포함
+      if (!isWeeklyRaidTaskTitle(title)) continue;
+
+      weeklyRaidTitleToId.set(title, t.id);
     }
 
     const weeklyRaidTaskIds = Array.from(weeklyRaidTitleToId.values());
