@@ -565,17 +565,30 @@ export default function TodoTracker() {
       }
     }
 
+    // ✅ "4막 노말" / "세르카 나이트메어" 같은 표기를 "4막" / "세르카"로 통일
+    const normalizeRaidName = (s: string) =>
+      String(s ?? "")
+        .trim()
+        .replace(/\s+/g, " ")
+        .replace(/\s*(노말|하드|나이트메어)\s*$/g, "");
+
     const myCandidates = state.tables.flatMap((tbl) =>
       tbl.characters
         .filter((ch) => getWeeklyRaidCheckedCount(tbl.id, ch.id) < 3)
         .map((ch) => {
-          const ilvl = parseIlvl(ch.itemLevel);
+          // ✅ itemLevel 파싱은 프로젝트에 있는 getCharIlvl 사용 (Lv. / 소수 / 문자열 변형 안전)
+          const ilvl = getCharIlvl(ch);
+
           const top3 = Number.isFinite(ilvl) ? calcWeeklyTop3Gold(ilvl).top3.map((x) => x.raid) : [];
+
           const remaining = top3.filter((title) => {
-            const taskId =
-              weeklyRaidTitleToId.get(title) ||
-              weeklyRaidTitleToId.get(title.replace(" 노말", "").replace(" 하드", ""));
+            // ✅ top3 레이드명도 난이도 제거해서 "4막/종막/세르카" 형태로 맞춤
+            const base = normalizeRaidName(title);
+
+            // ✅ 숙제 task title은 보통 "4막" 처럼 난이도 없는 형태라 base로 조회
+            const taskId = weeklyRaidTitleToId.get(base);
             if (!taskId) return false;
+
             const v = getCellByTableId(state, tbl.id, taskId, ch.id);
             return !(v && v.type === "CHECK" && v.checked);
           });
@@ -586,7 +599,8 @@ export default function TodoTracker() {
             name: ch.name,
             ilvl,
             power: parseNum((ch as any).power),
-            remaining,
+            // ✅ 내 remaining도 base 형태로 통일해두면 친구쪽과 비교가 쉬움
+            remaining: remaining.map(normalizeRaidName),
           };
         })
     );
@@ -601,8 +615,8 @@ export default function TodoTracker() {
     // 레이드 목록은 “순서 무시(Set 비교)”
     const sameRaidSet = (a: string[], b: string[]) => {
       if (a.length !== b.length) return false;
-      const sa = new Set(a.map((x) => String(x).trim()));
-      const sb = new Set(b.map((x) => String(x).trim()));
+      const sa = new Set(a.map((x) => normalizeRaidName(String(x))));
+      const sb = new Set(b.map((x) => normalizeRaidName(String(x))));
       if (sa.size !== sb.size) return false;
       for (const x of sa) if (!sb.has(x)) return false;
       return true;
@@ -614,9 +628,16 @@ export default function TodoTracker() {
     // 친구 row -> 매칭되는 내 캐릭들 찾기
     const matched = rows
       .map((row: any) => {
-        const friendIlvl = parseNum(row.charItemLevel);
-        const friendPower = parseNum(row.charPower);
-        const raids = Array.isArray(row.remainingRaids) ? row.remainingRaids.slice(0, 3) : [];
+        const friendIlvl = parseNum(row.charItemLevel ?? row.itemLevel ?? row.ilvl);
+        const friendPower = parseNum(row.charPower ?? row.power ?? row.combatPower);
+
+        const raidsRaw = Array.isArray(row.remainingRaids)
+          ? row.remainingRaids
+          : Array.isArray(row.remaining)
+            ? row.remaining
+            : [];
+
+        const raids = raidsRaw.slice(0, 3);
 
         // 레벨 필터(친구도 같이 적용)
         if (range.min != null && Number.isFinite(range.min) && (!Number.isFinite(friendIlvl) || friendIlvl < range.min!)) return null;
