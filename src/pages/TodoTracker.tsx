@@ -489,11 +489,29 @@ export default function TodoTracker() {
   }
 
   function raidsKey(row: any): string {
-    const raids = Array.isArray(row?.remainingRaids) ? row.remainingRaids.slice(0, 3) : [];
-    // 난이도까지 동일해야 하므로 "문자열 3개가 완전히 같음" 기준으로 키 생성
-    return raids.join(" | ");
-  }
+    const raids: string[] = Array.isArray(row?.remainingRaids)
+      ? row.remainingRaids.slice(0, 3)
+      : [];
 
+    // 레이드 순서 표준화
+    const order = (label: string): number => {
+      const base = String(label).trim().split(/\s+/)[0];
+
+      if (base === "세르카") return 0;
+      if (base === "종막") return 1;
+      if (base === "4막") return 2;
+
+      return 999;
+    };
+
+    const norm: string[] = raids
+      .map((x: string) => String(x).trim())
+      .filter(Boolean);
+
+    norm.sort((a: string, b: string) => order(a) - order(b) || a.localeCompare(b, "ko"));
+
+    return norm.join(" | ");
+  }
   function inLevelBand(row: any, base: number): boolean {
     const ilvl = parseNum(row?.charItemLevel);
     if (ilvl == null) return false;
@@ -528,7 +546,22 @@ export default function TodoTracker() {
 
     const raidsKey = (row: any): string => {
       const raids = Array.isArray(row?.remainingRaids) ? row.remainingRaids.slice(0, 3) : [];
-      return raids.join(" | "); // ✅ 난이도 포함 문자열 3개가 완전 동일해야 같은 키
+
+      const order = (label: string) => {
+        const base = String(label).trim().split(/\s+/)[0];
+
+        if (base === "세르카") return 0;
+        if (base === "종막") return 1;
+        if (base === "4막") return 2;
+
+        return 999;
+      };
+
+      const norm = raids.map((x: string) => String(x).trim()).filter(Boolean);
+
+      norm.sort((a: string, b: string) => order(a) - order(b) || a.localeCompare(b, "ko"));
+
+      return norm.join(" | ");
     };
 
     const baseLevel = parseNum(buddyLevel) ?? 0;
