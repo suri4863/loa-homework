@@ -569,7 +569,7 @@ export default function TodoTracker() {
 
       weeklyRaidTitleToId.set(title, t.id);
     }
-    
+
 
     const weeklyRaidTaskIds = Array.from(weeklyRaidTitleToId.values());
 
@@ -643,7 +643,29 @@ export default function TodoTracker() {
     console.log("myFiltered", myFiltered);
     console.log("rows", rows);
     // 친구 row -> 매칭되는 내 캐릭들 찾기
-    const matched = rows
+    type FriendCandidate = {
+      row: any;
+      raids: string[];
+      ilvl: number;
+      power: number;
+    };
+
+    type MyCandidate = {
+      tableId: string;
+      tableName: string;
+      name: string;
+      ilvl: number;
+      power: number;
+      remaining: string[];
+    };
+
+    type KkanbuMatch = {
+      friend: FriendCandidate;
+      me: MyCandidate;
+      avgPower: number;
+    };
+
+    const friendFiltered: FriendCandidate[] = rows
       .map((row: any) => {
         const friendIlvl = parseNum(row.charItemLevel ?? row.itemLevel ?? row.ilvl);
         const friendPower = parseNum(row.charPower ?? row.power ?? row.combatPower);
@@ -654,28 +676,101 @@ export default function TodoTracker() {
             ? row.remaining
             : [];
 
-        const raids = raidsRaw.slice(0, 3);
+        const raids = raidsRaw
+          .slice(0, 3)
+          .map((x: string) => normalizeRaidName(String(x)));
 
-        // 레벨 필터(친구도 같이 적용)
         if (range.min != null && Number.isFinite(range.min) && (!Number.isFinite(friendIlvl) || friendIlvl < range.min!)) return null;
         if (range.max != null && Number.isFinite(range.max) && (!Number.isFinite(friendIlvl) || friendIlvl > range.max!)) return null;
 
-        const hits = myFiltered.filter((me) => {
-          if (!sameRaidSet(me.remaining, raids)) return false;
-
-          // 간평(평균 전투력) 조건: 입력이 있으면, 둘 다 숫자일 때만 판정
-          if (Number.isFinite(avgMin) && avgMin > 0) {
-            if (!Number.isFinite(me.power) || !Number.isFinite(friendPower)) return false;
-            const avg = (me.power + friendPower) / 2;
-            if (avg < avgMin) return false;
-          }
-          return true;
-        });
-
-        if (!hits.length) return null;
-        return { row, raids, hits };
+        return {
+          row,
+          raids,
+          ilvl: friendIlvl,
+          power: friendPower,
+        };
       })
-      .filter(Boolean) as Array<{ row: any; raids: string[]; hits: any[] }>;
+      .filter(Boolean) as FriendCandidate[];
+
+    // ✅ 같은 레이드 조합끼리만 그룹핑
+    const groupKeyOfRaids = (raids: string[]) =>
+      [...raids].map((x) => normalizeRaidName(x)).sort((a, b) => a.localeCompare(b, "ko")).join(" | ");
+
+    const friendGroups = new Map<string, FriendCandidate[]>();
+    for (const f of friendFiltered) {
+      const key = groupKeyOfRaids(f.raids);
+      if (!friendGroups.has(key)) friendGroups.set(key, []);
+      friendGroups.get(key)!.push(f);
+    }
+
+    const myGroups = new Map<string, MyCandidate[]>();
+    for (const me of myFiltered) {
+      const key = groupKeyOfRaids(me.remaining);
+      if (!myGroups.has(key)) myGroups.set(key, []);
+      myGroups.get(key)!.push(me);
+    }
+
+    // ✅ 한 그룹 안에서 1:1 최적 매칭 (전체 avg 합 최대)
+    function solveBestOneToOne(friendList: FriendCandidate[], myList: MyCandidate[]): KkanbuMatch[] {
+      if (!friendList.length || !myList.length) return [];
+
+      const candidates = friendList.map((friend) =>
+        myList.map((me) => {
+          if (!sameRaidSet(me.remaining, friend.raids)) return null;
+          if (!Number.isFinite(me.power) || !Number.isFinite(friend.power)) return null;
+
+          const avgPower = (me.power + friend.power) / 2;
+          if (Number.isFinite(avgMin) && avgMin > 0 && avgPower < avgMin) return null;
+
+          return { friend, me, avgPower };
+        })
+      );
+
+      let bestScore = -1;
+      let bestCount = -1;
+      let bestMatches: KkanbuMatch[] = [];
+
+      function dfs(friendIdx: number, usedMy: boolean[], picked: KkanbuMatch[], score: number) {
+        if (friendIdx >= friendList.length) {
+          if (
+            picked.length > bestCount ||
+            (picked.length === bestCount && score > bestScore)
+          ) {
+            bestCount = picked.length;
+            bestScore = score;
+            bestMatches = [...picked];
+          }
+          return;
+        }
+
+        // 현재 친구 스킵
+        dfs(friendIdx + 1, usedMy, picked, score);
+
+        // 현재 친구를 내 캐릭 하나와 매칭
+        for (let myIdx = 0; myIdx < myList.length; myIdx++) {
+          if (usedMy[myIdx]) continue;
+          const pair = candidates[friendIdx][myIdx];
+          if (!pair) continue;
+
+          usedMy[myIdx] = true;
+          picked.push(pair);
+          dfs(friendIdx + 1, usedMy, picked, score + pair.avgPower);
+          picked.pop();
+          usedMy[myIdx] = false;
+        }
+      }
+
+      dfs(0, Array(myList.length).fill(false), [], 0);
+
+      // ✅ 보기 좋게 평균값 높은 순으로 정렬
+      return bestMatches.sort((a, b) => b.avgPower - a.avgPower);
+    }
+
+    const matched: KkanbuMatch[] = [];
+    for (const [key, friendList] of friendGroups.entries()) {
+      const myList = myGroups.get(key) ?? [];
+      matched.push(...solveBestOneToOne(friendList, myList));
+    }
 
     return (
       <div className="raidLeftColsWrap">
@@ -721,29 +816,37 @@ export default function TodoTracker() {
           <div style={{ padding: "10px 12px 0" }}>
             <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>매칭 결과 ({matched.length})</div>
             <div className="raidLeftCols" style={{ marginBottom: 10 }}>
-              {matched.map(({ row, raids, hits }) => {
-                const myNames = hits.map((h: any) => h.name).join(", ");
+              {matched.map(({ friend, me }) => {
+                const friendName = friend.row?.charName ?? "-";
+                const friendLevel = friend.row?.charItemLevel ?? friend.ilvl;
+                const friendPower = friend.row?.charPower ?? friend.power;
+
                 return (
-                  <div key={`match-${row.tableName ?? ""}-${row.charName}`} className="raidLeftColCard">
+                  <div
+                    key={`match-${friend.row?.tableName ?? ""}-${friendName}-${me.tableId}-${me.name}`}
+                    className="raidLeftColCard"
+                  >
                     <div className="raidLeftColHeader">
                       <div className="raidLeftColHeaderLeft">
-                        <div className="raidLeftColName">{row.charName}</div>
+                        <div className="raidLeftColNameRow">
+                          <div className="raidLeftColName">{friendName}</div>
+                          {friendLevel ? <span className="raidBadge ilvl">Lv {friendLevel}</span> : null}
+                        </div>
 
-                        {(row.charItemLevel || row.charPower) ? (
-                          <div className="raidLeftColMeta">
-                            {row.charItemLevel ? <span className="raidBadge ilvl">Lv {row.charItemLevel}</span> : null}
-                            {row.charPower ? <span className="raidBadge power">전투력 {row.charPower}</span> : null}
+                        {friendPower ? (
+                          <div className="raidLeftColPowerLine">
+                            <span className="raidBadge power">전투력 {friendPower}</span>
                           </div>
                         ) : null}
                       </div>
 
-                      {row.tableName ? <div className="raidLeftColSub">{row.tableName}</div> : null}
+                      {friend.row?.tableName ? <div className="raidLeftColSub">{friend.row.tableName}</div> : null}
                     </div>
 
                     <div className="raidLeftColBody">
-                      {raids.length ? (
-                        raids.map((r: string, i: number) => (
-                          <div key={`${row.charName}-${i}`} className="raidLeftColItem">
+                      {friend.raids.length ? (
+                        friend.raids.map((r: string, i: number) => (
+                          <div key={`${friendName}-${i}`} className="raidLeftColItem">
                             {r}
                           </div>
                         ))
@@ -752,8 +855,16 @@ export default function TodoTracker() {
                       )}
                     </div>
 
-                    <div style={{ padding: "10px 12px 12px", fontSize: 12, opacity: 0.9 }}>
-                      <span style={{ opacity: 0.7 }}>매칭:</span> <b>{myNames}</b>
+                    <div style={{ padding: "10px 12px 12px", fontSize: 12, opacity: 0.95 }}>
+                      <div>
+                        <span style={{ opacity: 0.7 }}>매칭:</span>{" "}
+                        <b>{me.name}</b>
+                        {Number.isFinite(me.ilvl) ? ` (Lv ${me.ilvl})` : ""}
+                        {Number.isFinite(me.power) ? ` / 전투력 ${me.power}` : ""}
+                      </div>
+                      <div style={{ marginTop: 4, opacity: 0.8 }}>
+                        평균 전투력: <b>{Math.round((me.power + friend.power) / 2)}</b>
+                      </div>
                     </div>
                   </div>
                 );
@@ -770,14 +881,12 @@ export default function TodoTracker() {
               <div key={`${row.tableName ?? ""}-${row.charName}`} className="raidLeftColCard">
                 <div className="raidLeftColHeader">
                   <div className="raidLeftColHeaderLeft">
-                    <div className="raidLeftColName">{row.charName}</div>
+                    <div className="raidLeftColNameRow">
+                      <div className="raidLeftColName">{row.charName}</div>
+                      {row.charItemLevel ? <span className="raidBadge ilvl">Lv {row.charItemLevel}</span> : null}
+                    </div>
 
-                    {(row.charItemLevel || row.charPower) ? (
-                      <div className="raidLeftColMeta">
-                        {row.charItemLevel ? <span className="raidBadge ilvl">Lv {row.charItemLevel}</span> : null}
-                        {row.charPower ? <span className="raidBadge power">전투력 {row.charPower}</span> : null}
-                      </div>
-                    ) : null}
+                    {row.charPower ? <div className="raidLeftColPowerLine">전투력 {row.charPower}</div> : null}
                   </div>
 
                   {row.tableName ? <div className="raidLeftColSub">{row.tableName}</div> : null}
