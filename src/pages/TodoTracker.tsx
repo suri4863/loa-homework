@@ -766,11 +766,28 @@ export default function TodoTracker() {
       return bestMatches.sort((a, b) => b.avgPower - a.avgPower);
     }
 
+    /* 1:1 매칭 결과 */
     const matched: KkanbuMatch[] = [];
     for (const [key, friendList] of friendGroups.entries()) {
       const myList = myGroups.get(key) ?? [];
       matched.push(...solveBestOneToOne(friendList, myList));
     }
+
+    const matchedFriendKeys = new Set(
+      matched.map((m) => `${m.friend.row?.tableName ?? ""}::${m.friend.row?.charName ?? ""}`)
+    );
+
+    const matchedMyKeys = new Set(
+      matched.map((m) => `${m.me.tableId}::${m.me.name}`)
+    );
+
+    const unmatchedFriends = friendFiltered.filter(
+      (f) => !matchedFriendKeys.has(`${f.row?.tableName ?? ""}::${f.row?.charName ?? ""}`)
+    );
+
+    const unmatchedMine = myFiltered.filter(
+      (me) => !matchedMyKeys.has(`${me.tableId}::${me.name}`)
+    );
 
     return (
       <div className="raidLeftColsWrap">
@@ -870,6 +887,106 @@ export default function TodoTracker() {
                 );
               })}
             </div>
+            <div style={{ padding: "0 12px 0" }}>
+              <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>
+                매칭 안 된 친구 캐릭 ({unmatchedFriends.length})
+              </div>
+
+              <div className="raidLeftCols" style={{ marginBottom: 10 }}>
+                {unmatchedFriends.map((friend) => {
+                  const friendName = friend.row?.charName ?? "-";
+                  const friendLevel = friend.row?.charItemLevel ?? friend.ilvl;
+                  const friendPower = friend.row?.charPower ?? friend.power;
+
+                  return (
+                    <div
+                      key={`unmatched-friend-${friend.row?.tableName ?? ""}-${friendName}`}
+                      className="raidLeftColCard"
+                    >
+                      <div className="raidLeftColHeader">
+                        <div className="raidLeftColHeaderLeft">
+                          <div className="raidLeftColNameRow">
+                            <div className="raidLeftColName">{friendName}</div>
+                            {friendLevel ? <span className="raidBadge ilvl">Lv {friendLevel}</span> : null}
+                          </div>
+
+                          {friendPower ? (
+                            <div className="raidLeftColPowerLine">
+                              <span className="raidBadge power">전투력 {friendPower}</span>
+                            </div>
+                          ) : null}
+                        </div>
+
+                        {friend.row?.tableName ? <div className="raidLeftColSub">{friend.row.tableName}</div> : null}
+                      </div>
+
+                      <div className="raidLeftColBody">
+                        {friend.raids.length ? (
+                          friend.raids.map((r: string, i: number) => (
+                            <div key={`${friendName}-${i}`} className="raidLeftColItem">
+                              {r}
+                            </div>
+                          ))
+                        ) : (
+                          <div className="raidLeftColEmpty">-</div>
+                        )}
+                      </div>
+
+                      <div style={{ padding: "10px 12px 12px", fontSize: 12, opacity: 0.82 }}>
+                        미매칭
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div style={{ padding: "0 12px 10px" }}>
+              <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>
+                매칭 안 된 내 캐릭 ({unmatchedMine.length})
+              </div>
+
+              <div className="raidLeftCols" style={{ marginBottom: 10 }}>
+                {unmatchedMine.map((me) => (
+                  <div
+                    key={`unmatched-me-${me.tableId}-${me.name}`}
+                    className="raidLeftColCard"
+                  >
+                    <div className="raidLeftColHeader">
+                      <div className="raidLeftColHeaderLeft">
+                        <div className="raidLeftColNameRow">
+                          <div className="raidLeftColName">{me.name}</div>
+                          {Number.isFinite(me.ilvl) ? <span className="raidBadge ilvl">Lv {me.ilvl}</span> : null}
+                        </div>
+
+                        {Number.isFinite(me.power) ? (
+                          <div className="raidLeftColPowerLine">
+                            <span className="raidBadge power">전투력 {me.power}</span>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {me.tableName ? <div className="raidLeftColSub">{me.tableName}</div> : null}
+                    </div>
+
+                    <div className="raidLeftColBody">
+                      {me.remaining.length ? (
+                        me.remaining.map((r: string, i: number) => (
+                          <div key={`${me.name}-${i}`} className="raidLeftColItem">
+                            {r}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="raidLeftColEmpty">-</div>
+                      )}
+                    </div>
+
+                    <div style={{ padding: "10px 12px 12px", fontSize: 12, opacity: 0.82 }}>
+                      미매칭
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
@@ -886,7 +1003,11 @@ export default function TodoTracker() {
                       {row.charItemLevel ? <span className="raidBadge ilvl">Lv {row.charItemLevel}</span> : null}
                     </div>
 
-                    {row.charPower ? <div className="raidLeftColPowerLine">전투력 {row.charPower}</div> : null}
+                    {row.charPower ? (
+                      <div className="raidLeftColPowerLine">
+                        <span className="raidBadge power">전투력 {row.charPower}</span>
+                      </div>
+                    ) : null}
                   </div>
 
                   {row.tableName ? <div className="raidLeftColSub">{row.tableName}</div> : null}
