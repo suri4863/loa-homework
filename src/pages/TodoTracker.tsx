@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import "./TodoTracker.css";
 
-import type { TodoState, Character, TaskRow, TodoTable, RestGauges, CellValue, GridValues } from "../store/todoStore";
+import type { TodoState, Character, CharacterRole, TaskRow, TodoTable, RestGauges, CellValue, GridValues } from "../store/todoStore";
 import BidPopover from "../components/BidPopover";
 
 // =========================
@@ -514,6 +514,17 @@ export default function TodoTracker() {
     return ilvl >= base && ilvl <= base + 9;
   }
 
+  function renderRoleBadge(role?: CharacterRole) {
+    const isSupport = role === "SUPPORT";
+
+    return (
+      <span className={`raidBadge role ${isSupport ? "support" : "dealer"}`}>
+        <span className="roleIcon">{isSupport ? "✚" : "⚔"}</span>
+        {isSupport ? "서폿" : "딜러"}
+      </span>
+    );
+  }
+
   function renderFriendRaidLeftColumns() {
     if (!selectedFriendCode) return <div className="todo-hint">친구를 선택해줘.</div>;
 
@@ -616,7 +627,7 @@ export default function TodoTracker() {
             name: ch.name,
             ilvl,
             power: parseNum((ch as any).power),
-            // ✅ 내 remaining도 base 형태로 통일해두면 친구쪽과 비교가 쉬움
+            role: ch.role ?? "DEALER",
             remaining: remaining.map(normalizeRaidName),
           };
         })
@@ -648,6 +659,7 @@ export default function TodoTracker() {
       raids: string[];
       ilvl: number;
       power: number;
+      role: CharacterRole;
     };
 
     type MyCandidate = {
@@ -656,6 +668,7 @@ export default function TodoTracker() {
       name: string;
       ilvl: number;
       power: number;
+      role: CharacterRole;
       remaining: string[];
     };
 
@@ -688,6 +701,7 @@ export default function TodoTracker() {
           raids,
           ilvl: friendIlvl,
           power: friendPower,
+          role: row.charRole ?? "DEALER",
         };
       })
       .filter(Boolean) as FriendCandidate[];
@@ -819,7 +833,7 @@ export default function TodoTracker() {
                 placeholder="예: 2500"
                 style={{ width: 120 }}
               />
-              <div style={{ fontSize: 11, opacity: 0.7 }}>(내 전투력 + 친구 전투력) / 2 ≥ 간평</div>
+              <div style={{ fontSize: 11, opacity: 0.7 }}>(내 전투력 + 친구 전투력) / 2 ≥ 깐평</div>
             </div>
           </div>
         </div>
@@ -850,11 +864,10 @@ export default function TodoTracker() {
                           {friendLevel ? <span className="raidBadge ilvl">Lv {friendLevel}</span> : null}
                         </div>
 
-                        {friendPower ? (
-                          <div className="raidLeftColPowerLine">
-                            <span className="raidBadge power">전투력 {friendPower}</span>
-                          </div>
-                        ) : null}
+                        <div className="raidLeftColPowerLine">
+                          {friendPower ? <span className="raidBadge power">전투력 {friendPower}</span> : null}
+                          {renderRoleBadge(friend.role)}
+                        </div>
                       </div>
 
                       {friend.row?.tableName ? <div className="raidLeftColSub">{friend.row.tableName}</div> : null}
@@ -877,7 +890,11 @@ export default function TodoTracker() {
                         <span style={{ opacity: 0.7 }}>매칭:</span>{" "}
                         <b>{me.name}</b>
                         {Number.isFinite(me.ilvl) ? ` (Lv ${me.ilvl})` : ""}
-                        {Number.isFinite(me.power) ? ` / 전투력 ${me.power}` : ""}
+                      </div>
+
+                      <div style={{ marginTop: 4, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                        {Number.isFinite(me.power) ? <span className="raidBadge power">전투력 {me.power}</span> : null}
+                        {renderRoleBadge(me.role)}
                       </div>
                       <div style={{ marginTop: 4, opacity: 0.8 }}>
                         평균 전투력: <b>{Math.round((me.power + friend.power) / 2)}</b>
@@ -910,11 +927,10 @@ export default function TodoTracker() {
                             {friendLevel ? <span className="raidBadge ilvl">Lv {friendLevel}</span> : null}
                           </div>
 
-                          {friendPower ? (
-                            <div className="raidLeftColPowerLine">
-                              <span className="raidBadge power">전투력 {friendPower}</span>
-                            </div>
-                          ) : null}
+                          <div className="raidLeftColPowerLine">
+                            {friendPower ? <span className="raidBadge power">전투력 {friendPower}</span> : null}
+                            {renderRoleBadge(friend.role)}
+                          </div>
                         </div>
 
                         {friend.row?.tableName ? <div className="raidLeftColSub">{friend.row.tableName}</div> : null}
@@ -958,11 +974,10 @@ export default function TodoTracker() {
                           {Number.isFinite(me.ilvl) ? <span className="raidBadge ilvl">Lv {me.ilvl}</span> : null}
                         </div>
 
-                        {Number.isFinite(me.power) ? (
-                          <div className="raidLeftColPowerLine">
-                            <span className="raidBadge power">전투력 {me.power}</span>
-                          </div>
-                        ) : null}
+                        <div className="raidLeftColPowerLine">
+                          {Number.isFinite(me.power) ? <span className="raidBadge power">전투력 {me.power}</span> : null}
+                          {renderRoleBadge(me.role)}
+                        </div>
                       </div>
 
                       {me.tableName ? <div className="raidLeftColSub">{me.tableName}</div> : null}
@@ -1699,8 +1714,10 @@ export default function TodoTracker() {
     if (!name) return;
     const itemLevel = prompt("아이템레벨 (예: 1712.5)", "")?.trim() ?? "";
     const power = prompt("전투력 (예: 2500+)", "")?.trim() ?? "";
+    const roleInput = (prompt("역할 입력: DEALER 또는 SUPPORT", "DEALER") ?? "").trim().toUpperCase();
+    const role = roleInput === "SUPPORT" ? "SUPPORT" : "DEALER";
 
-    const next: Character = createCharacter({ name, itemLevel, power });
+    const next: Character = createCharacter({ name, itemLevel, power, role });
 
     setState((prev) => {
       const table = getActiveTable(prev);
@@ -1724,16 +1741,29 @@ export default function TodoTracker() {
   function editCharacter(ch: Character) {
     const name = prompt("캐릭터 이름", ch.name)?.trim();
     if (!name) return;
+
     const itemLevel = prompt("아이템레벨", ch.itemLevel ?? "")?.trim() ?? "";
     const power = prompt("전투력", ch.power ?? "")?.trim() ?? "";
+
+    const roleInput = (prompt("역할 입력 (DEALER 또는 SUPPORT)", ch.role ?? "DEALER") ?? "")
+      .trim()
+      .toUpperCase();
+
+    const role: CharacterRole = roleInput === "SUPPORT" ? "SUPPORT" : "DEALER";
 
     setState((prev) => {
       const table = getActiveTable(prev);
 
-      const nextChars = table.characters.map((c) => (c.id === ch.id ? { ...c, name, itemLevel, power } : c));
+      const nextChars: Character[] = table.characters.map((c) =>
+        c.id === ch.id ? { ...c, name, itemLevel, power, role } : c
+      );
+
       const nextTable: TodoTable = { ...table, characters: nextChars };
 
-      return { ...prev, tables: prev.tables.map((t) => (t.id === nextTable.id ? nextTable : t)) };
+      return {
+        ...prev,
+        tables: prev.tables.map((t) => (t.id === nextTable.id ? nextTable : t)),
+      };
     });
   }
 
@@ -2987,6 +3017,64 @@ body.pip-dark .pip-select option{
                         <div className="char-meta">Lv. {ch.itemLevel || "-"}</div>
                         <div className="char-meta">{ch.power || "-"}</div>
 
+                        <div className="char-roleRow">
+                          <label className="char-roleOpt dealer">
+                            <input
+                              type="radio"
+                              name={`role-${ch.id}`}
+                              checked={(ch.role ?? "DEALER") === "DEALER"}
+                              onChange={() => {
+                                const nextRole: CharacterRole = "DEALER";
+
+                                setState((prev) => {
+                                  const table = getTableById(prev, tableId);
+
+                                  const nextChars: Character[] = table.characters.map((c) =>
+                                    c.id === ch.id ? { ...c, role: nextRole } : c
+                                  );
+
+                                  const nextTable: TodoTable = { ...table, characters: nextChars };
+
+                                  return {
+                                    ...prev,
+                                    tables: prev.tables.map((t) => (t.id === nextTable.id ? nextTable : t)),
+                                  };
+                                });
+                              }}
+                            />
+                            <span className="roleIcon roleIconDealer">⚔</span>
+                            <span>딜러</span>
+                          </label>
+
+                          <label className="char-roleOpt support">
+                            <input
+                              type="radio"
+                              name={`role-${ch.id}`}
+                              checked={(ch.role ?? "DEALER") === "SUPPORT"}
+                              onChange={() => {
+                                const nextRole: CharacterRole = "SUPPORT";
+
+                                setState((prev) => {
+                                  const table = getTableById(prev, tableId);
+
+                                  const nextChars: Character[] = table.characters.map((c) =>
+                                    c.id === ch.id ? { ...c, role: nextRole } : c
+                                  );
+
+                                  const nextTable: TodoTable = { ...table, characters: nextChars };
+
+                                  return {
+                                    ...prev,
+                                    tables: prev.tables.map((t) => (t.id === nextTable.id ? nextTable : t)),
+                                  };
+                                });
+                              }}
+                            />
+                            <span className="roleIcon roleIconSupport">✚</span>
+                            <span>서폿</span>
+                          </label>
+                        </div>
+
                         {/* ✅ 아제나 (기존 그대로) */}
                         {(() => {
                           const enabled = Boolean((ch as any).azenaEnabled);
@@ -3244,6 +3332,63 @@ body.pip-dark .pip-select option{
                             <div className="char-meta">Lv. {ch.itemLevel || "-"}</div>
                             <div className="char-meta">{ch.power || "-"}</div>
 
+                            {/* 역할 선택 */}
+                            <div className="char-roleRow">
+                              <label className="char-roleOpt">
+                                <input
+                                  type="radio"
+                                  name={`role-${ch.id}`}
+                                  checked={(ch.role ?? "DEALER") === "DEALER"}
+                                  onChange={() => {
+                                    const nextRole: CharacterRole = "DEALER";
+
+                                    setState((prev) => {
+                                      const table = getTableById(prev, tableId);
+
+                                      const nextChars: Character[] = table.characters.map((c) =>
+                                        c.id === ch.id ? { ...c, role: nextRole } : c
+                                      );
+
+                                      const nextTable: TodoTable = { ...table, characters: nextChars };
+
+                                      return {
+                                        ...prev,
+                                        tables: prev.tables.map((t) => (t.id === nextTable.id ? nextTable : t)),
+                                      };
+                                    });
+                                  }}
+                                />
+                                딜러
+                              </label>
+
+                              <label className="char-roleOpt">
+                                <input
+                                  type="radio"
+                                  name={`role-${ch.id}`}
+                                  checked={(ch.role ?? "DEALER") === "SUPPORT"}
+                                  onChange={() => {
+                                    const nextRole: CharacterRole = "SUPPORT";
+
+                                    setState((prev) => {
+                                      const table = getTableById(prev, tableId);
+
+                                      const nextChars: Character[] = table.characters.map((c) =>
+                                        c.id === ch.id ? { ...c, role: nextRole } : c
+                                      );
+
+                                      const nextTable: TodoTable = { ...table, characters: nextChars };
+
+                                      return {
+                                        ...prev,
+                                        tables: prev.tables.map((t) => (t.id === nextTable.id ? nextTable : t)),
+                                      };
+                                    });
+                                  }}
+                                />
+                                서폿
+                              </label>
+                            </div>
+
                             {/* 아제나 */}
                             {(() => {
                               const enabled = Boolean((ch as any).azenaEnabled);
@@ -3266,14 +3411,13 @@ body.pip-dark .pip-select option{
                                     style={{
                                       fontSize: 11,
                                       opacity: 0.8,
-                                      visibility: checked && expiresAt ? "visible" : "hidden", // ✅ 공간은 유지, 글자만 숨김
-                                      height: 14,  // ✅ 한 줄 높이 고정(필요시 13~16 조절)
+                                      visibility: checked && expiresAt ? "visible" : "hidden",
+                                      height: 14,
                                       lineHeight: "14px",
                                     }}
                                   >
                                     ~ {checked && expiresAt ? formatKoreanDateTime(expiresAt) : "0000년 00월 00일(월) 00:00"}
                                   </div>
-
                                 </div>
                               );
                             })()}
@@ -3287,7 +3431,6 @@ body.pip-dark .pip-select option{
                                 </>
                               )}
                             </div>
-
                           </div>
                         </th>
                       ))}

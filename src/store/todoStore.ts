@@ -7,11 +7,14 @@ export const LEVEL_PERIODS: Record<Period, string> = {
   NONE: "기타",
 };
 
+export type CharacterRole = "DEALER" | "SUPPORT";
+
 export type Character = {
   id: string;
   name: string;
   itemLevel?: string;
   power?: string;
+  role?: CharacterRole;
 
   // (확장 필드) 아제나 만료 자동해제용
   azenaEnabled?: boolean;
@@ -90,11 +93,9 @@ export type RaidLeftSnapshotPayload = {
     // 표시용
     charItemLevel?: string;
     charPower?: string;
+    charRole?: CharacterRole;
 
-    // ✅ row에 테이블명 포함 (여기가 핵심)
     tableName?: string;
-
-    // 계산용 (export에서 넣고 있으니 optional로 받기)
     ilvl?: number;
 
     remainingRaids: string[];
@@ -102,7 +103,6 @@ export type RaidLeftSnapshotPayload = {
     totalCount: number;
   }>;
 };
-
 
 export type FriendEntry = {
   code: string; // 친구의 friendCode
@@ -133,8 +133,19 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-export function createCharacter(input: { name: string; itemLevel?: string; power?: string }): Character {
-  return { id: uid("ch"), name: input.name, itemLevel: input.itemLevel ?? "", power: input.power ?? "" };
+export function createCharacter(input: {
+  name: string;
+  itemLevel?: string;
+  power?: string;
+  role?: CharacterRole;
+}): Character {
+  return {
+    id: uid("ch"),
+    name: input.name,
+    itemLevel: input.itemLevel ?? "",
+    power: input.power ?? "",
+    role: input.role ?? "DEALER",
+  };
 }
 
 export function createTask(input: {
@@ -656,10 +667,11 @@ export function exportRaidLeftSnapshot(state: TodoState, tableId?: string | "ALL
 
       rows.push({
         charName: ch.name,
-        charItemLevel: ch.itemLevel || "",     // ✅ 표시용(문자열)
-        charPower: ch.power || "",             // ✅ 추가: 전투력(없으면 빈값)
+        charItemLevel: ch.itemLevel || "",
+        charPower: ch.power || "",
+        charRole: ch.role || "DEALER",
         tableName: table.name,
-        ilvl,                                  // ✅ 계산용(숫자)
+        ilvl,
         remainingRaids: remainingTop3,
         clearedCount,
         totalCount: Math.min(3, top3Tasks.length),
@@ -713,16 +725,11 @@ export function importRaidLeftSnapshot(raw: any): RaidLeftSnapshotPayload {
   // ✅ row 단위 정규화 (v1/v2 공통 처리)
   parsed.data = parsed.data.map((r: any) => ({
     charName: String(r?.charName ?? ""),
-
-    // v2에서 넘어오면 그대로 유지
     charItemLevel: r?.charItemLevel ? String(r.charItemLevel) : undefined,
     charPower: r?.charPower ? String(r.charPower) : undefined,
-
-    // v2 row.tableName 또는 v1 최상위 tableName 대응
+    charRole: r?.charRole === "SUPPORT" ? "SUPPORT" : "DEALER",
     tableName: r?.tableName ?? parsed.tableName ?? undefined,
-
     ilvl: typeof r?.ilvl === "number" ? r.ilvl : undefined,
-
     remainingRaids: Array.isArray(r?.remainingRaids) ? r.remainingRaids : [],
     clearedCount: Number(r?.clearedCount ?? 0),
     totalCount: Number(r?.totalCount ?? 0),
