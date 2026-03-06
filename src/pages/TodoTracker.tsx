@@ -1241,9 +1241,59 @@ export default function TodoTracker() {
   const loaWeekday = useMemo(() => loaGameDate.getDay(), [loaGameDate]);
   const todayAccountContents = useMemo(() => WEEKLY_ACCOUNT_CONTENT[loaWeekday] ?? [], [loaWeekday]);
 
+  type TodayMustDoSettings = {
+    coreDaily1730: boolean;
+    guardian1730: boolean;
+    accountContent: boolean;
+    restFull: boolean;
+    azenaDaily: boolean;
+  };
+
+  const DEFAULT_TODAY_MUST_DO_SETTINGS: TodayMustDoSettings = {
+    coreDaily1730: true,
+    guardian1730: true,
+    accountContent: true,
+    restFull: true,
+    azenaDaily: true,
+  };
+
+  type TodayMustDoTaskEntry = {
+    label: string;
+    reasons: string[];
+  };
+
+  type TodayMustDoItem = {
+    key: string;
+    tableId: string;
+    tableName: string;
+    charId?: string;
+    charName?: string;
+    tasks: TodayMustDoTaskEntry[];
+  };
+
 
   // ✅ 계정 콘텐츠 체크(카게/필보): tableId별로 저장/로드 (06:00 리셋 기준)
   const [accountChecksByTable, setAccountChecksByTable] = useState<Record<string, Record<string, boolean>>>({});
+
+  const [todayMustDoOpen, setTodayMustDoOpen] = useState(false);
+
+  const [todayMustDoSettings, setTodayMustDoSettings] = useState<TodayMustDoSettings>(() => {
+    try {
+      const raw = localStorage.getItem("loa-today-must-do-settings:v1");
+      if (!raw) return DEFAULT_TODAY_MUST_DO_SETTINGS;
+      return { ...DEFAULT_TODAY_MUST_DO_SETTINGS, ...(JSON.parse(raw) ?? {}) };
+    } catch {
+      return DEFAULT_TODAY_MUST_DO_SETTINGS;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("loa-today-must-do-settings:v1", JSON.stringify(todayMustDoSettings));
+    } catch {
+      // ignore
+    }
+  }, [todayMustDoSettings]);
 
   function readAccountChecks(tableId: string): Record<string, boolean> {
     try {
@@ -1265,15 +1315,15 @@ export default function TodoTracker() {
     }
   }
 
-  // 현재 화면에 보이는 tableId(왼쪽/오른쪽)의 체크를 로드
+  // ✅ 전체 표의 계정 콘텐츠 체크를 로드
   useEffect(() => {
-    const ids = [state.activeTableId, secondaryTableId].filter(Boolean) as string[];
-    setAccountChecksByTable((prev) => {
-      const next = { ...prev };
+    const ids = state.tables.map((t) => t.id);
+    setAccountChecksByTable(() => {
+      const next: Record<string, Record<string, boolean>> = {};
       for (const id of ids) next[id] = readAccountChecks(id);
       return next;
     });
-  }, [loaDateKey, state.activeTableId, secondaryTableId]);
+  }, [loaDateKey, state.tables]);
 
   function onToggleAccountCheck(tableId: string, id: string, checked: boolean) {
     setAccountChecksByTable((prev) => {
@@ -1285,6 +1335,180 @@ export default function TodoTracker() {
       return next;
     });
   }
+
+  function isCheckedCell(tableId: string, taskId: string, charId: string) {
+    const cell = getCellByTableId(state, tableId, taskId, charId);
+    if (!cell) return false;
+    if (cell.type === "CHECK") return !!cell.checked;
+    if (cell.type === "COUNTER") return Number(cell.count ?? 0) >= 1;
+    return false;
+  }
+  function parseIlvl(raw?: string): number {
+    if (!raw) return NaN;
+    const n = Number(String(raw).replace(/,/g, "").trim());
+    return Number.isFinite(n) ? n : NaN;
+  }
+
+  const getCharIlvl = (ch: any) => {
+    const v =
+      ch.itemLevel ??
+      ch.item_level ??
+      ch.ilvl ??
+      ch.iLvl ??
+      ch.level ??
+      ch.levelLabel ??
+      ch.nameLevel;
+
+    try {
+      const n = typeof v === "number" ? v : parseIlvl(String(v ?? ""));
+      return Number.isFinite(n) ? n : 0;
+    } catch {
+      const n = Number(String(v ?? "").replace(/[^0-9.]/g, ""));
+      return Number.isFinite(n) ? n : 0;
+    }
+  };
+
+  const CORE_DAILY_TASK_ID = "MAIN_DAILY";
+
+  function getCoreDailyLabel(ilvl: number) {
+    return ilvl >= 1730 ? "혼돈의 균열" : "쿠르잔 전선";
+  }
+
+  const todayMustDoItems = useMemo<TodayMustDoItem[]>(() => {
+    const grouped = new Map<
+      string,
+      {
+        key: string;
+        tableId: string;
+        tableName: string;
+        charId?: string;
+        charName?: string;
+        taskMap: Map<string, Set<string>>;
+      }
+    >();
+
+    const guardianTask = state.tasks.find(
+      (t) =>
+        t.period === "DAILY" &&
+        (t.title ?? "").trim() === "가디언 토벌"
+    );
+
+    function ensureGroup(base: {
+      key: string;
+      tableId: string;
+      tableName: string;
+      charId?: string;
+      charName?: string;
+    }) {
+      const found = grouped.get(base.key);
+      if (found) return found;
+
+      const created = {
+        ...base,
+        taskMap: new Map<string, Set<string>>(),
+      };
+      grouped.set(base.key, created);
+      return created;
+    }
+
+    function addGroupedReason(
+      base: {
+        key: string;
+        tableId: string;
+        tableName: string;
+        charId?: string;
+        charName?: string;
+      },
+      label: string,
+      reason: string
+    ) {
+      const group = ensureGroup(base);
+      const reasonSet = group.taskMap.get(label) ?? new Set<string>();
+      reasonSet.add(reason);
+      group.taskMap.set(label, reasonSet);
+    }
+
+    for (const table of state.tables) {
+      const tableName = table.name ?? "표";
+      const accountChecks = accountChecksByTable[table.id] ?? readAccountChecks(table.id);
+
+      // 1) 계정 콘텐츠 (카게/필보) - 표 단위 그룹
+      if (todayMustDoSettings.accountContent) {
+        for (const content of todayAccountContents) {
+          const checked = !!accountChecks[content.id];
+          if (!checked) {
+            addGroupedReason(
+              {
+                key: `account:${table.id}`,
+                tableId: table.id,
+                tableName,
+              },
+              content.label,
+              `${tableName}에서 아직 체크 안 됨`
+            );
+          }
+        }
+      }
+
+      // 2) 캐릭터별 검사 - 캐릭 단위 그룹
+      for (const ch of table.characters as any[]) {
+        const ilvl = getCharIlvl(ch);
+        const coreChecked = isCheckedCell(table.id, CORE_DAILY_TASK_ID, ch.id);
+        const guardianChecked = guardianTask ? isCheckedCell(table.id, guardianTask.id, ch.id) : false;
+
+        const rest = table.restGauges?.[ch.id] ?? { chaos: 0, guardian: 0 };
+        const coreLabel = getCoreDailyLabel(ilvl);
+
+        const groupBase = {
+          key: `char:${table.id}:${ch.id}`,
+          tableId: table.id,
+          tableName,
+          charId: ch.id,
+          charName: ch.name,
+        };
+
+        if (todayMustDoSettings.coreDaily1730 && ilvl >= 1730 && !coreChecked) {
+          addGroupedReason(groupBase, coreLabel, "1730+ 캐릭터인데 아직 체크 안 됨");
+        }
+
+        if (todayMustDoSettings.guardian1730 && ilvl >= 1730 && guardianTask && !guardianChecked) {
+          addGroupedReason(groupBase, "가디언 토벌", "1730+ 캐릭터인데 아직 체크 안 됨");
+        }
+
+        if (todayMustDoSettings.restFull) {
+          if (rest.chaos >= 200 && !coreChecked) {
+            addGroupedReason(groupBase, coreLabel, "휴식게이지 풀(200)인데 아직 체크 안 됨");
+          }
+
+          if (rest.guardian >= 100 && guardianTask && !guardianChecked) {
+            addGroupedReason(groupBase, "가디언 토벌", "휴식게이지 풀(100)인데 아직 체크 안 됨");
+          }
+        }
+
+        if (todayMustDoSettings.azenaDaily && ch.azenaEnabled) {
+          if (!coreChecked) {
+            addGroupedReason(groupBase, coreLabel, "아제나 캐릭터인데 아직 안 함");
+          }
+
+          if (guardianTask && !guardianChecked) {
+            addGroupedReason(groupBase, "가디언 토벌", "아제나 캐릭터인데 아직 안 함");
+          }
+        }
+      }
+    }
+
+    return Array.from(grouped.values()).map((group) => ({
+      key: group.key,
+      tableId: group.tableId,
+      tableName: group.tableName,
+      charId: group.charId,
+      charName: group.charName,
+      tasks: Array.from(group.taskMap.entries()).map(([label, reasonSet]) => ({
+        label,
+        reasons: Array.from(reasonSet),
+      })),
+    }));
+  }, [state, accountChecksByTable, todayAccountContents, todayMustDoSettings]);
 
   //생명의 기운(생기)(생기)
   const LIFE_MAX = 10500;
@@ -2242,12 +2466,6 @@ export default function TodoTracker() {
     // 업데이트 { key: "SERKA", name: "지평의 성당", diffs: [{ name: "노말", minIlvl: 1710, gold: 35000 }, { name: "하드", minIlvl: 1730, gold: 44000 }, { name: "나이트메어", minIlvl: 1740, gold: 54000 }] },
   ];
 
-  function parseIlvl(raw?: string): number {
-    if (!raw) return NaN;
-    const n = Number(String(raw).replace(/,/g, "").trim());
-    return Number.isFinite(n) ? n : NaN;
-  }
-
   const TASK_MIN_ILVL: Record<string, number> = {
     "할의 모래시계": 1730,
     "1막": 1660,
@@ -2309,22 +2527,6 @@ export default function TodoTracker() {
         updatedAt: Date.now(),
       } as any);
     });
-  }
-
-  const getCharIlvl = (ch: any) => {
-    const v = ch.itemLevel ?? ch.item_level ?? ch.ilvl ?? ch.iLvl ?? ch.level ?? ch.levelLabel ?? ch.nameLevel;
-    try {
-      const n = typeof v === "number" ? v : parseIlvl(String(v ?? ""));
-      return Number.isFinite(n) ? n : 0;
-    } catch {
-      const n = Number(String(v ?? "").replace(/[^0-9.]/g, ""));
-      return Number.isFinite(n) ? n : 0;
-    }
-  };
-
-  const CORE_DAILY_TASK_ID = "MAIN_DAILY";
-  function getCoreDailyLabel(ilvl: number) {
-    return ilvl >= 1730 ? "혼돈의 균열" : "쿠르잔 전선";
   }
 
   // =========================
@@ -3940,6 +4142,10 @@ body.pip-dark .pip-select option{
                   <button className="btn" onClick={() => addTask("NONE")}>
                     + 기타 숙제
                   </button>
+                  <div className="divider" />
+                  <button className="btn" onClick={() => setTodayMustDoOpen((v) => !v)}>
+                    오늘 해야할 일 {todayMustDoItems.length > 0 ? `(${todayMustDoItems.length})` : ""}
+                  </button>
                 </div>
               </div>
             </div>
@@ -4410,21 +4616,18 @@ body.pip-dark .pip-select option{
         <button className={`tab ${periodTab === "RAID_LEFT" ? "active" : ""}`} onClick={() => setPeriodTab("RAID_LEFT")}>
           남은 레이드
         </button>
-        {periodTab === "RAID_LEFT" && (
-          <>
-            <div className="raidLeftToolbar">
-              <select
-                className="friendSelect"
-                value={raidLeftView}
-                onChange={(e) => setRaidLeftView(e.target.value as any)}
-              >
-                <option value="ME">내 남은 레이드</option>
-                <option value="FRIEND">친구 남은 레이드</option>
-              </select>
 
-              {/* ✅ 친구 목록 UI는 왼쪽 '친구 패널'로 이동 */}
-            </div>
-          </>
+        {periodTab === "RAID_LEFT" && (
+          <div className="raidLeftToolbar">
+            <select
+              className="friendSelect"
+              value={raidLeftView}
+              onChange={(e) => setRaidLeftView(e.target.value as any)}
+            >
+              <option value="ME">내 남은 레이드</option>
+              <option value="FRIEND">친구 남은 레이드</option>
+            </select>
+          </div>
         )}
 
         <div className="todo-progress">
@@ -4432,8 +4635,104 @@ body.pip-dark .pip-select option{
         </div>
       </div>
 
+      {todayMustDoOpen && (
+        <div className="todayMustDoPanel">
+          <div className="todayMustDoHeader">
+            <div>
+              <div className="todayMustDoTitle">오늘 해야할 일</div>
+              <div className="todayMustDoSub">
+                전체 표 기준으로 오늘 놓치면 아까운 항목만 모아서 보여줘
+              </div>
+            </div>
 
-      {/* ✅ 표 영역 wrapper: 요일별 + 표 그리드를 한 컨테이너로 묶기 */}
+            <button className="btn" onClick={() => setTodayMustDoOpen(false)}>
+              닫기
+            </button>
+          </div>
+
+          <div className="todayMustDoSettings">
+            <label className="todayMustDoCheck">
+              <input
+                type="checkbox"
+                checked={todayMustDoSettings.coreDaily1730}
+                onChange={(e) =>
+                  setTodayMustDoSettings((prev) => ({ ...prev, coreDaily1730: e.target.checked }))
+                }
+              />
+              <span>1730+ 핵심 일일 체크 안 된 캐릭 출력</span>
+            </label>
+
+            <label className="todayMustDoCheck">
+              <input
+                type="checkbox"
+                checked={todayMustDoSettings.guardian1730}
+                onChange={(e) =>
+                  setTodayMustDoSettings((prev) => ({ ...prev, guardian1730: e.target.checked }))
+                }
+              />
+              <span>1730+ 가디언 토벌 체크 안 된 캐릭 출력</span>
+            </label>
+
+            <label className="todayMustDoCheck">
+              <input
+                type="checkbox"
+                checked={todayMustDoSettings.accountContent}
+                onChange={(e) =>
+                  setTodayMustDoSettings((prev) => ({ ...prev, accountContent: e.target.checked }))
+                }
+              />
+              <span>카게/필보 체크 안 된 표 출력</span>
+            </label>
+
+            <label className="todayMustDoCheck">
+              <input
+                type="checkbox"
+                checked={todayMustDoSettings.restFull}
+                onChange={(e) =>
+                  setTodayMustDoSettings((prev) => ({ ...prev, restFull: e.target.checked }))
+                }
+              />
+              <span>휴식게이지 풀인데 미체크인 캐릭 출력</span>
+            </label>
+
+            <label className="todayMustDoCheck">
+              <input
+                type="checkbox"
+                checked={todayMustDoSettings.azenaDaily}
+                onChange={(e) =>
+                  setTodayMustDoSettings((prev) => ({ ...prev, azenaDaily: e.target.checked }))
+                }
+              />
+              <span>아제나 캐릭터인데 일일 숙제 안 한 캐릭 출력</span>
+            </label>
+          </div>
+
+          {todayMustDoItems.length === 0 ? (
+            <div className="todayMustDoEmpty">오늘 꼭 해야 하는 항목이 없어!</div>
+          ) : (
+            <div className="todayMustDoList">
+              {todayMustDoItems.map((item) => (
+                <div key={item.key} className="todayMustDoItem">
+                  <div className="todayMustDoItemTop">
+                    <span className="todayMustDoBadge">{item.tableName}</span>
+                    {item.charName ? <span className="todayMustDoChar">{item.charName}</span> : null}
+                  </div>
+
+                  <div className="todayMustDoTaskList">
+                    {item.tasks.map((task) => (
+                      <div key={task.label} className="todayMustDoTaskRow">
+                        <div className="todayMustDoLabel">{task.label}</div>
+                        <div className="todayMustDoReason">{task.reasons.join(", ")}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="todo-table-area">
         {/* ✅ 요일별 콘텐츠(계정 공용) - 전체/일일 탭에서 */}
         {(periodTab === "ALL" || periodTab === "DAILY") && (
