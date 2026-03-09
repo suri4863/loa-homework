@@ -236,7 +236,7 @@ function makeDefaultState(): TodoState {
     createTask({ title: "4막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
     createTask({ title: "종막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
     createTask({ title: "세르카", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
-    //createTask({ title: "지평의 성당", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+    createTask({ title: "지평의 성당", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
 
     // 기타 (원하는 순서: 4해금 → 3해금 → 2해금 → 1해금 → 낙원트리)
     createTask({ title: "4해금", period: "NONE", cellType: "TEXT", section: "기타", order: baseOrder + 200 }),
@@ -366,6 +366,7 @@ function normalizeState(parsed: any): TodoState {
     ensureTask({ title: "4막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
     ensureTask({ title: "종막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
     ensureTask({ title: "세르카", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
+    ensureTask({ title: "지평의 성당", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
 
     // ✅ 3) order 강제 세팅 (여기 숫자만 보면 됨: 작을수록 위)
     const base = 10_000; // 다른 task order와 겹치지 않게 큰 값 사용
@@ -647,23 +648,32 @@ export function exportRaidLeftSnapshot(state: TodoState, tableId?: string | "ALL
   for (const table of tables) {
     for (const ch of table.characters) {
       const ilvl = parseIlvl(ch.itemLevel);
-      const top3 = getTop3RaidSet(ilvl);
-      const top3Tasks = weeklyRaidTasks.filter((t) => top3.has(t.title));
-      if (top3Tasks.length === 0) continue;
+
+      // ✅ 주간 레이드 task 전체 중, 현재 캐릭터가 체크 대상으로 쓰는 레이드들만 본다
+      const selectedWeeklyTasks = weeklyRaidTasks.filter((task) => {
+        const v = table.values?.[task.id]?.[ch.id];
+        // 체크됐든 안됐든, 표에 노출되는 선택 레이드면 포함해야 함
+        // 현재 구조에서는 values만으로 선택 레이드를 알 수 없으니
+        // 최소한 "체크됐거나 남아있는 레이드 task" 전체를 후보로 둔다.
+        return true;
+      });
 
       const remaining: string[] = [];
       let clearedCount = 0;
 
-      for (const task of top3Tasks) {
+      for (const task of selectedWeeklyTasks) {
         const v = table.values?.[task.id]?.[ch.id];
         const cleared = v?.type === "CHECK" && v.checked === true;
-        if (cleared) clearedCount++;
-        else remaining.push(task.title);
+
+        if (cleared) {
+          clearedCount++;
+        } else {
+          remaining.push(task.title);
+        }
       }
 
-      // ✅ 상위3개를 "안 한 캐릭"만 남김
-      const remainingTop3 = remaining.slice(0, 3).map((r) => withDiff(r, ilvl));
-      if (remainingTop3.length === 0) continue;
+      const remainingRaids = remaining.map((r) => withDiff(r, ilvl));
+      if (remainingRaids.length === 0) continue;
 
       rows.push({
         charName: ch.name,
@@ -672,9 +682,9 @@ export function exportRaidLeftSnapshot(state: TodoState, tableId?: string | "ALL
         charRole: ch.role || "DEALER",
         tableName: table.name,
         ilvl,
-        remainingRaids: remainingTop3,
+        remainingRaids,
         clearedCount,
-        totalCount: Math.min(3, top3Tasks.length),
+        totalCount: selectedWeeklyTasks.length,
       });
     }
   }

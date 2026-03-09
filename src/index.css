@@ -204,3 +204,108 @@ html[data-theme="dark"] .navBtn:hover {
 .char-roleOpt:last-child {
   color: #40995d;   /* 서폿 */
 }
+
+/*해야할 일*/
+.todayMustDoPanel{
+  margin: 8px 0 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--text);
+}
+
+.todayMustDoHeader{
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.todayMustDoTitle{
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.todayMustDoSub{
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.todayMustDoSettings{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--soft);
+}
+
+.todayMustDoCheck{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.todayMustDoList{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.todayMustDoItem{
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--soft-2);
+  padding: 12px;
+}
+
+.todayMustDoItemTop{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.todayMustDoBadge{
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.todayMustDoChar{
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.todayMustDoLabel{
+  font-size: 15px;
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+
+.todayMustDoReason{
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.todayMustDoEmpty{
+  padding: 16px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  color: var(--muted);
+  text-align: center;
+}

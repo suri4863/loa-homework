@@ -539,9 +539,9 @@ export default function TodoTracker() {
     if (!rows.length) return <div className="todo-hint">✅ 친구는 상위 3개 레이드가 전부 완료된 상태야.</div>;
 
     // ==========================
-    // ✅ 깐부 매칭(레벨구간 + 간평 + 레이드3개 동일)
+    // ✅ 깐부 매칭(레벨구간 + 깐평 + 레이드3개 동일)
     // - 레벨 입력: "1710~1719" / "1710-1719" / "1710" 모두 허용 (단독이면 +9 자동)
-    // - 간평 입력: 비우면 무시
+    // - 깐평 입력: 비우면 무시
     // ==========================
     const parseRange = (raw: string): { min?: number; max?: number } => {
       const s = String(raw ?? "").trim();
@@ -607,18 +607,35 @@ export default function TodoTracker() {
           // ✅ itemLevel 파싱은 프로젝트에 있는 getCharIlvl 사용 (Lv. / 소수 / 문자열 변형 안전)
           const ilvl = getCharIlvl(ch);
 
-          const top3 = Number.isFinite(ilvl) ? calcWeeklyTop3Gold(ilvl).top3.map((x) => x.raid) : [];
+          const charKey = weeklyCharKey(tbl.id, ch.id);
+          const pick = Number.isFinite(ilvl)
+            ? (weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(ilvl))
+            : { raids: [], diffs: {} };
 
-          const remaining = top3.filter((title) => {
-            // ✅ top3 레이드명도 난이도 제거해서 "4막/종막/세르카" 형태로 맞춤
-            const base = normalizeRaidName(title);
+          const selectedRaids = pick.raids.map(normalizeRaidName);
 
-            // ✅ 숙제 task title은 보통 "4막" 처럼 난이도 없는 형태라 base로 조회
-            const taskId = weeklyRaidTitleToId.get(base);
+          const remaining = selectedRaids.filter((title) => {
+            const taskId = weeklyRaidTitleToId.get(title);
             if (!taskId) return false;
 
             const v = getCellByTableId(state, tbl.id, taskId, ch.id);
             return !(v && v.type === "CHECK" && v.checked);
+          });
+
+          const currentDiffs: Record<string, DiffName> = pick?.diffs ?? {};
+
+          const remainingRows = remaining.map((raidName: string) => {
+            const avail = availableDiffNames(ilvl, raidName);
+
+            const selectedDiff: DiffName =
+              currentDiffs[raidName] && avail.includes(currentDiffs[raidName])
+                ? currentDiffs[raidName]
+                : ((avail[avail.length - 1] ?? "노말") as DiffName);
+
+            return {
+              raid: normalizeRaidName(raidName),
+              diff: selectedDiff,
+            };
           });
 
           return {
@@ -629,6 +646,8 @@ export default function TodoTracker() {
             power: parseNum((ch as any).power),
             role: ch.role ?? "DEALER",
             remaining: remaining.map(normalizeRaidName),
+            remainingRows,
+            raidStatusRows: [],
           };
         })
     );
@@ -640,14 +659,21 @@ export default function TodoTracker() {
       return true;
     });
 
-    // 레이드 목록은 “순서 무시(Set 비교)”
-    const sameRaidSet = (a: string[], b: string[]) => {
-      if (a.length !== b.length) return false;
+    // 레이드 목록은 “순서 무시(Set 비교)” 교집합이 3개 이상이면 허용
+    const getRaidIntersection = (a: string[], b: string[]) => {
       const sa = new Set(a.map((x) => normalizeRaidName(String(x))));
       const sb = new Set(b.map((x) => normalizeRaidName(String(x))));
-      if (sa.size !== sb.size) return false;
-      for (const x of sa) if (!sb.has(x)) return false;
-      return true;
+      const common: string[] = [];
+
+      for (const x of sa) {
+        if (sb.has(x)) common.push(x);
+      }
+
+      return common.sort((x, y) => x.localeCompare(y, "ko"));
+    };
+
+    const canKkanbuMatch = (a: string[], b: string[]) => {
+      return getRaidIntersection(a, b).length >= 3;
     };
 
     console.log("myCandidates", myCandidates);
@@ -670,12 +696,15 @@ export default function TodoTracker() {
       power: number;
       role: CharacterRole;
       remaining: string[];
+      remainingRows: { raid: string; diff: DiffName }[];
+      raidStatusRows: { raid: string; diff: DiffName; matchedTo: string | null }[];
     };
 
     type KkanbuMatch = {
       friend: FriendCandidate;
       me: MyCandidate;
       avgPower: number;
+      commonRaids: string[];
     };
 
     const friendFiltered: FriendCandidate[] = rows
@@ -690,7 +719,6 @@ export default function TodoTracker() {
             : [];
 
         const raids = raidsRaw
-          .slice(0, 3)
           .map((x: string) => normalizeRaidName(String(x)));
 
         if (range.min != null && Number.isFinite(range.min) && (!Number.isFinite(friendIlvl) || friendIlvl < range.min!)) return null;
@@ -730,13 +758,14 @@ export default function TodoTracker() {
 
       const candidates = friendList.map((friend) =>
         myList.map((me) => {
-          if (!sameRaidSet(me.remaining, friend.raids)) return null;
+          const commonRaids = getRaidIntersection(me.remaining, friend.raids);
+          if (commonRaids.length < 3) return null;
           if (!Number.isFinite(me.power) || !Number.isFinite(friend.power)) return null;
 
           const avgPower = (me.power + friend.power) / 2;
           if (Number.isFinite(avgMin) && avgMin > 0 && avgPower < avgMin) return null;
 
-          return { friend, me, avgPower };
+          return { friend, me, avgPower, commonRaids };
         })
       );
 
@@ -780,12 +809,8 @@ export default function TodoTracker() {
       return bestMatches.sort((a, b) => b.avgPower - a.avgPower);
     }
 
-    /* 1:1 매칭 결과 */
-    const matched: KkanbuMatch[] = [];
-    for (const [key, friendList] of friendGroups.entries()) {
-      const myList = myGroups.get(key) ?? [];
-      matched.push(...solveBestOneToOne(friendList, myList));
-    }
+    /* 1:1 매칭 결과 그룹핑 제거하고 전체 매칭으로 바꿈*/
+    const matched: KkanbuMatch[] = solveBestOneToOne(friendFiltered, myFiltered);
 
     const matchedFriendKeys = new Set(
       matched.map((m) => `${m.friend.row?.tableName ?? ""}::${m.friend.row?.charName ?? ""}`)
@@ -795,13 +820,57 @@ export default function TodoTracker() {
       matched.map((m) => `${m.me.tableId}::${m.me.name}`)
     );
 
+    const usedRaidMapByMe = new Map<string, Set<string>>();
+
+    for (const m of matched) {
+      const meKey = `${m.me.tableId}::${m.me.name}`;
+
+      if (!usedRaidMapByMe.has(meKey)) {
+        usedRaidMapByMe.set(meKey, new Set<string>());
+      }
+
+      for (const raid of m.commonRaids) {
+        usedRaidMapByMe.get(meKey)!.add(normalizeRaidName(raid));
+      }
+    }
+
     const unmatchedFriends = friendFiltered.filter(
       (f) => !matchedFriendKeys.has(`${f.row?.tableName ?? ""}::${f.row?.charName ?? ""}`)
     );
 
-    const unmatchedMine = myFiltered.filter(
-      (me) => !matchedMyKeys.has(`${me.tableId}::${me.name}`)
-    );
+    const unmatchedMine = myFiltered
+      .map((me) => {
+        const meKey = `${me.tableId}::${me.name}`;
+
+        const matchedToByRaid = new Map<string, string>();
+
+        for (const m of matched) {
+          if (`${m.me.tableId}::${m.me.name}` !== meKey) continue;
+
+          for (const raid of m.commonRaids) {
+            matchedToByRaid.set(
+              normalizeRaidName(raid),
+              String(m.friend.row?.charName ?? "-")
+            );
+          }
+        }
+
+        const raidStatusRows = (me.remainingRows ?? []).map((row) => {
+          const normalizedRaid = normalizeRaidName(row.raid);
+          const matchedTo = matchedToByRaid.get(normalizedRaid);
+
+          return {
+            ...row,
+            matchedTo: matchedTo ?? null,
+          };
+        });
+
+        return {
+          ...me,
+          raidStatusRows,
+        };
+      })
+      .filter((me) => me.raidStatusRows.some((row) => !row.matchedTo));
 
     return (
       <div className="raidLeftColsWrap">
@@ -825,7 +894,7 @@ export default function TodoTracker() {
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <div style={{ fontSize: 12, opacity: 0.75 }}>간평 입력</div>
+              <div style={{ fontSize: 12, opacity: 0.75 }}>깐평 입력</div>
               <input
                 className="friendInput"
                 value={kkanbuAvgPowerMin}
@@ -841,13 +910,13 @@ export default function TodoTracker() {
         {/* ✅ 매칭 결과 */}
         {!matched.length ? (
           <div className="todo-hint" style={{ padding: 12, opacity: 0.8 }}>
-            조건 만족 매칭 없음 (레벨/간평을 조정해봐)
+            조건 만족 매칭 없음 (레벨/깐평을 조정해봐)
           </div>
         ) : (
           <div style={{ padding: "10px 12px 0" }}>
             <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>매칭 결과 ({matched.length})</div>
             <div className="raidLeftCols" style={{ marginBottom: 10 }}>
-              {matched.map(({ friend, me }) => {
+              {matched.map(({ friend, me, commonRaids }) => {
                 const friendName = friend.row?.charName ?? "-";
                 const friendLevel = friend.row?.charItemLevel ?? friend.ilvl;
                 const friendPower = friend.row?.charPower ?? friend.power;
@@ -874,10 +943,10 @@ export default function TodoTracker() {
                     </div>
 
                     <div className="raidLeftColBody">
-                      {friend.raids.length ? (
-                        friend.raids.map((r: string, i: number) => (
+                      {commonRaids.length ? (
+                        commonRaids.map((raid: string, i: number) => (
                           <div key={`${friendName}-${i}`} className="raidLeftColItem">
-                            {r}
+                            {raid}
                           </div>
                         ))
                       ) : (
@@ -984,19 +1053,29 @@ export default function TodoTracker() {
                     </div>
 
                     <div className="raidLeftColBody">
-                      {me.remaining.length ? (
-                        me.remaining.map((r: string, i: number) => (
-                          <div key={`${me.name}-${i}`} className="raidLeftColItem">
-                            {r}
-                          </div>
-                        ))
+                      {me.raidStatusRows.length ? (
+                        me.raidStatusRows.map(
+                          (
+                            row: { raid: string; diff: DiffName; matchedTo: string | null },
+                            i: number
+                          ) => (
+                            <div
+                              key={`${me.name}-${i}`}
+                              className={`raidLeftColItemRow ${row.matchedTo ? "matchedRow" : "unmatchedRow"}`}
+                            >
+                              <div className={`raidLeftColRaid ${row.matchedTo ? "matchedTitle" : "unmatchedTitle"}`}>
+                                {row.raid} {row.diff}
+                              </div>
+
+                              <div className={`raidMatchStatusInline ${row.matchedTo ? "matchedStatus" : "unmatchedStatus"}`}>
+                                {row.matchedTo ? `매칭: ${row.matchedTo}` : "미매칭"}
+                              </div>
+                            </div>
+                          )
+                        )
                       ) : (
                         <div className="raidLeftColEmpty">-</div>
                       )}
-                    </div>
-
-                    <div style={{ padding: "10px 12px 12px", fontSize: 12, opacity: 0.82 }}>
-                      미매칭
                     </div>
                   </div>
                 ))}
@@ -1008,7 +1087,7 @@ export default function TodoTracker() {
         {/* ✅ 전체 친구 남은 레이드 카드 (항상 표시) */}
         <div className="raidLeftCols">
           {rows.map((row: any) => {
-            const raids = Array.isArray(row.remainingRaids) ? row.remainingRaids.slice(0, 3) : [];
+            const raids = Array.isArray(row.remainingRaids) ? row.remainingRaids : [];
             return (
               <div key={`${row.tableName ?? ""}-${row.charName}`} className="raidLeftColCard">
                 <div className="raidLeftColHeader">
@@ -1367,6 +1446,11 @@ export default function TodoTracker() {
       return Number.isFinite(n) ? n : 0;
     }
   };
+
+  // 레이드 이름 비교용 정규화
+  function normalizeRaidName(name: string) {
+    return name.replace(/\s+/g, "").toLowerCase();
+  }
 
   const CORE_DAILY_TASK_ID = "MAIN_DAILY";
 
@@ -2245,7 +2329,14 @@ export default function TodoTracker() {
   // =========================
   // 주간 레이드 골드 계산용 데이터 & 유틸
   // =========================
-  type RaidGold = { normal?: number; hard?: number; nightmare?: number };
+  type RaidGold = {
+    normal?: number;
+    hard?: number;
+    nightmare?: number;
+    stage1?: number;
+    stage2?: number;
+    stage3?: number;
+  };
 
   const RAID_CLEAR_GOLD: Record<string, RaidGold> = {
     "베히모스": { normal: 7200 },
@@ -2256,57 +2347,108 @@ export default function TodoTracker() {
     "4막": { normal: 33000, hard: 42000 },
     "종막": { normal: 40000, hard: 52000 },
     "세르카": { normal: 35000, hard: 44000, nightmare: 54000 },
-    //"지평의 성당": { normal: 35000, hard: 44000, nightmare: 54000 },
+    "지평의 성당": { stage1: 30000, stage2: 40000, stage3: 50000 },
   };
 
+  type DiffName = "노말" | "하드" | "나이트메어" | "1단계" | "2단계" | "3단계";
+
   type RaidPopup = { title: string; x: number; y: number } | null;
+
+  type WeeklyTop3Popup =
+    | { tableId: string; charId: string; charName: string; ilvl: number; x: number; y: number }
+    | null;
+
+  type WeeklyRaidPick = {
+    raids: string[];      // 이번 주 도는 레이드 전체
+    goldRaids: string[];  // 골드 받는 레이드 (최대 3개)
+    diffs: Record<string, DiffName>;
+  };
+
   const [raidGoldPopup, setRaidGoldPopup] = useState<RaidPopup>(null);
 
   // =========================
   // ✅ Top3 골드: 난이도 선택(캐릭터별 저장) + 팝업
   // =========================
-  type DiffName = "노말" | "하드" | "나이트메어";
-  type WeeklyTop3Popup =
-    | { tableId: string; charId: string; charName: string; ilvl: number; x: number; y: number }
-    | null;
 
-  const WEEKLY_DIFF_KEY = "loa-weekly-raid-diff:v1";
-  const [weeklyDiffByChar, setWeeklyDiffByChar] = useState<Record<string, Record<string, DiffName>>>({});
+  const WEEKLY_PICK_KEY = "loa-weekly-raid-pick:v1";
+  const [weeklyRaidPickByChar, setWeeklyRaidPickByChar] = useState<Record<string, WeeklyRaidPick>>({});
   const [weeklyTop3Popup, setWeeklyTop3Popup] = useState<WeeklyTop3Popup>(null);
+
 
   function weeklyCharKey(tableId: string, charId: string) {
     return `${tableId}:${charId}`;
   }
 
-  function loadWeeklyDiff(tableId: string, charId: string): Record<string, DiffName> {
+  function getDefaultWeeklyRaidPick(ilvl: number): WeeklyRaidPick {
+    const auto = calcWeeklyTop3Gold(ilvl);
+    const autoRaids = auto.top3.map((x) => x.raid);
+
+    return {
+      raids: autoRaids,          // 기본 시작은 top3만 넣어도 됨
+      goldRaids: autoRaids,      // 기본 골드도 top3
+      diffs: Object.fromEntries(
+        auto.top3.map((x) => [x.raid, x.diff as DiffName])
+      ) as Record<string, DiffName>,
+    };
+  }
+
+  function loadWeeklyRaidPick(tableId: string, charId: string, ilvl: number): WeeklyRaidPick {
     try {
-      const raw = localStorage.getItem(`${WEEKLY_DIFF_KEY}:${tableId}:${charId}`);
-      if (!raw) return {};
-      const parsed = JSON.parse(raw) as Record<string, DiffName>;
-      return parsed && typeof parsed === "object" ? parsed : {};
+      const raw = localStorage.getItem(`${WEEKLY_PICK_KEY}:${tableId}:${charId}`);
+      if (!raw) return getDefaultWeeklyRaidPick(ilvl);
+
+      const parsed = JSON.parse(raw) as WeeklyRaidPick;
+      if (!parsed || typeof parsed !== "object") {
+        return getDefaultWeeklyRaidPick(ilvl);
+      }
+
+      const raids: string[] = (Array.isArray(parsed.raids) ? parsed.raids : []).filter(Boolean);
+
+      const goldRaids: string[] = (
+        Array.isArray((parsed as any).goldRaids) ? (parsed as any).goldRaids : []
+      )
+        .filter(Boolean)
+        .filter((raid: string) => raids.includes(raid))
+        .slice(0, 3);
+
+      const diffs: Record<string, DiffName> =
+        parsed.diffs && typeof parsed.diffs === "object"
+          ? (parsed.diffs as Record<string, DiffName>)
+          : {};
+
+      if (!raids.length) return getDefaultWeeklyRaidPick(ilvl);
+
+      return {
+        raids,
+        goldRaids,
+        diffs,
+      };
     } catch {
-      return {};
+      return getDefaultWeeklyRaidPick(ilvl);
     }
   }
 
-  function saveWeeklyDiff(tableId: string, charId: string, diffMap: Record<string, DiffName>) {
+  function saveWeeklyRaidPick(tableId: string, charId: string, pick: WeeklyRaidPick) {
     try {
-      localStorage.setItem(`${WEEKLY_DIFF_KEY}:${tableId}:${charId}`, JSON.stringify(diffMap));
-    } catch { }
+      localStorage.setItem(`${WEEKLY_PICK_KEY}:${tableId}:${charId}`, JSON.stringify(pick));
+    } catch {
+      // ignore
+    }
   }
 
   // ✅ 표/캐릭터 바뀔 때 로컬저장 값 선로딩(합산값도 바로 반영되게)
   useEffect(() => {
-    const next: Record<string, Record<string, DiffName>> = {};
+    const next: Record<string, WeeklyRaidPick> = {};
 
     for (const tbl of state.tables) {
       for (const ch of tbl.characters as any[]) {
         const k = weeklyCharKey(tbl.id, ch.id);
-        next[k] = loadWeeklyDiff(tbl.id, ch.id);
+        const ilvl = parseIlvl(ch.itemLevel);
+        next[k] = loadWeeklyRaidPick(tbl.id, ch.id, ilvl);
       }
     }
 
-    setWeeklyDiffByChar(next);
+    setWeeklyRaidPickByChar(next);
   }, [state.tables]);
 
   const tasks = useMemo(() => {
@@ -2451,8 +2593,17 @@ export default function TodoTracker() {
   // =========================
   // 레이드 Top3 계산
   // =========================
-  type RaidDifficulty = { name: "노말" | "하드" | "나이트메어"; minIlvl: number; gold: number };
-  type RaidDef = { key: string; name: string; diffs: RaidDifficulty[] };
+  type RaidDifficulty = {
+    name: DiffName;
+    minIlvl: number;
+    gold: number;
+  };
+
+  type RaidDef = {
+    key: string;
+    name: string;
+    diffs: RaidDifficulty[];
+  };
 
   const RAID_CATALOG: RaidDef[] = [
     { key: "epic", name: "베히모스", diffs: [{ name: "노말", minIlvl: 1640, gold: 7200 }] },
@@ -2463,7 +2614,7 @@ export default function TodoTracker() {
     { key: "ACT4", name: "4막", diffs: [{ name: "노말", minIlvl: 1700, gold: 33000 }, { name: "하드", minIlvl: 1720, gold: 42000 }] },
     { key: "FINAL", name: "종막", diffs: [{ name: "노말", minIlvl: 1710, gold: 40000 }, { name: "하드", minIlvl: 1730, gold: 52000 }] },
     { key: "SERKA", name: "세르카", diffs: [{ name: "노말", minIlvl: 1710, gold: 35000 }, { name: "하드", minIlvl: 1730, gold: 44000 }, { name: "나이트메어", minIlvl: 1740, gold: 54000 }] },
-    // 업데이트 { key: "SERKA", name: "지평의 성당", diffs: [{ name: "노말", minIlvl: 1710, gold: 35000 }, { name: "하드", minIlvl: 1730, gold: 44000 }, { name: "나이트메어", minIlvl: 1740, gold: 54000 }] },
+    { key: "ABYSS1", name: "지평의 성당", diffs: [{ name: "1단계", minIlvl: 1700, gold: 30000 }, { name: "2단계", minIlvl: 1720, gold: 40000 }, { name: "3단계", minIlvl: 1750, gold: 50000 }] },
   ];
 
   const TASK_MIN_ILVL: Record<string, number> = {
@@ -2474,7 +2625,7 @@ export default function TodoTracker() {
     "4막": 1700,
     "종막": 1710,
     "세르카": 1710,
-    //"지평의 성당": 1710,
+    "지평의 성당": 1710,
     "1해금": 1640,
     "2해금": 1680,
     "3해금": 1700,
@@ -3035,14 +3186,6 @@ body.pip-dark .pip-select option{
     return { sum, top3, all: candidates };
   }
 
-  function getGoldByDiffName(raidName: string, diff: DiffName) {
-    const g = RAID_CLEAR_GOLD[raidName];
-    if (!g) return 0;
-    if (diff === "노말") return g.normal ?? 0;
-    if (diff === "하드") return g.hard ?? 0;
-    return g.nightmare ?? 0;
-  }
-
   function availableDiffNames(ilvl: number, raidName: string): DiffName[] {
     const def = RAID_CATALOG.find((r) => r.name === raidName);
     if (!def) return [];
@@ -3057,21 +3200,59 @@ body.pip-dark .pip-select option{
    * ✅ Top3는 "레이드 3개는 그대로(top3)" 유지하되
    *   각 레이드 골드는 (선택 난이도 우선) → 없으면 자동 최고난이도
    */
-  function calcWeeklyTop3GoldWithPick(ilvl: number, picked: Record<string, DiffName> | undefined) {
-    const base = calcWeeklyTop3Gold(ilvl); // top3 레이드 3개는 기존 로직 유지
-    const top3 = base.top3.map((x) => {
-      const avail = availableDiffNames(ilvl, x.raid);
-      const want = picked?.[x.raid];
+  function getGoldByDiffName(raidName: string, diff: DiffName) {
+    const g = RAID_CLEAR_GOLD[raidName];
+    if (!g) return 0;
 
-      // 선택이 가능 난이도면 적용, 아니면 자동(기존 x.diff)
-      const diff: DiffName = want && avail.includes(want) ? want : (x.diff as DiffName);
-      const gold = diff === x.diff ? x.gold : getGoldByDiffName(x.raid, diff);
+    if (diff === "노말") return g.normal ?? 0;
+    if (diff === "하드") return g.hard ?? 0;
+    if (diff === "나이트메어") return g.nightmare ?? 0;
+    if (diff === "1단계") return g.stage1 ?? 0;
+    if (diff === "2단계") return g.stage2 ?? 0;
+    if (diff === "3단계") return g.stage3 ?? 0;
 
-      return { raid: x.raid, diff, gold, avail };
+    return 0;
+  }
+
+  function calcWeeklySelectedGold(ilvl: number, pick: WeeklyRaidPick | undefined) {
+    const fallback = getDefaultWeeklyRaidPick(ilvl);
+    const selected =
+      pick && Array.isArray(pick.raids) && pick.raids.length
+        ? pick
+        : fallback;
+
+    const goldSet = new Set((selected.goldRaids ?? []).slice(0, 3));
+
+    const rows = selected.raids.map((raidName) => {
+      const def = RAID_CATALOG.find((r) => r.name === raidName);
+      const avail = availableDiffNames(ilvl, raidName);
+
+      if (!def || !avail.length) {
+        return {
+          raid: raidName,
+          diff: "노말" as DiffName,
+          gold: 0,
+          checked: false,
+          avail: [] as DiffName[],
+        };
+      }
+
+      const autoBest = pickBestDiff(ilvl, def);
+      const want = selected.diffs?.[raidName];
+
+      const diff: DiffName =
+        want && avail.includes(want)
+          ? want
+          : ((autoBest?.name ?? avail[avail.length - 1]) as DiffName);
+
+      const checked = goldSet.has(raidName);
+      const gold = checked ? getGoldByDiffName(raidName, diff) : 0;
+
+      return { raid: raidName, diff, gold, checked, avail };
     });
 
-    const sum = top3.reduce((acc, cur) => acc + cur.gold, 0);
-    return { sum, top3 };
+    const sum = rows.reduce((acc, cur) => acc + cur.gold, 0);
+    return { sum, rows };
   }
 
   function getWeeklyTop3RaidNameSet(ilvl: number): Set<string> {
@@ -3358,9 +3539,12 @@ body.pip-dark .pip-select option{
                         // ✅ 주간 레이드 Top3만 체크 노출(기존 로직 유지)
                         if (section === "주간 레이드" && isWeeklyRaidTaskTitle(task.title)) {
                           const ilvl = getCharIlvl(ch);
-                          const top3Set = getWeeklyTop3RaidNameSet(ilvl);
-                          if (!top3Set.has(task.title)) {
-                            return <td key={`${tableId}:${ch.id}`} className="cell" />;
+                          const charKey = weeklyCharKey(tableId, ch.id);
+                          const pick = weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(ilvl);
+                          const selectedSet = new Set(pick.raids);
+
+                          if (!selectedSet.has(task.title)) {
+                            return <td key={ch.id} className="cell" />;
                           }
                         }
 
@@ -3387,8 +3571,8 @@ body.pip-dark .pip-select option{
                     <tr className="task-row gold-sum-row">
                       <td className="todo-sticky-left task-left">
                         <div className="task-left-inner">
-                          <div className="task-title">주간 클리어 골드(추천 Top3)</div>
-                          <div className="task-sub">아이템레벨 기준 · 레이드별 최고 난이도만 적용</div>
+                          <div className="task-title">주간 클리어 골드(선택 3개)</div>
+                          <div className="task-sub">캐릭터별 선택 레이드 3개 + 선택 난이도 적용</div>
                         </div>
                       </td>
 
@@ -3403,11 +3587,11 @@ body.pip-dark .pip-select option{
                           );
                         }
 
-                        const charKey = weeklyCharKey(tableId, ch.id); // tableId는 renderTodoTable 인자로 이미 있음
-                        const picked = weeklyDiffByChar[charKey] ?? {};
-                        const pickedResult = calcWeeklyTop3GoldWithPick(ilvl, picked);
+                        const charKey = weeklyCharKey(tableId, ch.id);
+                        const pick = weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(ilvl);
+                        const pickedResult = calcWeeklySelectedGold(ilvl, pick);
 
-                        const detail = pickedResult.top3
+                        const detail = pickedResult.rows
                           .map((x) => `${x.raid} ${x.diff}(${x.gold.toLocaleString()})`)
                           .join(" + ");
 
@@ -3429,7 +3613,7 @@ body.pip-dark .pip-select option{
                               }}
                             >
                               <div className="gold-sum">{pickedResult.sum.toLocaleString()} G</div>
-                              <div className="gold-detail">{pickedResult.top3.map((x) => x.raid).join(" / ")}</div>
+                              <div className="gold-detail">{pickedResult.rows.map((x) => x.raid).join(" / ")}</div>
                             </button>
                           </td>
                         );
@@ -3888,8 +4072,11 @@ body.pip-dark .pip-select option{
                                     // ✅ 주간 레이드: 캐릭터별 Top3 레이드만 체크 버튼 렌더링
                                     if (section === "주간 레이드" && isWeeklyRaidTaskTitle(task.title)) {
                                       const ilvl = getCharIlvl(ch);
-                                      const top3Set = getWeeklyTop3RaidNameSet(ilvl);
-                                      if (!top3Set.has(task.title)) {
+                                      const charKey = weeklyCharKey(tableId, ch.id);
+                                      const pick = weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(ilvl);
+                                      const selectedSet = new Set(pick.raids.map((x) => normalizeRaidName(x)));
+
+                                      if (!selectedSet.has(normalizeRaidName(task.title))) {
                                         return <td key={ch.id} className="cell" />;
                                       }
                                     }
@@ -3930,12 +4117,12 @@ body.pip-dark .pip-select option{
                                     );
                                   }
 
-                                  // ✅ 캐릭터별 선택 난이도 로드 + 반영 계산
+                                  // ✅ 현재 순회 중인 캐릭터 기준으로 계산
                                   const charKey = weeklyCharKey(tableId, ch.id);
-                                  const picked = weeklyDiffByChar[charKey] ?? {};
-                                  const pickedResult = calcWeeklyTop3GoldWithPick(ilvl, picked);
+                                  const picked = weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(ilvl);
+                                  const pickedResult = calcWeeklySelectedGold(ilvl, picked);
 
-                                  const detail = pickedResult.top3
+                                  const detail = pickedResult.rows
                                     .map((x) => `${x.raid} ${x.diff}(${x.gold.toLocaleString()})`)
                                     .join(" + ");
 
@@ -3957,7 +4144,9 @@ body.pip-dark .pip-select option{
                                         }}
                                       >
                                         <div className="gold-sum">{pickedResult.sum.toLocaleString()} G</div>
-                                        <div className="gold-detail">{pickedResult.top3.map((x) => x.raid).join(" / ")}</div>
+                                        <div className="gold-detail">
+                                          {pickedResult.rows.map((x) => x.raid).join(" / ")}
+                                        </div>
                                       </button>
                                     </td>
                                   );
@@ -4828,53 +5017,147 @@ body.pip-dark .pip-select option{
           return null;
         }
 
-        const charKey = weeklyCharKey(popup.tableId, popup.charId);
-        const picked = weeklyDiffByChar[charKey] ?? {};
-        const r = calcWeeklyTop3GoldWithPick(popup.ilvl, picked);
-
-        // popup이 null 아닌 블록(분기) 안에서만 실행되게 되어있다는 전제
         const tableId = popup.tableId;
         const charId = popup.charId;
+        const popupIlvl = popup.ilvl;
+        const popupX = popup.x;
+        const popupY = popup.y;
+        const popupCharName = popup.charName;
+
+        const charKey = weeklyCharKey(tableId, charId);
+        const picked = weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(popupIlvl);
+        const pickedResult = calcWeeklySelectedGold(popupIlvl, picked);
+
+        function toggleRaid(raidName: string) {
+          setWeeklyRaidPickByChar((prev) => {
+            const cur = prev[charKey] ?? getDefaultWeeklyRaidPick(popupIlvl);
+            const exists = cur.raids.includes(raidName);
+
+            let nextRaids: string[];
+            if (exists) {
+              nextRaids = cur.raids.filter((name) => name !== raidName);
+            } else {
+              nextRaids = [...cur.raids, raidName];
+            }
+
+            // 레이드 목록에서 빠지면 goldRaids에서도 제거
+            const nextGoldRaids = (cur.goldRaids ?? []).filter((name) => nextRaids.includes(name));
+
+            const nextChar: WeeklyRaidPick = {
+              raids: nextRaids,
+              goldRaids: nextGoldRaids,
+              diffs: cur.diffs ?? {},
+            };
+
+            saveWeeklyRaidPick(tableId, charId, nextChar);
+            return { ...prev, [charKey]: nextChar };
+          });
+        }
+
+        function toggleGoldRaid(raidName: string) {
+          const cur = weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(popupIlvl);
+          const currentGoldRaids = (cur.goldRaids ?? []).filter((name) => cur.raids.includes(name));
+          const exists = currentGoldRaids.includes(raidName);
+
+          if (!exists && currentGoldRaids.length >= 3) {
+            alert("골드 체크는 최대 3개까지 가능해요!");
+            return;
+          }
+
+          setWeeklyRaidPickByChar((prev) => {
+            const latest = prev[charKey] ?? getDefaultWeeklyRaidPick(popupIlvl);
+            const latestGoldRaids = (latest.goldRaids ?? []).filter((name) => latest.raids.includes(name));
+            const latestExists = latestGoldRaids.includes(raidName);
+
+            const nextGoldRaids = latestExists
+              ? latestGoldRaids.filter((name) => name !== raidName)
+              : [...latestGoldRaids, raidName];
+
+            const nextChar: WeeklyRaidPick = {
+              raids: latest.raids,
+              goldRaids: nextGoldRaids,
+              diffs: latest.diffs ?? {},
+            };
+
+            saveWeeklyRaidPick(tableId, charId, nextChar);
+            return { ...prev, [charKey]: nextChar };
+          });
+        }
 
         function setPick(raidName: string, diff: DiffName) {
-          setWeeklyDiffByChar((prev) => {
-            const nextChar = { ...(prev[charKey] ?? {}), [raidName]: diff };
-            const next = { ...prev, [charKey]: nextChar };
+          setWeeklyRaidPickByChar((prev) => {
+            const cur = prev[charKey] ?? getDefaultWeeklyRaidPick(popupIlvl);
+            const nextChar: WeeklyRaidPick = {
+              raids: cur.raids,
+              goldRaids: cur.goldRaids ?? [],
+              diffs: { ...(cur.diffs ?? {}), [raidName]: diff },
+            };
 
-            saveWeeklyDiff(tableId, charId, nextChar); // ✅ popup 안 씀 → null 경고 사라짐
-            return next;
+            saveWeeklyRaidPick(tableId, charId, nextChar);
+            return { ...prev, [charKey]: nextChar };
           });
         }
 
         return (
-          <div className="weekly-top3-pop" style={{ left: popup.x + 12, top: popup.y + 12 }}>
+          <div className="weekly-top3-pop" style={{ left: popupX + 12, top: popupY + 12 }}>
             <div className="weekly-top3-head">
-              <b>{popup.charName} · Top3 골드</b>
+              <b>{popupCharName} · 선택 레이드 골드</b>
               <button onClick={() => setWeeklyTop3Popup(null)}>닫기</button>
             </div>
 
             <div className="weekly-top3-sum">
-              합계: <b>{r.sum.toLocaleString()} G</b>
+              합계: <b>{pickedResult.sum.toLocaleString()} G</b>
+            </div>
+
+            <div className="weekly-top3-pick-list">
+              {RAID_CATALOG
+                .filter((raid) => availableDiffNames(popupIlvl, raid.name).length > 0)
+                .map((raid) => {
+                  const active = picked.raids.includes(raid.name);
+
+                  return (
+                    <button
+                      key={raid.name}
+                      type="button"
+                      className={`raid-pick-btn ${active ? "active" : ""}`}
+                      onClick={() => toggleRaid(raid.name)}
+                    >
+                      {raid.name}
+                    </button>
+                  );
+                })}
             </div>
 
             <div className="weekly-top3-body">
-              {r.top3.map((x) => (
-                <div key={x.raid} className="weekly-top3-row">
-                  <div className="weekly-top3-raid">{x.raid}</div>
+              {pickedResult.rows.map((row: {
+                raid: string;
+                diff: DiffName;
+                gold: number;
+                checked: boolean;
+                avail: DiffName[];
+              }) => (
+                <div key={row.raid} className="weekly-top3-row">
+                  <div className="weekly-top3-raid">
+                    <label className="raid-row-check">
+                      <input
+                        type="checkbox"
+                        checked={row.checked}
+                        onChange={() => toggleGoldRaid(row.raid)}
+                      />
+                      <span>{row.raid}</span>
+                    </label>
+                  </div>
 
                   <div className="weekly-top3-diffs">
-                    {(["노말", "하드", "나이트메어"] as DiffName[]).map((d) => {
-                      const enabled = x.avail.includes(d);
-                      const active = (picked?.[x.raid] ?? x.diff) === d;
+                    {row.avail.map((d: DiffName) => {
+                      const diffActive = row.diff === d;
 
                       return (
                         <button
                           key={d}
                           type="button"
-                          className={`diff-btn ${active ? "active" : ""}`}
-                          disabled={!enabled}
-                          onClick={() => setPick(x.raid, d)}
-                          title={enabled ? `${getGoldByDiffName(x.raid, d).toLocaleString()} G` : "아이템레벨 부족"}
+                          className={`diff-btn ${diffActive ? "active" : ""}`}
+                          onClick={() => setPick(row.raid, d)}
                         >
                           {d}
                         </button>
@@ -4882,7 +5165,9 @@ body.pip-dark .pip-select option{
                     })}
                   </div>
 
-                  <div className="weekly-top3-gold">{x.gold.toLocaleString()} G</div>
+                  <div className="weekly-top3-gold">
+                    {row.gold.toLocaleString()} G
+                  </div>
                 </div>
               ))}
             </div>

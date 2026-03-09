@@ -1666,17 +1666,90 @@ html[data-theme="dark"] .rest-input {
 }
 
 .raidLeftColCard {
-  flex: 0 0 220px;
-  /* ✅ 조금 넓혀서 뱃지 2개 안정적으로 */
+  flex: 0 0 290px;
   border: 1px solid var(--border);
   border-radius: 16px;
-
-  /* ✅ 다크/라이트 공통 테마 변수 사용 */
   background: var(--card);
   color: var(--text);
-
   box-shadow: var(--shadow);
   padding: 12px;
+}
+
+.raidLeftColBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.raidLeftColItemRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  padding: 4px 0;
+}
+
+.raidLeftColRaid {
+  min-width: 0;
+  word-break: keep-all;
+}
+
+.raidMatchStatusInline {
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* 이미 매칭된 줄은 조금 연하게 */
+.matchedRow {
+  opacity: 0.66;
+}
+
+.matchedTitle {
+  color: var(--text);
+}
+
+.unmatchedTitle {
+  color: var(--text);
+  font-weight: 900;
+}
+
+html[data-theme="dark"] .matchedTitle,
+html[data-theme="dark"] .unmatchedTitle {
+  color: #ffffff;
+}
+
+.matchedStatus {
+  color: var(--muted);
+}
+
+/* 미매칭 줄은 강조 */
+.unmatchedRow {
+  opacity: 1;
+}
+
+html[data-theme="dark"] .unmatchedTitle {
+  color: #ffffff;
+}
+
+.unmatchedStatus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 56px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(217, 119, 6, 0.12);
+  color: #b45309;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+html[data-theme="dark"] .unmatchedStatus {
+  background: rgba(251, 191, 36, 0.14);
+  color: #fbbf24;
 }
 
 /* ===== 친구 남은 레이드 메타 뱃지 ===== */
@@ -1747,11 +1820,6 @@ html[data-theme="dark"] .rest-input {
   margin-left: 10px;
 }
 
-.raidLeftColBody {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
 
 .raidLeftColItem {
   font-size: 13px;
@@ -1873,10 +1941,10 @@ body,
 
 .weekly-top3-row {
   display: grid;
-  grid-template-columns: 52px 1fr auto;
+  grid-template-columns: minmax(110px, auto) 1fr auto;
   align-items: center;
   gap: 8px;
-  padding: 8px;
+  padding: 8px 10px;
   border-radius: 12px;
   background: var(--soft);
   border: 1px solid var(--border);
@@ -1884,6 +1952,23 @@ body,
 
 .weekly-top3-raid {
   font-weight: 800;
+  min-width: 0;
+}
+
+.raid-row-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.raid-row-check span {
+  white-space: nowrap;
+  word-break: keep-all;
+}
+
+.raid-row-check input[type="checkbox"] {
+  flex: 0 0 auto;
 }
 
 .weekly-top3-diffs {
@@ -2567,8 +2652,9 @@ body.pip-dark .pip-cube.is-pressed {
 .mini.danger:hover {
   border-color: rgba(255, 80, 80, .55);
 }
+
 /*해야할 일*/
-.todayMustDoPanel{
+.todayMustDoPanel {
   margin: 10px 0 14px;
   padding: 14px 16px;
   border: 1px solid var(--border);
@@ -2578,7 +2664,7 @@ body.pip-dark .pip-cube.is-pressed {
   box-shadow: var(--shadow);
 }
 
-.todayMustDoHeader{
+.todayMustDoHeader {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -2586,18 +2672,18 @@ body.pip-dark .pip-cube.is-pressed {
   margin-bottom: 12px;
 }
 
-.todayMustDoTitle{
+.todayMustDoTitle {
   font-size: 16px;
   font-weight: 800;
   margin-bottom: 4px;
 }
 
-.todayMustDoSub{
+.todayMustDoSub {
   font-size: 13px;
   color: var(--muted);
 }
 
-.todayMustDoSettings{
+.todayMustDoSettings {
   display: flex;
   flex-wrap: wrap;
   gap: 10px 16px;
@@ -2608,7 +2694,7 @@ body.pip-dark .pip-cube.is-pressed {
   background: var(--soft);
 }
 
-.todayMustDoCheck{
+.todayMustDoCheck {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -2617,25 +2703,25 @@ body.pip-dark .pip-cube.is-pressed {
   white-space: nowrap;
 }
 
-.todayMustDoCheck input{
+.todayMustDoCheck input {
   width: 14px;
   height: 14px;
 }
 
-.todayMustDoList{
+.todayMustDoList {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 12px;
 }
 
-.todayMustDoItem{
+.todayMustDoItem {
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--soft-2);
   padding: 12px 14px;
 }
 
-.todayMustDoItemTop{
+.todayMustDoItemTop {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2643,7 +2729,7 @@ body.pip-dark .pip-cube.is-pressed {
   margin-bottom: 10px;
 }
 
-.todayMustDoBadge{
+.todayMustDoBadge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2656,35 +2742,35 @@ body.pip-dark .pip-cube.is-pressed {
   font-weight: 800;
 }
 
-.todayMustDoChar{
+.todayMustDoChar {
   font-size: 14px;
   font-weight: 800;
   color: var(--text);
 }
 
-.todayMustDoTaskList{
+.todayMustDoTaskList {
   display: grid;
   gap: 10px;
 }
 
-.todayMustDoTaskRow{
+.todayMustDoTaskRow {
   padding-top: 2px;
 }
 
-.todayMustDoLabel{
+.todayMustDoLabel {
   font-size: 15px;
   font-weight: 800;
   margin-bottom: 4px;
   color: var(--text);
 }
 
-.todayMustDoReason{
+.todayMustDoReason {
   font-size: 13px;
   color: var(--muted);
   line-height: 1.5;
 }
 
-.todayMustDoEmpty{
+.todayMustDoEmpty {
   padding: 16px 12px;
   border: 1px dashed var(--border);
   border-radius: 12px;
@@ -2743,9 +2829,49 @@ body.pip-dark .pip-cube.is-pressed {
 }
 
 .char-roleOpt:first-child {
-  color: #b85245;   /* 딜러 */
+  color: #b85245;
+  /* 딜러 */
 }
 
 .char-roleOpt:last-child {
-  color: #40995d;   /* 서폿 */
+  color: #40995d;
+  /* 서폿 */
 }
+
+.raid-pick-btn {
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  border-radius: 10px;
+  height: 30px;
+  padding: 0 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.raid-pick-btn.active {
+  border-color: rgba(59, 130, 246, 0.55);
+  background: rgba(59, 130, 246, 0.18);
+  font-weight: 800;
+}
+
+.weekly-top3-pick-list {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+
+/*레이드 매칭*/
+.raidMatchStatus {
+  margin-top: 3px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.raidLineTitle {
+  transition: opacity 120ms ease;
+}
+
+
