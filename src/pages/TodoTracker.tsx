@@ -1446,13 +1446,17 @@ export default function TodoTracker() {
       },
     ].filter((x) => x.enabled);
 
-    if (!weeklyTargets.length) return [];
-
     for (const table of state.tables) {
       for (const ch of table.characters) {
         const tasks: WeeklyMustDoTaskEntry[] = [];
+        const ilvl = getCharIlvl(ch as any);
 
         for (const target of weeklyTargets) {
+          const minIlvl = TASK_MIN_ILVL[target.title] ?? 0;
+
+          // ✅ 레벨 미달 캐릭은 해당 주간 콘텐츠 검사 자체를 안 함
+          if (minIlvl > 0 && ilvl < minIlvl) continue;
+
           const task = state.tasks.find(
             (t) => t.period === "WEEKLY" && (t.title ?? "").trim() === target.title
           );
