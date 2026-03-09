@@ -1420,6 +1420,21 @@ export default function TodoTracker() {
     tasks: WeeklyMustDoTaskEntry[];
   };
 
+    const TASK_MIN_ILVL: Record<string, number> = {
+    "할의 모래시계": 1730,
+    "1막": 1660,
+    "2막": 1670,
+    "3막": 1680,
+    "4막": 1700,
+    "종막": 1710,
+    "세르카": 1710,
+    "지평의 성당": 1710,
+    "1해금": 1640,
+    "2해금": 1680,
+    "3해금": 1700,
+    "4해금": 1720,
+  };
+
   const weeklyMustDoItems = useMemo<WeeklyMustDoItem[]>(() => {
     const result: WeeklyMustDoItem[] = [];
 
@@ -2732,20 +2747,7 @@ export default function TodoTracker() {
     { key: "ABYSS1", name: "지평의 성당", diffs: [{ name: "1단계", minIlvl: 1700, gold: 30000 }, { name: "2단계", minIlvl: 1720, gold: 40000 }, { name: "3단계", minIlvl: 1750, gold: 50000 }] },
   ];
 
-  const TASK_MIN_ILVL: Record<string, number> = {
-    "할의 모래시계": 1730,
-    "1막": 1660,
-    "2막": 1670,
-    "3막": 1680,
-    "4막": 1700,
-    "종막": 1710,
-    "세르카": 1710,
-    "지평의 성당": 1710,
-    "1해금": 1640,
-    "2해금": 1680,
-    "3해금": 1700,
-    "4해금": 1720,
-  };
+
 
   // =========================
   // ✅ 쿠르잔 전선 → 큐브 해금 티켓 +1
