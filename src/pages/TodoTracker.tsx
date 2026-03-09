@@ -1420,7 +1420,7 @@ export default function TodoTracker() {
     tasks: WeeklyMustDoTaskEntry[];
   };
 
-    const TASK_MIN_ILVL: Record<string, number> = {
+  const TASK_MIN_ILVL: Record<string, number> = {
     "할의 모래시계": 1730,
     "1막": 1660,
     "2막": 1670,
@@ -1433,6 +1433,39 @@ export default function TodoTracker() {
     "2해금": 1680,
     "3해금": 1700,
     "4해금": 1720,
+  };
+
+  function isCheckedCell(tableId: string, taskId: string, charId: string) {
+    const cell = getCellByTableId(state, tableId, taskId, charId);
+    if (!cell) return false;
+    if (cell.type === "CHECK") return !!cell.checked;
+    if (cell.type === "COUNTER") return Number(cell.count ?? 0) >= 1;
+    return false;
+  }
+
+  function parseIlvl(raw?: string): number {
+    if (!raw) return NaN;
+    const n = Number(String(raw).replace(/,/g, "").trim());
+    return Number.isFinite(n) ? n : NaN;
+  }
+
+  const getCharIlvl = (ch: any) => {
+    const v =
+      ch.itemLevel ??
+      ch.item_level ??
+      ch.ilvl ??
+      ch.iLvl ??
+      ch.level ??
+      ch.levelLabel ??
+      ch.nameLevel;
+
+    try {
+      const n = typeof v === "number" ? v : parseIlvl(String(v ?? ""));
+      return Number.isFinite(n) ? n : 0;
+    } catch {
+      const n = Number(String(v ?? "").replace(/[^0-9.]/g, ""));
+      return Number.isFinite(n) ? n : 0;
+    }
   };
 
   const weeklyMustDoItems = useMemo<WeeklyMustDoItem[]>(() => {
@@ -1468,8 +1501,6 @@ export default function TodoTracker() {
 
         for (const target of weeklyTargets) {
           const minIlvl = TASK_MIN_ILVL[target.title] ?? 0;
-
-          // ✅ 레벨 미달 캐릭은 해당 주간 콘텐츠 검사 자체를 안 함
           if (minIlvl > 0 && ilvl < minIlvl) continue;
 
           const task = state.tasks.find(
@@ -1503,6 +1534,7 @@ export default function TodoTracker() {
 
     return result;
   }, [state, weeklyMustDoSettings]);
+
 
   function readAccountChecks(tableId: string): Record<string, boolean> {
     try {
@@ -1544,38 +1576,6 @@ export default function TodoTracker() {
       return next;
     });
   }
-
-  function isCheckedCell(tableId: string, taskId: string, charId: string) {
-    const cell = getCellByTableId(state, tableId, taskId, charId);
-    if (!cell) return false;
-    if (cell.type === "CHECK") return !!cell.checked;
-    if (cell.type === "COUNTER") return Number(cell.count ?? 0) >= 1;
-    return false;
-  }
-  function parseIlvl(raw?: string): number {
-    if (!raw) return NaN;
-    const n = Number(String(raw).replace(/,/g, "").trim());
-    return Number.isFinite(n) ? n : NaN;
-  }
-
-  const getCharIlvl = (ch: any) => {
-    const v =
-      ch.itemLevel ??
-      ch.item_level ??
-      ch.ilvl ??
-      ch.iLvl ??
-      ch.level ??
-      ch.levelLabel ??
-      ch.nameLevel;
-
-    try {
-      const n = typeof v === "number" ? v : parseIlvl(String(v ?? ""));
-      return Number.isFinite(n) ? n : 0;
-    } catch {
-      const n = Number(String(v ?? "").replace(/[^0-9.]/g, ""));
-      return Number.isFinite(n) ? n : 0;
-    }
-  };
 
   // 레이드 이름 비교용 정규화
   function normalizeRaidName(name: string) {
