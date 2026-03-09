@@ -2710,11 +2710,17 @@ body.pip-dark .pip-cube.is-pressed {
 
 .todayMustDoList {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(260px, 260px));
   gap: 12px;
+  align-items: start;
+  justify-content: start;
 }
 
 .todayMustDoItem {
+  width: 260px;
+  min-height: 180px; /* 필요 없으면 빼도 됨 */
+  box-sizing: border-box;
+
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--soft-2);

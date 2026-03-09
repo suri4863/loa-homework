@@ -1336,6 +1336,20 @@ export default function TodoTracker() {
     azenaDaily: true,
   };
 
+  type WeeklyMustDoSettings = {
+    sandglass: boolean;
+    sky: boolean;
+    bloodstone: boolean;
+    clearMedal: boolean;
+  };
+
+  const DEFAULT_WEEKLY_MUST_DO_SETTINGS: WeeklyMustDoSettings = {
+    sandglass: true,
+    sky: true,
+    bloodstone: true,
+    clearMedal: true,
+  };
+
   type TodayMustDoTaskEntry = {
     label: string;
     reasons: string[];
@@ -1350,11 +1364,11 @@ export default function TodoTracker() {
     tasks: TodayMustDoTaskEntry[];
   };
 
-
   // ✅ 계정 콘텐츠 체크(카게/필보): tableId별로 저장/로드 (06:00 리셋 기준)
   const [accountChecksByTable, setAccountChecksByTable] = useState<Record<string, Record<string, boolean>>>({});
-
   const [todayMustDoOpen, setTodayMustDoOpen] = useState(false);
+  const [weeklyMustDoOpen, setWeeklyMustDoOpen] = useState(false);
+
 
   const [todayMustDoSettings, setTodayMustDoSettings] = useState<TodayMustDoSettings>(() => {
     try {
@@ -1366,6 +1380,16 @@ export default function TodoTracker() {
     }
   });
 
+  const [weeklyMustDoSettings, setWeeklyMustDoSettings] = useState<WeeklyMustDoSettings>(() => {
+    try {
+      const raw = localStorage.getItem("loa-weekly-must-do-settings:v1");
+      if (!raw) return DEFAULT_WEEKLY_MUST_DO_SETTINGS;
+      return { ...DEFAULT_WEEKLY_MUST_DO_SETTINGS, ...(JSON.parse(raw) ?? {}) };
+    } catch {
+      return DEFAULT_WEEKLY_MUST_DO_SETTINGS;
+    }
+  });
+
   useEffect(() => {
     try {
       localStorage.setItem("loa-today-must-do-settings:v1", JSON.stringify(todayMustDoSettings));
@@ -1373,6 +1397,93 @@ export default function TodoTracker() {
       // ignore
     }
   }, [todayMustDoSettings]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("loa-weekly-must-do-settings:v1", JSON.stringify(weeklyMustDoSettings));
+    } catch {
+      // ignore
+    }
+  }, [weeklyMustDoSettings]);
+
+  type WeeklyMustDoTaskEntry = {
+    label: string;
+    reasons: string[];
+  };
+
+  type WeeklyMustDoItem = {
+    key: string;
+    tableId: string;
+    tableName: string;
+    charId: string;
+    charName: string;
+    tasks: WeeklyMustDoTaskEntry[];
+  };
+
+  const weeklyMustDoItems = useMemo<WeeklyMustDoItem[]>(() => {
+    const result: WeeklyMustDoItem[] = [];
+
+    const weeklyTargets = [
+      {
+        enabled: weeklyMustDoSettings.sandglass,
+        title: "할의 모래시계",
+        reason: "주간 체크 안 됨",
+      },
+      {
+        enabled: weeklyMustDoSettings.sky,
+        title: "천상",
+        reason: "주간 체크 안 됨",
+      },
+      {
+        enabled: weeklyMustDoSettings.bloodstone,
+        title: "혈석 교환",
+        reason: "주간 체크 안 됨",
+      },
+      {
+        enabled: weeklyMustDoSettings.clearMedal,
+        title: "클리어메달 교환",
+        reason: "주간 체크 안 됨",
+      },
+    ].filter((x) => x.enabled);
+
+    if (!weeklyTargets.length) return [];
+
+    for (const table of state.tables) {
+      for (const ch of table.characters) {
+        const tasks: WeeklyMustDoTaskEntry[] = [];
+
+        for (const target of weeklyTargets) {
+          const task = state.tasks.find(
+            (t) => t.period === "WEEKLY" && (t.title ?? "").trim() === target.title
+          );
+          if (!task) continue;
+
+          const cell = getCellByTableId(state, table.id, task.id, ch.id);
+          const checked = !!(cell && cell.type === "CHECK" && cell.checked);
+
+          if (!checked) {
+            tasks.push({
+              label: target.title,
+              reasons: [target.reason],
+            });
+          }
+        }
+
+        if (tasks.length > 0) {
+          result.push({
+            key: `${table.id}-${ch.id}`,
+            tableId: table.id,
+            tableName: table.name ?? "표",
+            charId: ch.id,
+            charName: ch.name,
+            tasks,
+          });
+        }
+      }
+    }
+
+    return result;
+  }, [state, weeklyMustDoSettings]);
 
   function readAccountChecks(tableId: string): Record<string, boolean> {
     try {
@@ -4335,6 +4446,10 @@ body.pip-dark .pip-select option{
                   <button className="btn" onClick={() => setTodayMustDoOpen((v) => !v)}>
                     오늘 해야할 일 {todayMustDoItems.length > 0 ? `(${todayMustDoItems.length})` : ""}
                   </button>
+
+                  <button className="btn" onClick={() => setWeeklyMustDoOpen((v) => !v)}>
+                    주간 해야할 일 {weeklyMustDoItems.length > 0 ? `(${weeklyMustDoItems.length})` : ""}
+                  </button>
                 </div>
               </div>
             </div>
@@ -4905,6 +5020,93 @@ body.pip-dark .pip-select option{
                   <div className="todayMustDoItemTop">
                     <span className="todayMustDoBadge">{item.tableName}</span>
                     {item.charName ? <span className="todayMustDoChar">{item.charName}</span> : null}
+                  </div>
+
+                  <div className="todayMustDoTaskList">
+                    {item.tasks.map((task) => (
+                      <div key={task.label} className="todayMustDoTaskRow">
+                        <div className="todayMustDoLabel">{task.label}</div>
+                        <div className="todayMustDoReason">{task.reasons.join(", ")}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {weeklyMustDoOpen && (
+        <div className="todayMustDoPanel">
+          <div className="todayMustDoHeader">
+            <div>
+              <div className="todayMustDoTitle">주간 해야할 일</div>
+              <div className="todayMustDoSub">
+                전체 표 기준 주간 체크 안 된 항목
+              </div>
+            </div>
+
+            <button className="btn" onClick={() => setWeeklyMustDoOpen(false)}>
+              닫기
+            </button>
+          </div>
+
+          <div className="todayMustDoSettings">
+            <label className="todayMustDoCheck">
+              <input
+                type="checkbox"
+                checked={weeklyMustDoSettings.sandglass}
+                onChange={(e) =>
+                  setWeeklyMustDoSettings((prev) => ({ ...prev, sandglass: e.target.checked }))
+                }
+              />
+              <span>할의 모래시계 체크 안 된 캐릭 출력</span>
+            </label>
+
+            <label className="todayMustDoCheck">
+              <input
+                type="checkbox"
+                checked={weeklyMustDoSettings.sky}
+                onChange={(e) =>
+                  setWeeklyMustDoSettings((prev) => ({ ...prev, sky: e.target.checked }))
+                }
+              />
+              <span>천상 체크 안 된 캐릭 출력</span>
+            </label>
+
+            <label className="todayMustDoCheck">
+              <input
+                type="checkbox"
+                checked={weeklyMustDoSettings.bloodstone}
+                onChange={(e) =>
+                  setWeeklyMustDoSettings((prev) => ({ ...prev, bloodstone: e.target.checked }))
+                }
+              />
+              <span>혈석 교환 체크 안 된 캐릭 출력</span>
+            </label>
+
+            <label className="todayMustDoCheck">
+              <input
+                type="checkbox"
+                checked={weeklyMustDoSettings.clearMedal}
+                onChange={(e) =>
+                  setWeeklyMustDoSettings((prev) => ({ ...prev, clearMedal: e.target.checked }))
+                }
+              />
+              <span>클리어메달 교환 체크 안 된 캐릭 출력</span>
+            </label>
+          </div>
+
+          {weeklyMustDoItems.length === 0 ? (
+            <div className="todayMustDoEmpty">주간 해야할 일이 없어!</div>
+          ) : (
+            <div className="todayMustDoList">
+              {weeklyMustDoItems.map((item) => (
+                <div key={item.key} className="todayMustDoItem">
+                  <div className="todayMustDoItemTop">
+                    <span className="todayMustDoBadge">{item.tableName}</span>
+                    <span className="todayMustDoChar">{item.charName}</span>
                   </div>
 
                   <div className="todayMustDoTaskList">
