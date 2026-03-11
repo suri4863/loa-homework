@@ -348,7 +348,7 @@ export default function TodoTracker() {
 
     try {
       const s = stateRef.current;
-      const snapshotJson = exportRaidLeftSnapshot(s, "ALL");
+      const snapshotJson = exportRaidLeftSnapshot(s, "ALL", weeklyRaidPickByChar);
 
       await apiFetch2("/api/me/raid-left-snapshot", {
         method: "PUT",
@@ -714,9 +714,9 @@ export default function TodoTracker() {
         const friendPower = parseNum(row.charPower ?? row.power ?? row.combatPower);
 
         const raidsRaw = Array.isArray(row.remainingRaids)
-          ? row.remainingRaids
+          ? row.remainingRaids.slice(0, 3)
           : Array.isArray(row.remaining)
-            ? row.remaining
+            ? row.remaining.slice(0, 3)
             : [];
 
         const raids = raidsRaw
@@ -755,16 +755,7 @@ export default function TodoTracker() {
 
     const matched: KkanbuMatch[] = [];
 
-    for (const [key, friendList] of friendGroups.entries()) {
-      const myList = myGroups.get(key) ?? [];
-      if (!myList.length) continue;
-
-      matched.push(...solveBestOneToOne(friendList, myList));
-    }
-
-    matched.sort((a, b) => b.avgPower - a.avgPower);
-
-    // ✅ 한 그룹 안에서 1:1 최적 매칭 (전체 avg 합 최대)
+    // ✅ 한 그룹 안에서 1:1 매칭
     function solveBestOneToOne(friendList: FriendCandidate[], myList: MyCandidate[]): KkanbuMatch[] {
       if (!friendList.length || !myList.length) return [];
 
@@ -811,6 +802,25 @@ export default function TodoTracker() {
 
       return result.sort((a, b) => b.avgPower - a.avgPower);
     }
+
+    for (const [key, friendList] of friendGroups.entries()) {
+      const myList = myGroups.get(key) ?? [];
+      if (!myList.length) continue;
+
+      matched.push(...solveBestOneToOne(friendList, myList));
+    }
+
+    matched.sort((a, b) => b.avgPower - a.avgPower);
+
+
+    for (const [key, friendList] of friendGroups.entries()) {
+      const myList = myGroups.get(key) ?? [];
+      if (!myList.length) continue;
+
+      matched.push(...solveBestOneToOne(friendList, myList));
+    }
+
+    matched.sort((a, b) => b.avgPower - a.avgPower);
 
     const matchedFriendKeys = new Set(
       matched.map((m) => `${m.friend.row?.tableName ?? ""}::${m.friend.row?.charName ?? ""}`)
@@ -4636,7 +4646,7 @@ body.pip-dark .pip-select option{
                       className="mini"
                       onClick={() => {
                         try {
-                          const json = exportRaidLeftSnapshot(state, state.activeTableId);
+                          const json = exportRaidLeftSnapshot(state, state.activeTableId, weeklyRaidPickByChar);
                           navigator.clipboard.writeText(json);
                           alert("남은 레이드 스냅샷을 클립보드에 복사했어!");
                         } catch (e: any) {

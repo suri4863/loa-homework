@@ -105,10 +105,9 @@ export type RaidLeftSnapshotPayload = {
 };
 
 export type FriendEntry = {
-  code: string; // 친구의 friendCode
+  code: string;
   nickname: string;
   addedAt: number;
-  lastSnapshot?: RaidLeftSnapshotPayload;
 };
 
 export type TodoState = {
@@ -133,6 +132,51 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
+function parseIlvl(v: any): number {
+  if (v === null || v === undefined) return NaN;
+  const n = Number(String(v).replace(/[^\d.]/g, ""));
+  return Number.isFinite(n) ? n : NaN;
+}
+
+function withDiff(raid: string, ilvl: number): string {
+  const name = String(raid ?? "").trim();
+
+  if (!name) return "";
+
+  if (/(노말|하드|나이트메어)$/.test(name)) {
+    return name;
+  }
+
+  if (name === "세르카") {
+    return ilvl >= 1720 ? "세르카 나이트메어" : "세르카 노말";
+  }
+
+  if (name === "종막") {
+    return ilvl >= 1700 ? "종막 노말" : "종막";
+  }
+
+  if (name === "4막") {
+    return ilvl >= 1700 ? "4막 노말" : "4막";
+  }
+
+  if (name === "지평의 성당") {
+    return "지평의 성당";
+  }
+
+  if (name === "1막") {
+    return "1막";
+  }
+
+  if (name === "2막") {
+    return "2막";
+  }
+
+  if (name === "3막") {
+    return "3막";
+  }
+
+  return name;
+}
 export function createCharacter(input: {
   name: string;
   itemLevel?: string;
@@ -576,99 +620,61 @@ export function exportStateToJson(state: TodoState): string {
 // ✅ 친구 스냅샷 (남은 레이드만 공유)
 // =========================
 // tableId를 주면 해당 표만, 없으면(또는 "ALL") 모든 표의 캐릭터 합산
-export function exportRaidLeftSnapshot(state: TodoState, tableId?: string | "ALL"): string {
+export function exportRaidLeftSnapshot(
+  state: TodoState,
+  tableId?: string | "ALL",
+  weeklyRaidPickByChar?: Record<string, { raids: string[]; goldRaids?: string[]; diffs?: Record<string, string> }>
+): string {
   if (state.profile?.shareMode === "PRIVATE") throw new Error("PRIVATE_MODE");
-
-  // 레이드 Top3 계산용 카탈로그(프론트와 동일 컨셉)
-  const RAID_CATALOG = [
-    { name: "1막", diffs: [{ minIlvl: 1660, gold: 11500 }, { minIlvl: 1680, gold: 18000 }] },
-    { name: "2막", diffs: [{ minIlvl: 1670, gold: 16500 }, { minIlvl: 1690, gold: 23000 }] },
-    { name: "3막", diffs: [{ minIlvl: 1680, gold: 21000 }, { minIlvl: 1700, gold: 27000 }] },
-    { name: "4막", diffs: [{ minIlvl: 1700, gold: 33000 }, { minIlvl: 1720, gold: 42000 }] },
-    { name: "종막", diffs: [{ minIlvl: 1710, gold: 40000 }, { minIlvl: 1730, gold: 52000 }] },
-    { name: "세르카", diffs: [{ minIlvl: 1710, gold: 35000 }, { minIlvl: 1730, gold: 44000 }, { minIlvl: 1740, gold: 54000 }] },
-    //{ name: "지평의 성당", diffs: [{ minIlvl: 1710, gold: 35000 }, { minIlvl: 1730, gold: 44000 }, { minIlvl: 1740, gold: 54000 }] },
-  ];
-
-  const parseIlvl = (raw?: string) => {
-    if (!raw) return 0;
-    const cleaned = String(raw).replace(/,/g, "").replace(/[^0-9.]/g, "").trim();
-    const n = Number(cleaned);
-    return Number.isFinite(n) ? n : 0;
-  };
-
-  type DiffName = "노말" | "하드" | "나이트메어";
-
-  const diffNameByIndex = (raidName: string, idx: number): DiffName => {
-    // 2단계 레이드는 [노말, 하드]
-    // 3단계 레이드는 [노말, 하드, 나이트메어] (세르카)
-    if (raidName === "세르카") return (["노말", "하드", "나이트메어"][idx] as DiffName);
-    return (["노말", "하드"][idx] as DiffName);
-  };
-
-  const pickBestDiffLabel = (raidName: string, ilvl: number) => {
-    const raid = RAID_CATALOG.find((r) => r.name === raidName);
-    if (!raid) return null;
-
-    const eligible = raid.diffs
-      .map((d, idx) => ({ ...d, idx }))
-      .filter((d) => ilvl >= d.minIlvl)
-      .sort((a, b) => b.gold - a.gold)[0];
-
-    if (!eligible) return null;
-    return diffNameByIndex(raidName, eligible.idx);
-  };
-
-  const withDiff = (raidName: string, ilvl: number) => {
-    const label = pickBestDiffLabel(raidName, ilvl);
-    return label ? `${raidName} ${label}` : raidName;
-  };
-
-
-  const getTop3RaidSet = (ilvl: number) => {
-    const candidates = RAID_CATALOG
-      .map((r) => {
-        const best = r.diffs.filter((d) => ilvl >= d.minIlvl).sort((a, b) => b.gold - a.gold)[0];
-        return best ? { raid: r.name, gold: best.gold } : null;
-      })
-      .filter(Boolean) as { raid: string; gold: number }[];
-
-    candidates.sort((a, b) => b.gold - a.gold);
-    return new Set(candidates.slice(0, 3).map((x) => x.raid));
-  };
 
   const weeklyRaidTasks = state.tasks.filter(
     (t) => t.period === "WEEKLY" && t.section === "주간 레이드" && t.cellType === "CHECK"
   );
 
+  const weeklyRaidTitleToId = new Map<string, string>();
+  for (const task of weeklyRaidTasks) {
+    weeklyRaidTitleToId.set(String(task.title ?? "").trim(), task.id);
+  }
+
+  const weeklyCharKey = (tableId: string, charId: string) => `${tableId}:${charId}`;
+
+  const normalizeRaidName = (s: string) =>
+    String(s ?? "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .replace(/\s*(노말|하드|나이트메어)\s*$/g, "");
+
   const isAll = !tableId || tableId === "ALL";
   const tables = isAll ? state.tables : [getTableById(state, tableId)];
   const rows = [];
+
 
   for (const table of tables) {
     for (const ch of table.characters) {
       const ilvl = parseIlvl(ch.itemLevel);
 
-      // ✅ 주간 레이드 task 전체 중, 현재 캐릭터가 체크 대상으로 쓰는 레이드들만 본다
-      const selectedWeeklyTasks = weeklyRaidTasks.filter((task) => {
-        const v = table.values?.[task.id]?.[ch.id];
-        // 체크됐든 안됐든, 표에 노출되는 선택 레이드면 포함해야 함
-        // 현재 구조에서는 values만으로 선택 레이드를 알 수 없으니
-        // 최소한 "체크됐거나 남아있는 레이드 task" 전체를 후보로 둔다.
-        return true;
-      });
+      const charKey = weeklyCharKey(table.id, ch.id);
+      const pick = weeklyRaidPickByChar?.[charKey];
+      const selectedRaidTitles = Array.isArray(pick?.raids)
+        ? pick!.raids.map((x) => normalizeRaidName(x)).filter(Boolean)
+        : [];
+
+      if (!selectedRaidTitles.length) continue;
 
       const remaining: string[] = [];
       let clearedCount = 0;
 
-      for (const task of selectedWeeklyTasks) {
-        const v = table.values?.[task.id]?.[ch.id];
+      for (const raidTitle of selectedRaidTitles) {
+        const taskId = weeklyRaidTitleToId.get(raidTitle);
+        if (!taskId) continue;
+
+        const v = table.values?.[taskId]?.[ch.id];
         const cleared = v?.type === "CHECK" && v.checked === true;
 
         if (cleared) {
           clearedCount++;
         } else {
-          remaining.push(task.title);
+          remaining.push(raidTitle);
         }
       }
 
@@ -684,7 +690,7 @@ export function exportRaidLeftSnapshot(state: TodoState, tableId?: string | "ALL
         ilvl,
         remainingRaids,
         clearedCount,
-        totalCount: selectedWeeklyTasks.length,
+        totalCount: selectedRaidTitles.length,
       });
     }
   }
@@ -699,7 +705,6 @@ export function exportRaidLeftSnapshot(state: TodoState, tableId?: string | "ALL
     data: rows,
   });
 }
-
 
 export function importRaidLeftSnapshot(raw: any): RaidLeftSnapshotPayload {
   let parsed: any = raw;
