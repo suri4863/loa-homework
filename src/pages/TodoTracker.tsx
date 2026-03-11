@@ -753,65 +753,64 @@ export default function TodoTracker() {
       myGroups.get(key)!.push(me);
     }
 
+    const matched: KkanbuMatch[] = [];
+
+    for (const [key, friendList] of friendGroups.entries()) {
+      const myList = myGroups.get(key) ?? [];
+      if (!myList.length) continue;
+
+      matched.push(...solveBestOneToOne(friendList, myList));
+    }
+
+    matched.sort((a, b) => b.avgPower - a.avgPower);
+
     // ✅ 한 그룹 안에서 1:1 최적 매칭 (전체 avg 합 최대)
     function solveBestOneToOne(friendList: FriendCandidate[], myList: MyCandidate[]): KkanbuMatch[] {
       if (!friendList.length || !myList.length) return [];
 
-      const candidates = friendList.map((friend) =>
-        myList.map((me) => {
+      const sortedFriends = [...friendList].sort((a, b) => {
+        const powerA = Number.isFinite(a.power) ? a.power : -Infinity;
+        const powerB = Number.isFinite(b.power) ? b.power : -Infinity;
+        return powerB - powerA;
+      });
+
+      const sortedMine = [...myList].sort((a, b) => {
+        const powerA = Number.isFinite(a.power) ? a.power : -Infinity;
+        const powerB = Number.isFinite(b.power) ? b.power : -Infinity;
+        return powerB - powerA;
+      });
+
+      const usedMine = new Set<number>();
+      const result: KkanbuMatch[] = [];
+
+      for (const friend of sortedFriends) {
+        let pickedIndex = -1;
+        let pickedPair: KkanbuMatch | null = null;
+
+        for (let i = 0; i < sortedMine.length; i++) {
+          if (usedMine.has(i)) continue;
+
+          const me = sortedMine[i];
           const commonRaids = getRaidIntersection(me.remaining, friend.raids);
-          if (commonRaids.length < 3) return null;
-          if (!Number.isFinite(me.power) || !Number.isFinite(friend.power)) return null;
+          if (commonRaids.length < 3) continue;
+          if (!Number.isFinite(me.power) || !Number.isFinite(friend.power)) continue;
 
           const avgPower = (me.power + friend.power) / 2;
-          if (Number.isFinite(avgMin) && avgMin > 0 && avgPower < avgMin) return null;
+          if (Number.isFinite(avgMin) && avgMin > 0 && avgPower < avgMin) continue;
 
-          return { friend, me, avgPower, commonRaids };
-        })
-      );
-
-      let bestScore = -1;
-      let bestCount = -1;
-      let bestMatches: KkanbuMatch[] = [];
-
-      function dfs(friendIdx: number, usedMy: boolean[], picked: KkanbuMatch[], score: number) {
-        if (friendIdx >= friendList.length) {
-          if (
-            picked.length > bestCount ||
-            (picked.length === bestCount && score > bestScore)
-          ) {
-            bestCount = picked.length;
-            bestScore = score;
-            bestMatches = [...picked];
-          }
-          return;
+          pickedIndex = i;
+          pickedPair = { friend, me, avgPower, commonRaids };
+          break;
         }
 
-        // 현재 친구 스킵
-        dfs(friendIdx + 1, usedMy, picked, score);
-
-        // 현재 친구를 내 캐릭 하나와 매칭
-        for (let myIdx = 0; myIdx < myList.length; myIdx++) {
-          if (usedMy[myIdx]) continue;
-          const pair = candidates[friendIdx][myIdx];
-          if (!pair) continue;
-
-          usedMy[myIdx] = true;
-          picked.push(pair);
-          dfs(friendIdx + 1, usedMy, picked, score + pair.avgPower);
-          picked.pop();
-          usedMy[myIdx] = false;
+        if (pickedIndex >= 0 && pickedPair) {
+          usedMine.add(pickedIndex);
+          result.push(pickedPair);
         }
       }
 
-      dfs(0, Array(myList.length).fill(false), [], 0);
-
-      // ✅ 보기 좋게 평균값 높은 순으로 정렬
-      return bestMatches.sort((a, b) => b.avgPower - a.avgPower);
+      return result.sort((a, b) => b.avgPower - a.avgPower);
     }
-
-    /* 1:1 매칭 결과 그룹핑 제거하고 전체 매칭으로 바꿈*/
-    const matched: KkanbuMatch[] = solveBestOneToOne(friendFiltered, myFiltered);
 
     const matchedFriendKeys = new Set(
       matched.map((m) => `${m.friend.row?.tableName ?? ""}::${m.friend.row?.charName ?? ""}`)
