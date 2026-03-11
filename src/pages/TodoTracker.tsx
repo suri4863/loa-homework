@@ -206,6 +206,7 @@ export default function TodoTracker() {
   // =========================
   const [raidLeftView, setRaidLeftView] = useState<"ME" | "FRIEND">("ME");
   const [selectedFriendCode, setSelectedFriendCode] = useState<string>("");
+  const [friendSnapshots, setFriendSnapshots] = useState<Record<string, any>>({});
 
   // ✅ 깐부 매칭(친구 남은 레이드에서)
   const [kkanbuLevelRange, setKkanbuLevelRange] = useState<string>("1710~1719");
@@ -531,8 +532,10 @@ export default function TodoTracker() {
     const f = state.friends.find((x) => x.code === selectedFriendCode);
     if (!f) return <div className="todo-hint">친구를 찾을 수 없어.</div>;
 
-    const snap: any = (f as any).lastSnapshot;
-    if (!snap?.data) return <div className="todo-hint">친구 스냅샷이 없어. (서버에서 불러오기 또는 스냅샷 붙여넣기)</div>;
+    const snap = friendSnapshots[selectedFriendCode];
+    if (!snap?.data) {
+      return <div className="todo-hint">친구 스냅샷이 없어. (서버에서 불러오기 또는 스냅샷 붙여넣기)</div>;
+    }
     if (snap.shareMode === "PRIVATE") return <div className="todo-hint">친구가 비공개야.</div>;
 
     const rows = (snap.data as any[]).filter((r) => r && r.charName);
@@ -676,9 +679,7 @@ export default function TodoTracker() {
       return getRaidIntersection(a, b).length >= 3;
     };
 
-    console.log("myCandidates", myCandidates);
-    console.log("myFiltered", myFiltered);
-    console.log("rows", rows);
+
     // 친구 row -> 매칭되는 내 캐릭들 찾기
     type FriendCandidate = {
       row: any;
@@ -1146,14 +1147,32 @@ export default function TodoTracker() {
           ? (incomingRes as any).incoming
           : [];
 
-      setState((prev) => ({
-        ...prev,
-        friends: friendsArr.map((f: any) => ({
+      const nextFriends = friendsArr
+        .map((f: any) => ({
           code: String(f.friendCode ?? f.code ?? "").trim(),
           nickname: String(f.nickname ?? f.alias ?? f.friendCode ?? f.code ?? "").trim(),
           addedAt: Date.now(),
-        })).filter((x: any) => x.code),
+        }))
+        .filter((x: any) => x.code);
+
+      setState((prev) => ({
+        ...prev,
+        friends: nextFriends,
       }));
+
+      // ✅ 현재 친구 목록에 없는 snapshot 정리
+      setFriendSnapshots((prev) => {
+        const aliveCodes = new Set(nextFriends.map((f: any) => f.code));
+        const next: Record<string, any> = {};
+
+        for (const code of Object.keys(prev)) {
+          if (aliveCodes.has(code)) {
+            next[code] = prev[code];
+          }
+        }
+
+        return next;
+      });
 
       setIncomingReqs(incomingArr);
     } finally {
@@ -1250,6 +1269,13 @@ export default function TodoTracker() {
     // 1) 로컬 state에서 즉시 제거
     setState((prev) => ({ ...prev, friends: prev.friends.filter((f) => f.code !== code) }));
 
+    // ✅ snapshot도 같이 제거
+    setFriendSnapshots((prev) => {
+      const next = { ...prev };
+      delete next[code];
+      return next;
+    });
+
     // 선택 중이던 친구면 선택 해제
     setSelectedFriendCode((cur) => (cur === code ? "" : cur));
 
@@ -1258,7 +1284,6 @@ export default function TodoTracker() {
       try {
         await apiFetch2(`/api/friends?friendCode=${encodeURIComponent(code)}`, { method: "DELETE" });
       } catch {
-        // 서버 삭제 실패여도 로컬은 이미 지워졌으니 경고만
         alert("서버에서 친구 삭제 실패(네트워크/권한 확인)");
       }
 
@@ -1284,7 +1309,6 @@ export default function TodoTracker() {
       return;
     }
 
-    // ✅ 서버에서 불러온 친구코드를 우선 사용 (없으면 스냅샷 주인 코드)
     const codeToAttach = (targetFriendCode || snap.friendCode || "").trim();
 
     if (!codeToAttach) {
@@ -1292,21 +1316,25 @@ export default function TodoTracker() {
       return;
     }
 
+    // 1) 친구 목록에는 메타데이터만 저장
     setState((prev) => {
-      const idx = prev.friends.findIndex((f) => f.code === codeToAttach);
-      if (idx < 0) {
-        return {
-          ...prev,
-          friends: [
-            ...prev.friends,
-            { code: codeToAttach, nickname: codeToAttach, addedAt: Date.now(), lastSnapshot: snap },
-          ],
-        };
-      }
-      const nextFriends = [...prev.friends];
-      nextFriends[idx] = { ...nextFriends[idx], lastSnapshot: snap };
-      return { ...prev, friends: nextFriends };
+      const exists = prev.friends.some((f) => f.code === codeToAttach);
+      if (exists) return prev;
+
+      return {
+        ...prev,
+        friends: [
+          ...prev.friends,
+          { code: codeToAttach, nickname: codeToAttach, addedAt: Date.now() },
+        ],
+      };
     });
+
+    // 2) 무거운 스냅샷 데이터는 별도 state로 분리
+    setFriendSnapshots((prev) => ({
+      ...prev,
+      [codeToAttach]: snap,
+    }));
   }
 
   useEffect(() => {
