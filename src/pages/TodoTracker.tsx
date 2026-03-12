@@ -1,7 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import "./TodoTracker.css";
 
-import type { TodoState, Character, CharacterRole, TaskRow, TodoTable, RestGauges, CellValue, GridValues } from "../store/todoStore";
+import type {
+  TodoState,
+  Character,
+  CharacterRole,
+  TaskRow,
+  TodoTable,
+  RestGauges,
+  CellValue,
+  GridValues,
+  KkanbuExcludePair,
+} from "../store/todoStore";
 import BidPopover from "../components/BidPopover";
 
 // =========================
@@ -211,7 +221,56 @@ export default function TodoTracker() {
   // ✅ 깐부 매칭(친구 남은 레이드에서)
   const [kkanbuLevelRange, setKkanbuLevelRange] = useState<string>("1710~1719");
   const [kkanbuAvgPowerMin, setKkanbuAvgPowerMin] = useState<string>("2500");
+  const [kkanbuAvgPowerTarget, setKkanbuAvgPowerTarget] = useState<string>("3000");
 
+  function makeFriendCharKey(friendCode: string, tableName: string | undefined, charName: string) {
+    return `${friendCode}|${tableName ?? ""}|${charName}`;
+  }
+
+  function makeMyCharKey(tableId: string, charId: string) {
+    return `${tableId}|${charId}`;
+  }
+
+  function isExcludedPair(friendCode: string, friendCharKey: string, myCharKey: string) {
+    const pairs = state.profile.kkanbuExcludePairs ?? [];
+    return pairs.some(
+      (p) =>
+        p.friendCode === friendCode &&
+        p.friendCharKey === friendCharKey &&
+        p.myCharKey === myCharKey
+    );
+  }
+
+  function toggleExcludedPair(friendCode: string, friendCharKey: string, myCharKey: string) {
+    setState((prev) => {
+      const pairs = prev.profile.kkanbuExcludePairs ?? [];
+      const exists = pairs.some(
+        (p) =>
+          p.friendCode === friendCode &&
+          p.friendCharKey === friendCharKey &&
+          p.myCharKey === myCharKey
+      );
+
+      const nextPairs = exists
+        ? pairs.filter(
+          (p) =>
+            !(
+              p.friendCode === friendCode &&
+              p.friendCharKey === friendCharKey &&
+              p.myCharKey === myCharKey
+            )
+        )
+        : [...pairs, { friendCode, friendCharKey, myCharKey }];
+
+      return {
+        ...prev,
+        profile: {
+          ...prev.profile,
+          kkanbuExcludePairs: nextPairs,
+        },
+      };
+    });
+  }
   const [friendsDockOpen, setFriendsDockOpen] = useState<boolean>(() => {
     try {
       return localStorage.getItem("friendsDockOpen:v1") === "1";
@@ -570,6 +629,7 @@ export default function TodoTracker() {
 
     const range = parseRange(kkanbuLevelRange);
     const avgMin = parseNum(kkanbuAvgPowerMin);
+    const avgTarget = parseNum(kkanbuAvgPowerTarget);
 
     // ✅ 내 남은 레이드(Top3 기준) 후보 만들기: 모든 표/모든 캐릭 (3회 미만)
     const weeklyRaidTitleToId = new Map<string, string>();
@@ -644,6 +704,7 @@ export default function TodoTracker() {
           return {
             tableId: tbl.id,
             tableName: tbl.name ?? tbl.id,
+            charId: ch.id,
             name: ch.name,
             ilvl,
             power: parseNum((ch as any).power),
@@ -692,6 +753,7 @@ export default function TodoTracker() {
     type MyCandidate = {
       tableId: string;
       tableName: string;
+      charId: string;
       name: string;
       ilvl: number;
       power: number;
@@ -706,6 +768,7 @@ export default function TodoTracker() {
       me: MyCandidate;
       avgPower: number;
       commonRaids: string[];
+      targetDiff: number;
     };
 
     const friendFiltered: FriendCandidate[] = rows
@@ -782,6 +845,17 @@ export default function TodoTracker() {
           if (usedMine.has(i)) continue;
 
           const me = sortedMine[i];
+
+          const friendCharKey = makeFriendCharKey(
+            selectedFriendCode,
+            friend.row?.tableName,
+            friend.row?.charName ?? "-"
+          );
+
+          const myCharKey = makeMyCharKey(me.tableId, me.charId);
+
+          if (isExcludedPair(selectedFriendCode, friendCharKey, myCharKey)) continue;
+
           const commonRaids = getRaidIntersection(me.remaining, friend.raids);
           if (commonRaids.length < 3) continue;
           if (!Number.isFinite(me.power) || !Number.isFinite(friend.power)) continue;
@@ -789,9 +863,40 @@ export default function TodoTracker() {
           const avgPower = (me.power + friend.power) / 2;
           if (Number.isFinite(avgMin) && avgMin > 0 && avgPower < avgMin) continue;
 
-          pickedIndex = i;
-          pickedPair = { friend, me, avgPower, commonRaids };
-          break;
+          const targetDiff = Number.isFinite(avgTarget) && avgTarget > 0
+            ? Math.abs(avgPower - avgTarget)
+            : 0;
+
+          const candidate: KkanbuMatch = {
+            friend,
+            me,
+            avgPower,
+            commonRaids,
+            targetDiff,
+          };
+
+          if (!pickedPair) {
+            pickedPair = candidate;
+            pickedIndex = i;
+            continue;
+          }
+
+          const pickedDiff = pickedPair.targetDiff;
+          const nextDiff = candidate.targetDiff;
+
+          // 1순위: 목표 깐평에 더 가까운 쪽
+          if (nextDiff < pickedDiff) {
+            pickedPair = candidate;
+            pickedIndex = i;
+            continue;
+          }
+
+          // 2순위: 목표와 거리 같으면 평균 전투력 더 높은 쪽
+          if (nextDiff === pickedDiff && candidate.avgPower > pickedPair.avgPower) {
+            pickedPair = candidate;
+            pickedIndex = i;
+            continue;
+          }
         }
 
         if (pickedIndex >= 0 && pickedPair) {
@@ -800,7 +905,10 @@ export default function TodoTracker() {
         }
       }
 
-      return result.sort((a, b) => b.avgPower - a.avgPower);
+      return result.sort((a, b) => {
+        if (a.targetDiff !== b.targetDiff) return a.targetDiff - b.targetDiff;
+        return b.avgPower - a.avgPower;
+      });
     }
 
     for (const [key, friendList] of friendGroups.entries()) {
@@ -810,17 +918,10 @@ export default function TodoTracker() {
       matched.push(...solveBestOneToOne(friendList, myList));
     }
 
-    matched.sort((a, b) => b.avgPower - a.avgPower);
-
-
-    for (const [key, friendList] of friendGroups.entries()) {
-      const myList = myGroups.get(key) ?? [];
-      if (!myList.length) continue;
-
-      matched.push(...solveBestOneToOne(friendList, myList));
-    }
-
-    matched.sort((a, b) => b.avgPower - a.avgPower);
+    matched.sort((a, b) => {
+      if (a.targetDiff !== b.targetDiff) return a.targetDiff - b.targetDiff;
+      return b.avgPower - a.avgPower;
+    });
 
     const matchedFriendKeys = new Set(
       matched.map((m) => `${m.friend.row?.tableName ?? ""}::${m.friend.row?.charName ?? ""}`)
@@ -904,15 +1005,17 @@ export default function TodoTracker() {
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <div style={{ fontSize: 12, opacity: 0.75 }}>깐평 입력</div>
+              <div style={{ fontSize: 12, opacity: 0.75 }}>목표 깐평</div>
               <input
                 className="friendInput"
-                value={kkanbuAvgPowerMin}
-                onChange={(e) => setKkanbuAvgPowerMin(e.target.value)}
-                placeholder="예: 2500"
+                value={kkanbuAvgPowerTarget}
+                onChange={(e) => setKkanbuAvgPowerTarget(e.target.value)}
+                placeholder="예: 3000"
                 style={{ width: 120 }}
               />
-              <div style={{ fontSize: 11, opacity: 0.7 }}>(내 전투력 + 친구 전투력) / 2 ≥ 깐평</div>
+              <div style={{ fontSize: 11, opacity: 0.7 }}>
+                목표값에 가까운 평균 전투력 조합 우선
+              </div>
             </div>
           </div>
         </div>
@@ -975,9 +1078,51 @@ export default function TodoTracker() {
                         {Number.isFinite(me.power) ? <span className="raidBadge power">전투력 {me.power}</span> : null}
                         {renderRoleBadge(me.role)}
                       </div>
+
                       <div style={{ marginTop: 4, opacity: 0.8 }}>
                         평균 전투력: <b>{Math.round((me.power + friend.power) / 2)}</b>
+                        {Number.isFinite(avgTarget) && avgTarget > 0 ? (
+                          <>
+                            {" · "}목표 차이: <b>{Math.abs(Math.round((me.power + friend.power) / 2) - avgTarget)}</b>
+                          </>
+                        ) : null}
                       </div>
+
+                      <label
+                        style={{
+                          marginTop: 8,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          cursor: "pointer",
+                          opacity: 0.95,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isExcludedPair(
+                            selectedFriendCode,
+                            makeFriendCharKey(
+                              selectedFriendCode,
+                              friend.row?.tableName,
+                              friend.row?.charName ?? "-"
+                            ),
+                            makeMyCharKey(me.tableId, me.charId)
+                          )}
+                          onChange={() =>
+                            toggleExcludedPair(
+                              selectedFriendCode,
+                              makeFriendCharKey(
+                                selectedFriendCode,
+                                friend.row?.tableName,
+                                friend.row?.charName ?? "-"
+                              ),
+                              makeMyCharKey(me.tableId, me.charId)
+                            )
+                          }
+                        />
+                        <span>이미 깐부 있어요</span>
+                      </label>
                     </div>
                   </div>
                 );
@@ -1987,12 +2132,11 @@ export default function TodoTracker() {
                   onChange={(e) => onToggleAccountCheck(tableId, c.id, e.target.checked)}
                 />
                 <span>{c.label}</span>
-                <div className="accountDailyEmpty">잊지말고 신년운세 하기!</div>
               </label>
             ))}
           </div>
         ) : (
-          <div className="accountDailyEmpty">카게/필보 없음 잊지말고 신년운세 하기!</div>
+          <div className="accountDailyEmpty">카게/필보 없음</div>
         )}
       </div>
     );
