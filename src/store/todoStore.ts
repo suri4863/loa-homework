@@ -67,17 +67,31 @@ export type TodoTable = {
 // =========================
 export type ShareMode = "PUBLIC" | "PRIVATE";
 
+export type KkanbuExcludePair = {
+  friendCode: string;     // 어떤 친구 기준인지
+  friendCharKey: string;  // 예: "귀안됴|표1|귀안됴4"
+  myCharKey: string;      // 예: "tbl_xxx|ch_xxx"
+};
+
 export type UserProfile = {
   friendCode: string; // 내 공유 코드
   shareMode: ShareMode; // 공개/비공개
   nickname?: string; // (선택) 내 표시용 닉네임
 
-  // ✅ 남은 레이드 스냅샷 자동 업로드(서버모드에서만 동작)
+  // ✅ 이미 깐부 있어서 매칭에서 제외할 페어
+  kkanbuExcludePairs?: KkanbuExcludePair[];
+
+  // ✅ 남은 레이드 자동 업로드 설정
   autoRaidLeftUploadEnabled?: boolean;
-  /** 자동 업로드 간격(분). 예: 60=1시간 */
   autoRaidLeftUploadMinutes?: number;
 };
 
+export type FriendEntry = {
+  code: string; // 친구의 friendCode
+  nickname: string;
+  addedAt: number;
+  lastSnapshot?: RaidLeftSnapshotPayload;
+};
 export type RaidLeftSnapshotPayload = {
   version: 2;
   friendCode: string;
@@ -104,11 +118,6 @@ export type RaidLeftSnapshotPayload = {
   }>;
 };
 
-export type FriendEntry = {
-  code: string;
-  nickname: string;
-  addedAt: number;
-};
 
 export type TodoState = {
   tables: TodoTable[];
@@ -318,6 +327,7 @@ function makeDefaultState(): TodoState {
     friendCode: `FC_${Math.random().toString(16).slice(2, 8)}_${Date.now().toString(16)}`,
     shareMode: "PUBLIC",
     nickname: "",
+    kkanbuExcludePairs: [],
     autoRaidLeftUploadEnabled: false,
     autoRaidLeftUploadMinutes: 60,
   };
@@ -342,14 +352,22 @@ function normalizeState(parsed: any): TodoState {
       st.profile = {
         friendCode: `FC_${Math.random().toString(16).slice(2, 8)}_${Date.now().toString(16)}`,
         shareMode: "PUBLIC",
+        nickname: "",
+        kkanbuExcludePairs: [],
+        autoRaidLeftUploadEnabled: false,
+        autoRaidLeftUploadMinutes: 60,
       };
     } else {
       st.profile.shareMode = st.profile.shareMode ?? "PUBLIC";
       st.profile.nickname = (st.profile.nickname ?? "").toString();
-      // ✅ 자동 업로드 설정 기본값 보정
-      st.profile.autoRaidLeftUploadEnabled = Boolean(st.profile.autoRaidLeftUploadEnabled ?? false);
-      const m = Number(st.profile.autoRaidLeftUploadMinutes);
-      st.profile.autoRaidLeftUploadMinutes = Number.isFinite(m) && m > 0 ? m : 60;
+      st.profile.kkanbuExcludePairs = Array.isArray(st.profile.kkanbuExcludePairs)
+        ? st.profile.kkanbuExcludePairs
+        : [];
+      st.profile.autoRaidLeftUploadEnabled = Boolean(st.profile.autoRaidLeftUploadEnabled);
+      st.profile.autoRaidLeftUploadMinutes =
+        Number.isFinite(st.profile.autoRaidLeftUploadMinutes) && Number(st.profile.autoRaidLeftUploadMinutes) > 0
+          ? Number(st.profile.autoRaidLeftUploadMinutes)
+          : 60;
     }
     if (!Array.isArray((st as any).friends)) (st as any).friends = [];
 
