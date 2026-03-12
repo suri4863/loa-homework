@@ -69,19 +69,18 @@ export type ShareMode = "PUBLIC" | "PRIVATE";
 
 export type KkanbuExcludePair = {
   friendCode: string;     // 어떤 친구 기준인지
-  friendCharKey: string;  // 예: "귀안됴|표1|귀안됴4"
   myCharKey: string;      // 예: "tbl_xxx|ch_xxx"
+  friendCharKey?: string; // 나중 확장용(선택)
 };
 
 export type UserProfile = {
-  friendCode: string; // 내 공유 코드
-  shareMode: ShareMode; // 공개/비공개
-  nickname?: string; // (선택) 내 표시용 닉네임
+  friendCode: string;
+  shareMode: ShareMode;
+  nickname?: string;
 
-  // ✅ 이미 깐부 있어서 매칭에서 제외할 페어
+  // 이 친구(friendCode) 기준으로 매칭에서 뺄 내 캐릭터 목록
   kkanbuExcludePairs?: KkanbuExcludePair[];
 
-  // ✅ 남은 레이드 자동 업로드 설정
   autoRaidLeftUploadEnabled?: boolean;
   autoRaidLeftUploadMinutes?: number;
 };
@@ -322,16 +321,14 @@ function makeDefaultState(): TodoState {
     values: {},
     restGauges,
   };
-
   const profile: UserProfile = {
     friendCode: `FC_${Math.random().toString(16).slice(2, 8)}_${Date.now().toString(16)}`,
     shareMode: "PUBLIC",
     nickname: "",
     kkanbuExcludePairs: [],
     autoRaidLeftUploadEnabled: false,
-    autoRaidLeftUploadMinutes: 60,
+    autoRaidLeftUploadMinutes: 30,
   };
-
   return {
     tables: [table],
     activeTableId: table.id,
@@ -355,7 +352,7 @@ function normalizeState(parsed: any): TodoState {
         nickname: "",
         kkanbuExcludePairs: [],
         autoRaidLeftUploadEnabled: false,
-        autoRaidLeftUploadMinutes: 60,
+        autoRaidLeftUploadMinutes: 30,
       };
     } else {
       st.profile.shareMode = st.profile.shareMode ?? "PUBLIC";
@@ -367,8 +364,9 @@ function normalizeState(parsed: any): TodoState {
       st.profile.autoRaidLeftUploadMinutes =
         Number.isFinite(st.profile.autoRaidLeftUploadMinutes) && Number(st.profile.autoRaidLeftUploadMinutes) > 0
           ? Number(st.profile.autoRaidLeftUploadMinutes)
-          : 60;
+          : 30;
     }
+
     if (!Array.isArray((st as any).friends)) (st as any).friends = [];
 
     st.reset =
@@ -491,6 +489,10 @@ function normalizeState(parsed: any): TodoState {
     profile: {
       friendCode: `FC_${Math.random().toString(16).slice(2, 8)}_${Date.now().toString(16)}`,
       shareMode: "PUBLIC",
+      nickname: "",
+      kkanbuExcludePairs: [],
+      autoRaidLeftUploadEnabled: false,
+      autoRaidLeftUploadMinutes: 30,
     },
     friends: [],
 
