@@ -265,6 +265,34 @@ export default function TodoTracker() {
     });
   }
 
+  function clearExcludedMyChars(friendCode: string) {
+    setState((prev) => {
+      const prevPairs = prev.profile.kkanbuExcludePairs ?? [];
+      return {
+        ...prev,
+        profile: {
+          ...prev.profile,
+          // 현재 친구 기준으로 저장된 제외 기록 전부 삭제
+          kkanbuExcludePairs: prevPairs.filter((p) => p.friendCode !== friendCode),
+        },
+      };
+    });
+  }
+
+  function clearExcludedMatchHistory(friendCode: string) {
+    setState((prev) => {
+      const prevPairs = prev.profile.kkanbuExcludePairs ?? [];
+      return {
+        ...prev,
+        profile: {
+          ...prev.profile,
+          // 현재 선택한 친구 기준으로 저장된 제외 기록 전부 삭제
+          kkanbuExcludePairs: prevPairs.filter((p) => p.friendCode !== friendCode),
+        },
+      };
+    });
+  }
+
   // ✅ 깐부 매칭(친구 남은 레이드에서)
   const [kkanbuLevelRange, setKkanbuLevelRange] = useState<string>("1710~1719");
   const [kkanbuAvgPowerMin, setKkanbuAvgPowerMin] = useState<string>("2500");
@@ -753,8 +781,23 @@ export default function TodoTracker() {
 
     // 내 캐릭 레벨 필터
     const myFiltered = myCandidates.filter((m) => {
-      if (range.min != null && Number.isFinite(range.min) && (!Number.isFinite(m.ilvl) || m.ilvl < range.min!)) return false;
-      if (range.max != null && Number.isFinite(range.max) && (!Number.isFinite(m.ilvl) || m.ilvl > range.max!)) return false;
+      const myCharKey = makeMyCharKey(m.tableId, m.charId);
+
+      // ✅ 이미 깐부 있는 내 캐릭터는 매칭 시스템 후보군에서 아예 제외
+      if (isExcludedMyChar(selectedFriendCode, myCharKey)) return false;
+
+      if (
+        range.min != null &&
+        Number.isFinite(range.min) &&
+        (!Number.isFinite(m.ilvl) || m.ilvl < range.min!)
+      ) return false;
+
+      if (
+        range.max != null &&
+        Number.isFinite(range.max) &&
+        (!Number.isFinite(m.ilvl) || m.ilvl > range.max!)
+      ) return false;
+
       return true;
     });
 
@@ -851,9 +894,8 @@ export default function TodoTracker() {
       myGroups.get(key)!.push(me);
     }
 
-    const matched: KkanbuMatch[] = [];
 
-    // ✅ 한 그룹 안에서 1:1 매칭
+    // ✅ 전체 후보 대상으로 1:1 매칭
     function solveBestOneToOne(friendList: FriendCandidate[], myList: MyCandidate[]): KkanbuMatch[] {
       if (!friendList.length || !myList.length) return [];
 
@@ -881,10 +923,6 @@ export default function TodoTracker() {
 
           const me = sortedMine[i];
 
-          const myCharKey = makeMyCharKey(me.tableId, me.charId);
-
-          if (isExcludedMyChar(selectedFriendCode, myCharKey)) continue;
-
           const commonRaids = getRaidIntersection(me.remaining, friend.raids);
           if (commonRaids.length < 3) continue;
           if (!Number.isFinite(me.power) || !Number.isFinite(friend.power)) continue;
@@ -892,9 +930,10 @@ export default function TodoTracker() {
           const avgPower = (me.power + friend.power) / 2;
           if (Number.isFinite(avgMin) && avgMin > 0 && avgPower < avgMin) continue;
 
-          const targetDiff = Number.isFinite(avgTarget) && avgTarget > 0
-            ? Math.abs(avgPower - avgTarget)
-            : 0;
+          const targetDiff =
+            Number.isFinite(avgTarget) && avgTarget > 0
+              ? Math.abs(avgPower - avgTarget)
+              : 0;
 
           const candidate: KkanbuMatch = {
             friend,
@@ -913,14 +952,12 @@ export default function TodoTracker() {
           const pickedDiff = pickedPair.targetDiff;
           const nextDiff = candidate.targetDiff;
 
-          // 1순위: 목표 깐평에 더 가까운 쪽
           if (nextDiff < pickedDiff) {
             pickedPair = candidate;
             pickedIndex = i;
             continue;
           }
 
-          // 2순위: 목표와 거리 같으면 평균 전투력 더 높은 쪽
           if (nextDiff === pickedDiff && candidate.avgPower > pickedPair.avgPower) {
             pickedPair = candidate;
             pickedIndex = i;
@@ -940,12 +977,7 @@ export default function TodoTracker() {
       });
     }
 
-    for (const [key, friendList] of friendGroups.entries()) {
-      const myList = myGroups.get(key) ?? [];
-      if (!myList.length) continue;
-
-      matched.push(...solveBestOneToOne(friendList, myList));
-    }
+    const matched: KkanbuMatch[] = solveBestOneToOne(friendFiltered, myFiltered);
 
     matched.sort((a, b) => {
       if (a.targetDiff !== b.targetDiff) return a.targetDiff - b.targetDiff;
@@ -1064,10 +1096,61 @@ export default function TodoTracker() {
 
           {/* ✅ 내 캐릭터 매칭 제외 체크 */}
           <div style={{ marginTop: 14 }}>
-            <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 8 }}>
-              이미 깐부 있는 내 캐릭터 제외
-            </div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+                marginBottom: 8,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  marginBottom: 8,
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    marginBottom: 8,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div style={{ fontSize: 12, opacity: 0.8 }}>
+                    이미 깐부 있는 내 캐릭터 제외
+                  </div>
 
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="mini"
+                      onClick={() => {
+                        if (!selectedFriendCode) return;
+                        if (!confirm("현재 친구에 대한 내 캐릭터 제외 기록을 모두 초기화할까요?")) return;
+                        clearExcludedMyChars(selectedFriendCode);
+                      }}
+                    >
+                      제외 초기화
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
             <div
               style={{
                 display: "grid",
@@ -1125,7 +1208,10 @@ export default function TodoTracker() {
           </div>
         ) : (
           <div style={{ padding: "10px 12px 0" }}>
-            <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>매칭 결과 ({matched.length})</div>
+            <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>
+              매칭 결과 ({matched.length})
+            </div>
+
             <div className="raidLeftCols" style={{ marginBottom: 10 }}>
               {matched.map(({ friend, me, commonRaids }) => {
                 const friendName = friend.row?.charName ?? "-";
@@ -1185,82 +1271,6 @@ export default function TodoTracker() {
                           </>
                         ) : null}
                       </div>
-                      {excludedMyChars.length > 0 && (
-                        <div
-                          style={{
-                            marginTop: 12,
-                            padding: 12,
-                            border: "1px solid rgba(120,160,255,0.22)",
-                            borderRadius: 12,
-                            background: "rgba(10,18,40,0.35)",
-                          }}
-                        >
-                          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
-                            이미 깐부 있음
-                          </div>
-
-                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                            {excludedMyChars.map((item) => (
-                              <div
-                                key={item.myCharKey}
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "space-between",
-                                  gap: 12,
-                                  padding: "8px 10px",
-                                  borderRadius: 10,
-                                  background: "rgba(255,255,255,0.04)",
-                                }}
-                              >
-                                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                                  <div style={{ fontWeight: 600 }}>
-                                    {item.name}
-                                    {item.ilvl ? ` (Lv ${item.ilvl})` : ""}
-                                  </div>
-                                  <div style={{ fontSize: 12, opacity: 0.75 }}>
-                                    {item.tableName}
-                                    {item.power ? ` · 전투력 ${item.power}` : ""}
-                                  </div>
-                                </div>
-
-                                <button
-                                  type="button"
-                                  className="mini"
-                                  onClick={() => removeExcludedMyChar(selectedFriendCode, item.myCharKey)}
-                                >
-                                  해제
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      <label
-                        style={{
-                          marginTop: 8,
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 6,
-                          cursor: "pointer",
-                          opacity: 0.95,
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isExcludedMyChar(
-                            selectedFriendCode,
-                            makeMyCharKey(me.tableId, me.charId)
-                          )}
-                          onChange={() =>
-                            toggleExcludedMyChar(
-                              selectedFriendCode,
-                              makeMyCharKey(me.tableId, me.charId)
-                            )
-                          }
-                        />
-                        <span>이미 깐부 있어서 이 캐릭 제외</span>
-                      </label>
                     </div>
                   </div>
                 );
