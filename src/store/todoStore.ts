@@ -68,9 +68,9 @@ export type TodoTable = {
 export type ShareMode = "PUBLIC" | "PRIVATE";
 
 export type KkanbuExcludePair = {
-  friendCode: string;     // 어떤 친구 기준인지
-  myCharKey: string;      // 예: "tbl_xxx|ch_xxx"
-  friendCharKey?: string; // 나중 확장용(선택)
+  friendCode: string;
+  myCharKey: string;
+  friendCharKey?: string;
 };
 
 export type UserProfile = {
@@ -321,6 +321,7 @@ function makeDefaultState(): TodoState {
     values: {},
     restGauges,
   };
+
   const profile: UserProfile = {
     friendCode: `FC_${Math.random().toString(16).slice(2, 8)}_${Date.now().toString(16)}`,
     shareMode: "PUBLIC",
@@ -361,12 +362,8 @@ function normalizeState(parsed: any): TodoState {
         ? st.profile.kkanbuExcludePairs
         : [];
       st.profile.autoRaidLeftUploadEnabled = Boolean(st.profile.autoRaidLeftUploadEnabled);
-      st.profile.autoRaidLeftUploadMinutes =
-        Number.isFinite(st.profile.autoRaidLeftUploadMinutes) && Number(st.profile.autoRaidLeftUploadMinutes) > 0
-          ? Number(st.profile.autoRaidLeftUploadMinutes)
-          : 30;
+      st.profile.autoRaidLeftUploadMinutes = Number(st.profile.autoRaidLeftUploadMinutes ?? 30);
     }
-
     if (!Array.isArray((st as any).friends)) (st as any).friends = [];
 
     st.reset =

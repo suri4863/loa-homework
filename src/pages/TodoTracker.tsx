@@ -218,49 +218,27 @@ export default function TodoTracker() {
   const [selectedFriendCode, setSelectedFriendCode] = useState<string>("");
   const [friendSnapshots, setFriendSnapshots] = useState<Record<string, any>>({});
 
-  // ✅ 깐부 매칭(친구 남은 레이드에서)
-  const [kkanbuLevelRange, setKkanbuLevelRange] = useState<string>("1710~1719");
-  const [kkanbuAvgPowerMin, setKkanbuAvgPowerMin] = useState<string>("2500");
-  const [kkanbuAvgPowerTarget, setKkanbuAvgPowerTarget] = useState<string>("3000");
-
-  function makeFriendCharKey(friendCode: string, tableName: string | undefined, charName: string) {
-    return `${friendCode}|${tableName ?? ""}|${charName}`;
-  }
-
   function makeMyCharKey(tableId: string, charId: string) {
     return `${tableId}|${charId}`;
   }
 
-  function isExcludedPair(friendCode: string, friendCharKey: string, myCharKey: string) {
+  function isExcludedMyChar(friendCode: string, myCharKey: string) {
     const pairs = state.profile.kkanbuExcludePairs ?? [];
-    return pairs.some(
-      (p) =>
-        p.friendCode === friendCode &&
-        p.friendCharKey === friendCharKey &&
-        p.myCharKey === myCharKey
-    );
+    return pairs.some((p) => p.friendCode === friendCode && p.myCharKey === myCharKey);
   }
 
-  function toggleExcludedPair(friendCode: string, friendCharKey: string, myCharKey: string) {
+  function toggleExcludedMyChar(friendCode: string, myCharKey: string) {
     setState((prev) => {
-      const pairs = prev.profile.kkanbuExcludePairs ?? [];
-      const exists = pairs.some(
-        (p) =>
-          p.friendCode === friendCode &&
-          p.friendCharKey === friendCharKey &&
-          p.myCharKey === myCharKey
+      const prevPairs = prev.profile.kkanbuExcludePairs ?? [];
+      const exists = prevPairs.some(
+        (p) => p.friendCode === friendCode && p.myCharKey === myCharKey
       );
 
       const nextPairs = exists
-        ? pairs.filter(
-          (p) =>
-            !(
-              p.friendCode === friendCode &&
-              p.friendCharKey === friendCharKey &&
-              p.myCharKey === myCharKey
-            )
+        ? prevPairs.filter(
+          (p) => !(p.friendCode === friendCode && p.myCharKey === myCharKey)
         )
-        : [...pairs, { friendCode, friendCharKey, myCharKey }];
+        : [...prevPairs, { friendCode, myCharKey }];
 
       return {
         ...prev,
@@ -271,6 +249,63 @@ export default function TodoTracker() {
       };
     });
   }
+
+  function removeExcludedMyChar(friendCode: string, myCharKey: string) {
+    setState((prev) => {
+      const prevPairs = prev.profile.kkanbuExcludePairs ?? [];
+      return {
+        ...prev,
+        profile: {
+          ...prev.profile,
+          kkanbuExcludePairs: prevPairs.filter(
+            (p) => !(p.friendCode === friendCode && p.myCharKey === myCharKey)
+          ),
+        },
+      };
+    });
+  }
+
+  // ✅ 깐부 매칭(친구 남은 레이드에서)
+  const [kkanbuLevelRange, setKkanbuLevelRange] = useState<string>("1710~1719");
+  const [kkanbuAvgPowerMin, setKkanbuAvgPowerMin] = useState<string>("2500");
+  const [kkanbuAvgPowerTarget, setKkanbuAvgPowerTarget] = useState<string>("3000");
+
+  function makeFriendCharKey(friendCode: string, tableName: string | undefined, charName: string) {
+    return `${friendCode}|${tableName ?? ""}|${charName}`;
+  }
+
+
+  const excludedMyChars = useMemo(() => {
+    const pairs = state.profile.kkanbuExcludePairs ?? [];
+
+    return pairs
+      .filter((p) => p.friendCode === selectedFriendCode)
+      .map((p) => {
+        const [tableId, charId] = String(p.myCharKey ?? "").split("|");
+
+        let foundTable: any = null;
+        let foundChar: any = null;
+
+        for (const tbl of state.tables) {
+          if (tbl.id !== tableId) continue;
+          foundTable = tbl;
+          foundChar = tbl.characters.find((ch) => ch.id === charId);
+          if (foundChar) break;
+        }
+
+        return {
+          myCharKey: p.myCharKey,
+          tableId,
+          charId,
+          tableName: foundTable?.name ?? tableId,
+          name: foundChar?.name ?? "(삭제된 캐릭터)",
+          ilvl: foundChar?.itemLevel ?? "",
+          power: foundChar?.power ?? "",
+          role: foundChar?.role ?? "DEALER",
+        };
+      });
+  }, [state.profile.kkanbuExcludePairs, state.tables, selectedFriendCode]);
+
   const [friendsDockOpen, setFriendsDockOpen] = useState<boolean>(() => {
     try {
       return localStorage.getItem("friendsDockOpen:v1") === "1";
@@ -846,15 +881,9 @@ export default function TodoTracker() {
 
           const me = sortedMine[i];
 
-          const friendCharKey = makeFriendCharKey(
-            selectedFriendCode,
-            friend.row?.tableName,
-            friend.row?.charName ?? "-"
-          );
-
           const myCharKey = makeMyCharKey(me.tableId, me.charId);
 
-          if (isExcludedPair(selectedFriendCode, friendCharKey, myCharKey)) continue;
+          if (isExcludedMyChar(selectedFriendCode, myCharKey)) continue;
 
           const commonRaids = getRaidIntersection(me.remaining, friend.raids);
           if (commonRaids.length < 3) continue;
@@ -983,6 +1012,18 @@ export default function TodoTracker() {
       })
       .filter((me) => me.raidStatusRows.some((row) => !row.matchedTo));
 
+    const myExcludeTargets = state.tables.flatMap((tbl) =>
+      tbl.characters.map((ch) => ({
+        tableId: tbl.id,
+        tableName: tbl.name ?? tbl.id,
+        charId: ch.id,
+        name: ch.name,
+        ilvl: getCharIlvl(ch),
+        power: parseNum((ch as any).power),
+        role: ch.role ?? "DEALER",
+      }))
+    );
+
     return (
       <div className="raidLeftColsWrap">
         <div className="raidLeftColsTitle">친구 남은 레이드</div>
@@ -1001,7 +1042,9 @@ export default function TodoTracker() {
                 placeholder="예: 1710~1719"
                 style={{ width: 140 }}
               />
-              <div style={{ fontSize: 11, opacity: 0.7 }}>입력 레벨 ~ +9 까지만 (예: 1710~1719)</div>
+              <div style={{ fontSize: 11, opacity: 0.7 }}>
+                입력 레벨 ~ +9 까지만 (예: 1710~1719)
+              </div>
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -1016,6 +1059,61 @@ export default function TodoTracker() {
               <div style={{ fontSize: 11, opacity: 0.7 }}>
                 목표값에 가까운 평균 전투력 조합 우선
               </div>
+            </div>
+          </div>
+
+          {/* ✅ 내 캐릭터 매칭 제외 체크 */}
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 8 }}>
+              이미 깐부 있는 내 캐릭터 제외
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                gap: 8,
+              }}
+            >
+              {myExcludeTargets.map((me) => {
+                const myCharKey = makeMyCharKey(me.tableId, me.charId);
+                const checked = isExcludedMyChar(selectedFriendCode, myCharKey);
+
+                return (
+                  <label
+                    key={myCharKey}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "10px 12px",
+                      border: "1px solid var(--border)",
+                      borderRadius: 12,
+                      background: "var(--card)",
+                      color: "var(--text)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleExcludedMyChar(selectedFriendCode, myCharKey)}
+                    />
+
+                    <div style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
+                      <div style={{ fontWeight: 700, lineHeight: 1.2 }}>
+                        {me.name}
+                        {Number.isFinite(me.ilvl) ? ` · Lv ${me.ilvl}` : ""}
+                      </div>
+
+                      <div style={{ fontSize: 12, opacity: 0.72 }}>
+                        {me.tableName}
+                        {Number.isFinite(me.power) ? ` · 전투력 ${me.power}` : ""}
+                      </div>
+                    </div>
+                  </label>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -1087,7 +1185,57 @@ export default function TodoTracker() {
                           </>
                         ) : null}
                       </div>
+                      {excludedMyChars.length > 0 && (
+                        <div
+                          style={{
+                            marginTop: 12,
+                            padding: 12,
+                            border: "1px solid rgba(120,160,255,0.22)",
+                            borderRadius: 12,
+                            background: "rgba(10,18,40,0.35)",
+                          }}
+                        >
+                          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
+                            이미 깐부 있음
+                          </div>
 
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            {excludedMyChars.map((item) => (
+                              <div
+                                key={item.myCharKey}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  gap: 12,
+                                  padding: "8px 10px",
+                                  borderRadius: 10,
+                                  background: "rgba(255,255,255,0.04)",
+                                }}
+                              >
+                                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                                  <div style={{ fontWeight: 600 }}>
+                                    {item.name}
+                                    {item.ilvl ? ` (Lv ${item.ilvl})` : ""}
+                                  </div>
+                                  <div style={{ fontSize: 12, opacity: 0.75 }}>
+                                    {item.tableName}
+                                    {item.power ? ` · 전투력 ${item.power}` : ""}
+                                  </div>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  className="mini"
+                                  onClick={() => removeExcludedMyChar(selectedFriendCode, item.myCharKey)}
+                                >
+                                  해제
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       <label
                         style={{
                           marginTop: 8,
@@ -1100,28 +1248,18 @@ export default function TodoTracker() {
                       >
                         <input
                           type="checkbox"
-                          checked={isExcludedPair(
+                          checked={isExcludedMyChar(
                             selectedFriendCode,
-                            makeFriendCharKey(
-                              selectedFriendCode,
-                              friend.row?.tableName,
-                              friend.row?.charName ?? "-"
-                            ),
                             makeMyCharKey(me.tableId, me.charId)
                           )}
                           onChange={() =>
-                            toggleExcludedPair(
+                            toggleExcludedMyChar(
                               selectedFriendCode,
-                              makeFriendCharKey(
-                                selectedFriendCode,
-                                friend.row?.tableName,
-                                friend.row?.charName ?? "-"
-                              ),
                               makeMyCharKey(me.tableId, me.charId)
                             )
                           }
                         />
-                        <span>이미 깐부 있어요</span>
+                        <span>이미 깐부 있어서 이 캐릭 제외</span>
                       </label>
                     </div>
                   </div>
