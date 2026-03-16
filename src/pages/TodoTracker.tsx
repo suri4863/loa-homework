@@ -5544,6 +5544,16 @@ body.pip-dark .pip-select option{
             {RAID_CLEAR_GOLD[raidGoldPopup.title].nightmare !== undefined && (
               <div>나이트메어: {RAID_CLEAR_GOLD[raidGoldPopup.title].nightmare!.toLocaleString()} G</div>
             )}
+
+            {RAID_CLEAR_GOLD[raidGoldPopup.title].stage1 !== undefined && (
+              <div>1단계: {RAID_CLEAR_GOLD[raidGoldPopup.title].stage1!.toLocaleString()} G</div>
+            )}
+            {RAID_CLEAR_GOLD[raidGoldPopup.title].stage2 !== undefined && (
+              <div>2단계: {RAID_CLEAR_GOLD[raidGoldPopup.title].stage2!.toLocaleString()} G</div>
+            )}
+            {RAID_CLEAR_GOLD[raidGoldPopup.title].stage3 !== undefined && (
+              <div>3단계: {RAID_CLEAR_GOLD[raidGoldPopup.title].stage3!.toLocaleString()} G</div>
+            )}
           </div>
         </div>
       )}
