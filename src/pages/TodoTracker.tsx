@@ -192,6 +192,7 @@ export default function TodoTracker() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
+
   // =========================
   // ✅ Theme (light/dark)
   // =========================
@@ -470,7 +471,7 @@ export default function TodoTracker() {
 
     try {
       const s = stateRef.current;
-      const snapshotJson = exportRaidLeftSnapshot(s, "ALL", weeklyRaidPickByChar);
+      const snapshotJson = exportRaidLeftSnapshot(s, "ALL", weeklyRaidPickRef.current);
 
       await apiFetch2("/api/me/raid-left-snapshot", {
         method: "PUT",
@@ -2831,8 +2832,12 @@ export default function TodoTracker() {
 
   const WEEKLY_PICK_KEY = "loa-weekly-raid-pick:v1";
   const [weeklyRaidPickByChar, setWeeklyRaidPickByChar] = useState<Record<string, WeeklyRaidPick>>({});
+  const weeklyRaidPickRef = useRef<Record<string, WeeklyRaidPick>>({});
   const [weeklyTop3Popup, setWeeklyTop3Popup] = useState<WeeklyTop3Popup>(null);
 
+  useEffect(() => {
+    weeklyRaidPickRef.current = weeklyRaidPickByChar;
+  }, [weeklyRaidPickByChar]);
 
   function weeklyCharKey(tableId: string, charId: string) {
     return `${tableId}:${charId}`;
