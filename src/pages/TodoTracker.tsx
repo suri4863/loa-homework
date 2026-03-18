@@ -852,6 +852,112 @@ export default function TodoTracker() {
       };
     });
 
+    function getCommonRaidsBetween(
+      my: MyCandidate,
+      friend: FriendCandidate
+    ): string[] {
+      return my.remainingRaids
+        .map((raid: string) => normalizeRaidName(raid))
+        .filter((raid: string, index: number, arr: string[]) => arr.indexOf(raid) === index)
+        .filter((raid: string) =>
+          friend.remainingRaids.some((fr: string) => normalizeRaidName(fr) === raid)
+        );
+    }
+
+    function autoBuildRecommendedPairs(): ManualKkanbuPair[] {
+      const myPool: MyCandidate[] = myCandidates.map((x) => ({
+        ...x,
+        remainingRaids: [...x.remainingRaids],
+      }));
+
+      const friendPool: FriendCandidate[] = friendCandidates.map((x) => ({
+        ...x,
+        remainingRaids: [...x.remainingRaids],
+      }));
+
+      const result: ManualKkanbuPair[] = [];
+
+      while (true) {
+        let best:
+          | {
+            myIndex: number;
+            friendIndex: number;
+            commonRaids: string[];
+            avgPower: number;
+            diffFromTarget: number;
+            score: number;
+          }
+          | null = null;
+
+        for (let mi = 0; mi < myPool.length; mi++) {
+          const my = myPool[mi];
+          if (!my.remainingRaids.length) continue;
+
+          for (let fi = 0; fi < friendPool.length; fi++) {
+            const friend = friendPool[fi];
+            if (!friend.remainingRaids.length) continue;
+
+            const commonRaids = getCommonRaidsBetween(my, friend);
+            if (!commonRaids.length) continue;
+
+            const avgPower =
+              my.power > 0 && friend.power > 0
+                ? Math.round((my.power + friend.power) / 2)
+                : 0;
+
+            const diffFromTarget =
+              avgTarget > 0 ? Math.abs(avgPower - avgTarget) : 0;
+
+            // 점수 높을수록 우선
+            // 공통 레이드 수 우선 + 목표 깐평 차이 적을수록 우선
+            const score = commonRaids.length * 100000 - diffFromTarget;
+
+            if (!best || score > best.score) {
+              best = {
+                myIndex: mi,
+                friendIndex: fi,
+                commonRaids,
+                avgPower,
+                diffFromTarget,
+                score,
+              };
+            }
+          }
+        }
+
+        if (!best) break;
+
+        const my = myPool[best.myIndex];
+        const friend = friendPool[best.friendIndex];
+
+        result.push({
+          myKey: my.key,
+          friendKey: friend.key,
+          selectedRaids: best.commonRaids,
+        });
+
+        const usedSet = new Set(best.commonRaids.map((r) => normalizeRaidName(r)));
+
+        myPool[best.myIndex] = {
+          ...my,
+          remainingRaids: my.remainingRaids.filter(
+            (raid: string) => !usedSet.has(normalizeRaidName(raid))
+          ),
+        };
+
+        friendPool[best.friendIndex] = {
+          ...friend,
+          remainingRaids: friend.remainingRaids.filter(
+            (raid: string) => !usedSet.has(normalizeRaidName(raid))
+          ),
+        };
+      }
+
+      return result.length
+        ? result
+        : [{ myKey: "", friendKey: "", selectedRaids: null }];
+    }
+
     const usedRaidsByMyKey = new Map<string, Set<string>>();
     const usedRaidsByFriendKey = new Map<string, Set<string>>();
 
@@ -1000,6 +1106,17 @@ export default function TodoTracker() {
           <div className="manualKkanbuTopSummary">
             <div>내 캐릭 {myCandidates.length}명</div>
             <div>친구 캐릭 {friendCandidates.length}명</div>
+
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                const recommended = autoBuildRecommendedPairs();
+                setManualKkanbuPairs(recommended);
+              }}
+            >
+              추천 매칭
+            </button>
           </div>
         </div>
 
