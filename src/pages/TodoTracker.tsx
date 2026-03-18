@@ -219,6 +219,20 @@ export default function TodoTracker() {
   const [selectedFriendCode, setSelectedFriendCode] = useState<string>("");
   const [friendSnapshots, setFriendSnapshots] = useState<Record<string, any>>({});
 
+  // ✅ 수동 깐부 조합 플래너
+  const [kkanbuLevelRange, setKkanbuLevelRange] = useState<string>("1710~1719");
+  const [kkanbuAvgPowerTarget, setKkanbuAvgPowerTarget] = useState<string>("3000");
+
+  type ManualKkanbuPair = {
+    myKey: string;
+    friendKey: string;
+    selectedRaids: string[] | null;
+  };
+
+  const [manualKkanbuPairs, setManualKkanbuPairs] = useState<ManualKkanbuPair[]>([
+    { myKey: "", friendKey: "", selectedRaids: null },
+  ]);
+
   function makeMyCharKey(tableId: string, charId: string) {
     return `${tableId}|${charId}`;
   }
@@ -294,11 +308,27 @@ export default function TodoTracker() {
     });
   }
 
-  // ✅ 깐부 매칭(친구 남은 레이드에서)
-  const [kkanbuLevelRange, setKkanbuLevelRange] = useState<string>("1710~1719");
-  const [kkanbuAvgPowerMin, setKkanbuAvgPowerMin] = useState<string>("2500");
-  const [kkanbuAvgPowerTarget, setKkanbuAvgPowerTarget] = useState<string>("3000");
+  type MyCandidate = {
+    key: string;
+    tableId: string;
+    tableName: string;
+    charId: string;
+    name: string;
+    ilvl: number;
+    power: number;
+    remainingRaids: string[];
+  };
 
+  type FriendCandidate = {
+    key: string;
+    tableName: string;
+    name: string;
+    ilvl: number;
+    power: number;
+    remainingRaids: string[];
+  };
+
+  // ✅ 깐부 매칭(친구 남은 레이드에서)
   function makeFriendCharKey(friendCode: string, tableName: string | undefined, charName: string) {
     return `${friendCode}|${tableName ?? ""}|${charName}`;
   }
@@ -350,6 +380,10 @@ export default function TodoTracker() {
       // ignore
     }
   }, [friendsDockOpen]);
+
+  useEffect(() => {
+    setManualKkanbuPairs([{ myKey: "", friendKey: "", selectedRaids: null }]);
+  }, [selectedFriendCode]);
 
   // =========================
   // ✅ 서버 친구/요청 (SERVER_MODE일 때만)
@@ -655,776 +689,524 @@ export default function TodoTracker() {
     const f = state.friends.find((x) => x.code === selectedFriendCode);
     if (!f) return <div className="todo-hint">친구를 찾을 수 없어.</div>;
 
-    const snap = friendSnapshots[selectedFriendCode];
+    const snap: any = friendSnapshots[selectedFriendCode];
     if (!snap?.data) {
       return <div className="todo-hint">친구 스냅샷이 없어. (서버에서 불러오기 또는 스냅샷 붙여넣기)</div>;
     }
     if (snap.shareMode === "PRIVATE") return <div className="todo-hint">친구가 비공개야.</div>;
 
     const rows = (snap.data as any[]).filter((r) => r && r.charName);
-    if (!rows.length) return <div className="todo-hint">✅ 친구는 상위 3개 레이드가 전부 완료된 상태야.</div>;
 
-    // ==========================
-    // ✅ 깐부 매칭(레벨구간 + 깐평 + 레이드3개 동일)
-    // - 레벨 입력: "1710~1719" / "1710-1719" / "1710" 모두 허용 (단독이면 +9 자동)
-    // - 깐평 입력: 비우면 무시
-    // ==========================
-    const parseRange = (raw: string): { min?: number; max?: number } => {
-      const s = String(raw ?? "").trim();
-      if (!s) return {};
-      const cleaned = s.replace(/\s/g, "");
-      const parts = cleaned.split(/~|-/).filter(Boolean);
-      const min = Number(parts[0]);
-      if (!Number.isFinite(min)) return {};
-      if (parts.length >= 2) {
-        const max = Number(parts[1]);
-        if (Number.isFinite(max)) return { min, max };
-        return { min, max: min + 9 };
+    const parseLevelRange = (raw: string) => {
+      const text = String(raw ?? "").trim();
+      if (!text) return { min: 0, max: Number.MAX_SAFE_INTEGER };
+
+      const matched = text.match(/(\d+(?:\.\d+)?)\s*~\s*(\d+(?:\.\d+)?)/);
+      if (matched) {
+        return {
+          min: Number(matched[1]),
+          max: Number(matched[2]),
+        };
       }
-      return { min, max: min + 9 };
-    };
 
-    // "2500+" 같은 문자열도 숫자로 변환
-    const parseNum = (raw?: any): number => {
-      if (raw == null) return NaN;
-      const n = Number(String(raw).replace(/[^\d.]/g, ""));
-      return Number.isFinite(n) ? n : NaN;
-    };
-
-    const range = parseRange(kkanbuLevelRange);
-    const avgMin = parseNum(kkanbuAvgPowerMin);
-    const avgTarget = parseNum(kkanbuAvgPowerTarget);
-
-    // ✅ 내 남은 레이드(Top3 기준) 후보 만들기: 모든 표/모든 캐릭 (3회 미만)
-    const weeklyRaidTitleToId = new Map<string, string>();
-    for (const t of state.tasks) {
-      if (t.period !== "WEEKLY") continue;
-      if (t.cellType !== "CHECK") continue;
-
-      const title = String(t.title ?? "").trim();
-      // ✅ 섹션 상관없이 "4막/종막/세르카..." 레이드 타이틀이면 포함
-      if (!isWeeklyRaidTaskTitle(title)) continue;
-
-      weeklyRaidTitleToId.set(title, t.id);
-    }
-
-
-    const weeklyRaidTaskIds = Array.from(weeklyRaidTitleToId.values());
-
-    const getCheckedWeeklyRaidCountStrict = (tableId: string, charId: string) => {
-      let n = 0;
-      for (const taskId of weeklyRaidTaskIds) {
-        const v = getCellByTableId(state, tableId, taskId, charId);
-        if (v && v.type === "CHECK" && v.checked) n++;
+      const single = Number(text.replace(/[^\d.]/g, ""));
+      if (Number.isFinite(single)) {
+        return { min: single, max: single + 9 };
       }
-      return n;
+
+      return { min: 0, max: Number.MAX_SAFE_INTEGER };
     };
 
-    // ✅ "4막 노말" / "세르카 나이트메어" 같은 표기를 "4막" / "세르카"로 통일
-    const normalizeRaidName = (s: string) =>
-      String(s ?? "")
-        .trim()
+    const parsePowerValue = (raw: any) => {
+      const n = Number(String(raw ?? "").replace(/[^\d.]/g, ""));
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    const normalizeRaidName = (name: string) =>
+      String(name ?? "")
         .replace(/\s+/g, " ")
-        .replace(/\s*(노말|하드|나이트메어)\s*$/g, "");
+        .trim()
+        .replace(/\s*(노말|하드|나이트메어|1단계|2단계|3단계)\s*$/g, "");
+
+    const levelRange = parseLevelRange(kkanbuLevelRange);
+    const avgTarget = Number(String(kkanbuAvgPowerTarget ?? "").replace(/[^\d.]/g, "")) || 0;
+
+    const weeklyRaidTasks = state.tasks.filter(
+      (t) =>
+        t.period === "WEEKLY" &&
+        (t.section ?? "").trim() === "주간 레이드" &&
+        t.cellType === "CHECK"
+    );
 
     const myCandidates = state.tables.flatMap((tbl) =>
       tbl.characters
-        .filter((ch) => getCheckedWeeklyRaidCountStrict(tbl.id, ch.id) < 3)
         .map((ch) => {
-          // ✅ itemLevel 파싱은 프로젝트에 있는 getCharIlvl 사용 (Lv. / 소수 / 문자열 변형 안전)
           const ilvl = getCharIlvl(ch);
+          const power = parsePowerValue(ch.power);
 
-          const charKey = weeklyCharKey(tbl.id, ch.id);
-          const pick = Number.isFinite(ilvl)
-            ? (weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(ilvl))
-            : { raids: [], diffs: {} };
-
-          const selectedRaids = pick.raids.map(normalizeRaidName);
-
-          const remaining = selectedRaids.filter((title) => {
-            const taskId = weeklyRaidTitleToId.get(title);
-            if (!taskId) return false;
-
-            const v = getCellByTableId(state, tbl.id, taskId, ch.id);
-            return !(v && v.type === "CHECK" && v.checked);
-          });
-
-          const currentDiffs: Record<string, DiffName> = pick?.diffs ?? {};
-
-          const remainingRows = remaining.map((raidName: string) => {
-            const avail = availableDiffNames(ilvl, raidName);
-
-            const selectedDiff: DiffName =
-              currentDiffs[raidName] && avail.includes(currentDiffs[raidName])
-                ? currentDiffs[raidName]
-                : ((avail[avail.length - 1] ?? "노말") as DiffName);
-
-            return {
-              raid: normalizeRaidName(raidName),
-              diff: selectedDiff,
-            };
-          });
+          const remainingRaids: string[] = weeklyRaidTasks
+            .filter((task) => {
+              const cell = getCellByTableId(state, tbl.id, task.id, ch.id);
+              const checked = cell?.type === "CHECK" ? cell.checked : false;
+              return !checked;
+            })
+            .map((task) => task.title);
 
           return {
+            key: `${tbl.id}|${ch.id}`,
             tableId: tbl.id,
-            tableName: tbl.name ?? tbl.id,
+            tableName: tbl.name ?? "",
             charId: ch.id,
             name: ch.name,
             ilvl,
-            power: parseNum((ch as any).power),
-            role: ch.role ?? "DEALER",
-            remaining: remaining.map(normalizeRaidName),
-            remainingRows,
-            raidStatusRows: [],
+            power,
+            remainingRaids,
           };
         })
+        .filter(
+          (x) =>
+            x.ilvl >= levelRange.min &&
+            x.ilvl <= levelRange.max &&
+            x.remainingRaids.length > 0
+        )
     );
 
-    // 내 캐릭 레벨 필터
-    const myFiltered = myCandidates.filter((m) => {
-      const myCharKey = makeMyCharKey(m.tableId, m.charId);
-
-      // ✅ 이미 깐부 있는 내 캐릭터는 매칭 시스템 후보군에서 아예 제외
-      if (isExcludedMyChar(selectedFriendCode, myCharKey)) return false;
-
-      if (
-        range.min != null &&
-        Number.isFinite(range.min) &&
-        (!Number.isFinite(m.ilvl) || m.ilvl < range.min!)
-      ) return false;
-
-      if (
-        range.max != null &&
-        Number.isFinite(range.max) &&
-        (!Number.isFinite(m.ilvl) || m.ilvl > range.max!)
-      ) return false;
-
-      return true;
-    });
-
-    // 레이드 목록은 “순서 무시(Set 비교)” 교집합이 3개 이상이면 허용
-    const getRaidIntersection = (a: string[], b: string[]) => {
-      const sa = new Set(a.map((x) => normalizeRaidName(String(x))));
-      const sb = new Set(b.map((x) => normalizeRaidName(String(x))));
-      const common: string[] = [];
-
-      for (const x of sa) {
-        if (sb.has(x)) common.push(x);
-      }
-
-      return common.sort((x, y) => x.localeCompare(y, "ko"));
-    };
-
-    const canKkanbuMatch = (a: string[], b: string[]) => {
-      return getRaidIntersection(a, b).length >= 3;
-    };
-
-
-    // 친구 row -> 매칭되는 내 캐릭들 찾기
-    type FriendCandidate = {
-      row: any;
-      raids: string[];
-      ilvl: number;
-      power: number;
-      role: CharacterRole;
-    };
-
-    type MyCandidate = {
-      tableId: string;
-      tableName: string;
-      charId: string;
-      name: string;
-      ilvl: number;
-      power: number;
-      role: CharacterRole;
-      remaining: string[];
-      remainingRows: { raid: string; diff: DiffName }[];
-      raidStatusRows: { raid: string; diff: DiffName; matchedTo: string | null }[];
-    };
-
-    type KkanbuMatch = {
-      friend: FriendCandidate;
-      me: MyCandidate;
-      avgPower: number;
-      commonRaids: string[];
-      targetDiff: number;
-    };
-
-    const friendFiltered: FriendCandidate[] = rows
+    const friendCandidates = rows
       .map((row: any) => {
-        const friendIlvl = parseNum(row.charItemLevel ?? row.itemLevel ?? row.ilvl);
-        const friendPower = parseNum(row.charPower ?? row.power ?? row.combatPower);
-
-        const raidsRaw = Array.isArray(row.remainingRaids)
-          ? row.remainingRaids.slice(0, 3)
-          : Array.isArray(row.remaining)
-            ? row.remaining.slice(0, 3)
-            : [];
-
-        const raids = raidsRaw
-          .map((x: string) => normalizeRaidName(String(x)));
-
-        if (range.min != null && Number.isFinite(range.min) && (!Number.isFinite(friendIlvl) || friendIlvl < range.min!)) return null;
-        if (range.max != null && Number.isFinite(range.max) && (!Number.isFinite(friendIlvl) || friendIlvl > range.max!)) return null;
+        const ilvl = Number(row.ilvl) || parsePowerValue(row.charItemLevel);
+        const power = parsePowerValue(row.charPower);
+        const remainingRaids = Array.isArray(row.remainingRaids) ? row.remainingRaids : [];
 
         return {
-          row,
-          raids,
-          ilvl: friendIlvl,
-          power: friendPower,
-          role: row.charRole ?? "DEALER",
+          key: `${row.tableName ?? ""}|${row.charName ?? ""}`,
+          tableName: row.tableName ?? "",
+          name: row.charName ?? "",
+          ilvl,
+          power,
+          remainingRaids,
         };
       })
-      .filter(Boolean) as FriendCandidate[];
+      .filter(
+        (x) =>
+          x.ilvl >= levelRange.min &&
+          x.ilvl <= levelRange.max &&
+          x.remainingRaids.length > 0
+      );
 
-    // ✅ 같은 레이드 조합끼리만 그룹핑
-    const groupKeyOfRaids = (raids: string[]) =>
-      [...raids].map((x) => normalizeRaidName(x)).sort((a, b) => a.localeCompare(b, "ko")).join(" | ");
-
-    const friendGroups = new Map<string, FriendCandidate[]>();
-    for (const f of friendFiltered) {
-      const key = groupKeyOfRaids(f.raids);
-      if (!friendGroups.has(key)) friendGroups.set(key, []);
-      friendGroups.get(key)!.push(f);
+    if (!friendCandidates.length) {
+      return <div className="todo-hint">해당 레벨대 친구 캐릭터가 없어.</div>;
     }
 
-    const myGroups = new Map<string, MyCandidate[]>();
-    for (const me of myFiltered) {
-      const key = groupKeyOfRaids(me.remaining);
-      if (!myGroups.has(key)) myGroups.set(key, []);
-      myGroups.get(key)!.push(me);
-    }
+    const pairResults = manualKkanbuPairs.map((pair, idx) => {
+      const my = myCandidates.find((x) => x.key === pair.myKey) ?? null;
+      const friend = friendCandidates.find((x) => x.key === pair.friendKey) ?? null;
 
+      const commonRaids: string[] =
+        my && friend
+          ? my.remainingRaids
+            .map((raid: string) => normalizeRaidName(raid))
+            .filter((raid: string, index: number, arr: string[]) => arr.indexOf(raid) === index)
+            .filter((raid: string) =>
+              friend.remainingRaids.some((fr: string) => normalizeRaidName(fr) === raid)
+            )
+          : [];
 
-    // ✅ 전체 후보 대상으로 1:1 매칭
-    function solveBestOneToOne(friendList: FriendCandidate[], myList: MyCandidate[]): KkanbuMatch[] {
-      if (!friendList.length || !myList.length) return [];
+      const activeSelectedRaids: string[] =
+        commonRaids.length === 0
+          ? []
+          : (pair.selectedRaids === null ? commonRaids : pair.selectedRaids).filter((raid) =>
+            commonRaids.some((cr) => normalizeRaidName(cr) === normalizeRaidName(raid))
+          );
 
-      const sortedFriends = [...friendList].sort((a, b) => {
-        const powerA = Number.isFinite(a.power) ? a.power : -Infinity;
-        const powerB = Number.isFinite(b.power) ? b.power : -Infinity;
-        return powerB - powerA;
-      });
+      const avgPower =
+        my && friend && my.power > 0 && friend.power > 0
+          ? Math.round((my.power + friend.power) / 2)
+          : null;
 
-      const sortedMine = [...myList].sort((a, b) => {
-        const powerA = Number.isFinite(a.power) ? a.power : -Infinity;
-        const powerB = Number.isFinite(b.power) ? b.power : -Infinity;
-        return powerB - powerA;
-      });
+      const diffFromTarget =
+        avgPower != null && avgTarget > 0 ? Math.abs(avgPower - avgTarget) : null;
 
-      const usedMine = new Set<number>();
-      const result: KkanbuMatch[] = [];
-
-      for (const friend of sortedFriends) {
-        let pickedIndex = -1;
-        let pickedPair: KkanbuMatch | null = null;
-
-        for (let i = 0; i < sortedMine.length; i++) {
-          if (usedMine.has(i)) continue;
-
-          const me = sortedMine[i];
-
-          const commonRaids = getRaidIntersection(me.remaining, friend.raids);
-          if (commonRaids.length < 3) continue;
-          if (!Number.isFinite(me.power) || !Number.isFinite(friend.power)) continue;
-
-          const avgPower = (me.power + friend.power) / 2;
-          if (Number.isFinite(avgMin) && avgMin > 0 && avgPower < avgMin) continue;
-
-          const targetDiff =
-            Number.isFinite(avgTarget) && avgTarget > 0
-              ? Math.abs(avgPower - avgTarget)
-              : 0;
-
-          const candidate: KkanbuMatch = {
-            friend,
-            me,
-            avgPower,
-            commonRaids,
-            targetDiff,
-          };
-
-          if (!pickedPair) {
-            pickedPair = candidate;
-            pickedIndex = i;
-            continue;
-          }
-
-          const pickedDiff = pickedPair.targetDiff;
-          const nextDiff = candidate.targetDiff;
-
-          if (nextDiff < pickedDiff) {
-            pickedPair = candidate;
-            pickedIndex = i;
-            continue;
-          }
-
-          if (nextDiff === pickedDiff && candidate.avgPower > pickedPair.avgPower) {
-            pickedPair = candidate;
-            pickedIndex = i;
-            continue;
-          }
-        }
-
-        if (pickedIndex >= 0 && pickedPair) {
-          usedMine.add(pickedIndex);
-          result.push(pickedPair);
-        }
-      }
-
-      return result.sort((a, b) => {
-        if (a.targetDiff !== b.targetDiff) return a.targetDiff - b.targetDiff;
-        return b.avgPower - a.avgPower;
-      });
-    }
-
-    const matched: KkanbuMatch[] = solveBestOneToOne(friendFiltered, myFiltered);
-
-    matched.sort((a, b) => {
-      if (a.targetDiff !== b.targetDiff) return a.targetDiff - b.targetDiff;
-      return b.avgPower - a.avgPower;
+      return {
+        idx,
+        my,
+        friend,
+        commonRaids,
+        activeSelectedRaids,
+        avgPower,
+        diffFromTarget,
+      };
     });
 
-    const matchedFriendKeys = new Set(
-      matched.map((m) => `${m.friend.row?.tableName ?? ""}::${m.friend.row?.charName ?? ""}`)
-    );
+    const usedRaidsByMyKey = new Map<string, Set<string>>();
+    const usedRaidsByFriendKey = new Map<string, Set<string>>();
 
-    const matchedMyKeys = new Set(
-      matched.map((m) => `${m.me.tableId}::${m.me.name}`)
-    );
+    for (const result of pairResults) {
+      if (!result.my || !result.friend) continue;
 
-    const usedRaidMapByMe = new Map<string, Set<string>>();
-
-    for (const m of matched) {
-      const meKey = `${m.me.tableId}::${m.me.name}`;
-
-      if (!usedRaidMapByMe.has(meKey)) {
-        usedRaidMapByMe.set(meKey, new Set<string>());
+      if (!usedRaidsByMyKey.has(result.my.key)) {
+        usedRaidsByMyKey.set(result.my.key, new Set<string>());
+      }
+      if (!usedRaidsByFriendKey.has(result.friend.key)) {
+        usedRaidsByFriendKey.set(result.friend.key, new Set<string>());
       }
 
-      for (const raid of m.commonRaids) {
-        usedRaidMapByMe.get(meKey)!.add(normalizeRaidName(raid));
+      for (const raid of result.activeSelectedRaids) {
+        usedRaidsByMyKey.get(result.my.key)!.add(normalizeRaidName(raid));
+        usedRaidsByFriendKey.get(result.friend.key)!.add(normalizeRaidName(raid));
       }
     }
 
-    const unmatchedFriends = friendFiltered.filter(
-      (f) => !matchedFriendKeys.has(`${f.row?.tableName ?? ""}::${f.row?.charName ?? ""}`)
-    );
-
-    const unmatchedMine = myFiltered
+    const remainingMyCandidates = myCandidates
       .map((me) => {
-        const meKey = `${me.tableId}::${me.name}`;
+        const used = usedRaidsByMyKey.get(me.key) ?? new Set<string>();
 
-        const matchedToByRaid = new Map<string, string>();
-
-        for (const m of matched) {
-          if (`${m.me.tableId}::${m.me.name}` !== meKey) continue;
-
-          for (const raid of m.commonRaids) {
-            matchedToByRaid.set(
-              normalizeRaidName(raid),
-              String(m.friend.row?.charName ?? "-")
-            );
-          }
-        }
-
-        const raidStatusRows = (me.remainingRows ?? []).map((row) => {
-          const normalizedRaid = normalizeRaidName(row.raid);
-          const matchedTo = matchedToByRaid.get(normalizedRaid);
-
-          return {
-            ...row,
-            matchedTo: matchedTo ?? null,
-          };
-        });
+        const remainingRaids = me.remainingRaids.filter(
+          (raid: string) => !used.has(normalizeRaidName(raid))
+        );
 
         return {
           ...me,
-          raidStatusRows,
+          remainingRaids,
         };
       })
-      .filter((me) => me.raidStatusRows.some((row) => !row.matchedTo));
+      .filter((me) => me.remainingRaids.length > 0);
 
-    const myExcludeTargets = state.tables.flatMap((tbl) =>
-      tbl.characters.map((ch) => ({
-        tableId: tbl.id,
-        tableName: tbl.name ?? tbl.id,
-        charId: ch.id,
-        name: ch.name,
-        ilvl: getCharIlvl(ch),
-        power: parseNum((ch as any).power),
-        role: ch.role ?? "DEALER",
-      }))
-    );
+    const remainingFriendCandidates = friendCandidates
+      .map((fr) => {
+        const used = usedRaidsByFriendKey.get(fr.key) ?? new Set<string>();
+
+        const remainingRaids = fr.remainingRaids.filter(
+          (raid: string) => !used.has(normalizeRaidName(raid))
+        );
+
+        return {
+          ...fr,
+          remainingRaids,
+        };
+      })
+      .filter((fr) => fr.remainingRaids.length > 0);
+
+    const updateManualPair = (
+      index: number,
+      field: "myKey" | "friendKey",
+      value: string
+    ) => {
+      setManualKkanbuPairs((prev) =>
+        prev.map((p, i) =>
+          i === index
+            ? {
+              ...p,
+              [field]: value,
+              selectedRaids: null, // 캐릭 바꾸면 기본 전체선택 상태로 초기화
+            }
+            : p
+        )
+      );
+    };
+
+    const toggleManualPairRaid = (index: number, raid: string) => {
+      const normalizedRaid = normalizeRaidName(raid);
+
+      setManualKkanbuPairs((prev) =>
+        prev.map((p, i) => {
+          if (i !== index) return p;
+
+          const my = myCandidates.find((x) => x.key === p.myKey) ?? null;
+          const friend = friendCandidates.find((x) => x.key === p.friendKey) ?? null;
+
+          const commonRaids: string[] =
+            my && friend
+              ? my.remainingRaids
+                .map((r: string) => normalizeRaidName(r))
+                .filter((r: string, idx: number, arr: string[]) => arr.indexOf(r) === idx)
+                .filter((r: string) =>
+                  friend.remainingRaids.some((fr: string) => normalizeRaidName(fr) === r)
+                )
+              : [];
+
+          const currentBase: string[] =
+            p.selectedRaids === null ? commonRaids : p.selectedRaids;
+
+          const hasRaid = currentBase.some(
+            (r) => normalizeRaidName(r) === normalizedRaid
+          );
+
+          return {
+            ...p,
+            selectedRaids: hasRaid
+              ? currentBase.filter((r) => normalizeRaidName(r) !== normalizedRaid)
+              : [...currentBase, normalizedRaid],
+          };
+        })
+      );
+    };
+
+    const addManualPair = () => {
+      setManualKkanbuPairs((prev) => [
+        ...prev,
+        { myKey: "", friendKey: "", selectedRaids: null },
+      ]);
+    };
+
+    const removeManualPair = (index: number) => {
+      setManualKkanbuPairs((prev) => {
+        const next = prev.filter((_, i) => i !== index);
+        return next.length
+          ? next
+          : [{ myKey: "", friendKey: "", selectedRaids: null }];
+      });
+    };
 
     return (
       <div className="raidLeftColsWrap">
-        <div className="raidLeftColsTitle">친구 남은 레이드</div>
+        <div className="raidLeftColsTitle">깐부 수동 조합 플래너</div>
 
-        {/* ✅ 깐부 매칭 컨트롤 */}
-        <div style={{ padding: "8px 12px 0" }}>
-          <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 6, opacity: 0.9 }}>깐부 매칭</div>
-
-          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-end" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <div style={{ fontSize: 12, opacity: 0.75 }}>레벨 입력</div>
-              <input
-                className="friendInput"
-                value={kkanbuLevelRange}
-                onChange={(e) => setKkanbuLevelRange(e.target.value)}
-                placeholder="예: 1710~1719"
-                style={{ width: 140 }}
-              />
-              <div style={{ fontSize: 11, opacity: 0.7 }}>
-                입력 레벨 ~ +9 까지만 (예: 1710~1719)
-              </div>
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <div style={{ fontSize: 12, opacity: 0.75 }}>목표 깐평</div>
-              <input
-                className="friendInput"
-                value={kkanbuAvgPowerTarget}
-                onChange={(e) => setKkanbuAvgPowerTarget(e.target.value)}
-                placeholder="예: 3000"
-                style={{ width: 120 }}
-              />
-              <div style={{ fontSize: 11, opacity: 0.7 }}>
-                목표값에 가까운 평균 전투력 조합 우선
-              </div>
-            </div>
+        <div className="manualKkanbuTopBar">
+          <div className="manualKkanbuTopField">
+            <div className="manualKkanbuLabel">레벨대</div>
+            <input
+              className="friendInput manualKkanbuInput"
+              value={kkanbuLevelRange}
+              onChange={(e) => setKkanbuLevelRange(e.target.value)}
+              placeholder="예: 1710~1719"
+            />
           </div>
 
-          {/* ✅ 내 캐릭터 매칭 제외 체크 */}
-          <div style={{ marginTop: 14 }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 8,
-                marginBottom: 8,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 8,
-                  marginBottom: 8,
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    marginBottom: 8,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <div style={{ fontSize: 12, opacity: 0.8 }}>
-                    이미 깐부 있는 내 캐릭터 제외
-                  </div>
+          <div className="manualKkanbuTopField">
+            <div className="manualKkanbuLabel">목표 깐평</div>
+            <input
+              className="friendInput manualKkanbuInput"
+              value={kkanbuAvgPowerTarget}
+              onChange={(e) => setKkanbuAvgPowerTarget(e.target.value)}
+              placeholder="예: 3000"
+            />
+          </div>
 
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <button
-                      type="button"
-                      className="mini"
-                      onClick={() => {
-                        if (!selectedFriendCode) return;
-                        if (!confirm("현재 친구에 대한 내 캐릭터 제외 기록을 모두 초기화할까요?")) return;
-                        clearExcludedMyChars(selectedFriendCode);
-                      }}
-                    >
-                      제외 초기화
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                gap: 8,
-              }}
-            >
-              {myExcludeTargets.map((me) => {
-                const myCharKey = makeMyCharKey(me.tableId, me.charId);
-                const checked = isExcludedMyChar(selectedFriendCode, myCharKey);
-
-                return (
-                  <label
-                    key={myCharKey}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "10px 12px",
-                      border: "1px solid var(--border)",
-                      borderRadius: 12,
-                      background: "var(--card)",
-                      color: "var(--text)",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggleExcludedMyChar(selectedFriendCode, myCharKey)}
-                    />
-
-                    <div style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
-                      <div style={{ fontWeight: 700, lineHeight: 1.2 }}>
-                        {me.name}
-                        {Number.isFinite(me.ilvl) ? ` · Lv ${me.ilvl}` : ""}
-                      </div>
-
-                      <div style={{ fontSize: 12, opacity: 0.72 }}>
-                        {me.tableName}
-                        {Number.isFinite(me.power) ? ` · 전투력 ${me.power}` : ""}
-                      </div>
-                    </div>
-                  </label>
-                );
-              })}
-            </div>
+          <div className="manualKkanbuTopSummary">
+            <div>내 캐릭 {myCandidates.length}명</div>
+            <div>친구 캐릭 {friendCandidates.length}명</div>
           </div>
         </div>
 
-        {/* ✅ 매칭 결과 */}
-        {!matched.length ? (
-          <div className="todo-hint" style={{ padding: 12, opacity: 0.8 }}>
-            조건 만족 매칭 없음 (레벨/깐평을 조정해봐)
-          </div>
-        ) : (
-          <div style={{ padding: "10px 12px 0" }}>
-            <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>
-              매칭 결과 ({matched.length})
-            </div>
+        <div className="manualKkanbuPlanner">
+          {manualKkanbuPairs.map((pair, index) => {
+            const result = pairResults[index];
 
-            <div className="raidLeftCols" style={{ marginBottom: 10 }}>
-              {matched.map(({ friend, me, commonRaids }) => {
-                const friendName = friend.row?.charName ?? "-";
-                const friendLevel = friend.row?.charItemLevel ?? friend.ilvl;
-                const friendPower = friend.row?.charPower ?? friend.power;
+            const buildRemainingCandidatesUntil = (pairIndex: number) => {
+              const usedMy = new Map<string, Set<string>>();
+              const usedFriend = new Map<string, Set<string>>();
 
-                return (
-                  <div
-                    key={`match-${friend.row?.tableName ?? ""}-${friendName}-${me.tableId}-${me.name}`}
-                    className="raidLeftColCard"
-                  >
-                    <div className="raidLeftColHeader">
-                      <div className="raidLeftColHeaderLeft">
-                        <div className="raidLeftColNameRow">
-                          <div className="raidLeftColName">{friendName}</div>
-                          {friendLevel ? <span className="raidBadge ilvl">Lv {friendLevel}</span> : null}
-                        </div>
+              for (let i = 0; i < pairIndex; i++) {
+                const result = pairResults[i];
+                if (!result?.my || !result?.friend) continue;
 
-                        <div className="raidLeftColPowerLine">
-                          {friendPower ? <span className="raidBadge power">전투력 {friendPower}</span> : null}
-                          {renderRoleBadge(friend.role)}
-                        </div>
-                      </div>
+                if (!usedMy.has(result.my.key)) usedMy.set(result.my.key, new Set<string>());
+                if (!usedFriend.has(result.friend.key)) usedFriend.set(result.friend.key, new Set<string>());
 
-                      {friend.row?.tableName ? <div className="raidLeftColSub">{friend.row.tableName}</div> : null}
+                for (const raid of result.activeSelectedRaids) {
+                  usedMy.get(result.my.key)!.add(normalizeRaidName(raid));
+                  usedFriend.get(result.friend.key)!.add(normalizeRaidName(raid));
+                }
+              }
+
+              const selectableMy = myCandidates
+                .map((me) => {
+                  const used = usedMy.get(me.key) ?? new Set<string>();
+                  return {
+                    ...me,
+                    remainingRaids: me.remainingRaids.filter(
+                      (raid: string) => !used.has(normalizeRaidName(raid))
+                    ),
+                  };
+                })
+                .filter((me) => me.remainingRaids.length > 0);
+
+              const selectableFriend = friendCandidates
+                .map((fr) => {
+                  const used = usedFriend.get(fr.key) ?? new Set<string>();
+                  return {
+                    ...fr,
+                    remainingRaids: fr.remainingRaids.filter(
+                      (raid: string) => !used.has(normalizeRaidName(raid))
+                    ),
+                  };
+                })
+                .filter((fr) => fr.remainingRaids.length > 0);
+
+              return { selectableMy, selectableFriend };
+            };
+
+            const { selectableMy, selectableFriend } = buildRemainingCandidatesUntil(index);
+
+            return (
+              <div key={index} className="manualKkanbuPairCard">
+                <div className="manualKkanbuPairHeader">
+                  <div className="manualKkanbuPairTitle">조합 {index + 1}</div>
+                  <button className="mini" onClick={() => removeManualPair(index)}>
+                    삭제
+                  </button>
+                </div>
+
+                <div className="manualKkanbuPairGrid">
+                  <div className="manualKkanbuField">
+                    <div className="manualKkanbuLabel">내 캐릭터</div>
+                    <select
+                      className="friendSelect manualKkanbuSelect"
+                      value={pair.myKey}
+                      onChange={(e) => updateManualPair(index, "myKey", e.target.value)}
+                    >
+                      <option value="">내 캐릭 선택</option>
+                      {selectableMy.map((me) => (
+                        <option key={me.key} value={me.key}>
+                          {me.name} / Lv {me.ilvl} / 전투력 {me.power}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="manualKkanbuField">
+                    <div className="manualKkanbuLabel">친구 캐릭터</div>
+                    <select
+                      className="friendSelect manualKkanbuSelect"
+                      value={pair.friendKey}
+                      onChange={(e) => updateManualPair(index, "friendKey", e.target.value)}
+                    >
+                      <option value="">친구 캐릭 선택</option>
+                      {selectableFriend.map((fr) => (
+                        <option key={fr.key} value={fr.key}>
+                          {fr.name} / Lv {fr.ilvl} / 전투력 {fr.power}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {result.my && result.friend ? (
+                  <div className="manualKkanbuPairResult">
+                    <div className="manualKkanbuResultMain">
+                      <b>{result.my.name}</b> ↔ <b>{result.friend.name}</b>
                     </div>
 
-                    <div className="raidLeftColBody">
-                      {commonRaids.length ? (
-                        commonRaids.map((raid: string, i: number) => (
-                          <div key={`${friendName}-${i}`} className="raidLeftColItem">
-                            {raid}
-                          </div>
-                        ))
+                    <div className="manualKkanbuBadges">
+                      <span className="raidBadge ilvl">내 Lv {result.my.ilvl}</span>
+                      <span className="raidBadge power">내 전투력 {result.my.power}</span>
+                      <span className="raidBadge ilvl">친구 Lv {result.friend.ilvl}</span>
+                      <span className="raidBadge power">친구 전투력 {result.friend.power}</span>
+                    </div>
+
+                    <div className="manualKkanbuAvgLine">
+                      깐평: <b>{result.avgPower ?? "-"}</b>
+                      {result.diffFromTarget != null ? (
+                        <>
+                          {" "} / 목표 차이: <b>{result.diffFromTarget}</b>
+                        </>
+                      ) : null}
+                    </div>
+
+                    <div className="manualKkanbuAvgLine">
+                      같이 가는 레이드:{" "}
+                      <b>
+                        {result.activeSelectedRaids.length
+                          ? result.activeSelectedRaids.join(", ")
+                          : "선택 안 됨"}
+                      </b>
+                    </div>
+
+                    <div className="manualKkanbuRaidBox">
+                      <div className="manualKkanbuRaidTitle">공통 레이드</div>
+                      {result.commonRaids.length ? (
+                        <div className="manualKkanbuRaidList">
+                          {result.commonRaids.map((raid) => {
+                            const isActive = result.activeSelectedRaids.some(
+                              (x) => normalizeRaidName(x) === normalizeRaidName(raid)
+                            );
+
+                            return (
+                              <button
+                                key={raid}
+                                type="button"
+                                className={`manualRaidChipBtn ${isActive ? "active" : ""}`}
+                                onClick={() => toggleManualPairRaid(index, raid)}
+                              >
+                                {raid}
+                              </button>
+                            );
+                          })}
+                        </div>
                       ) : (
-                        <div className="raidLeftColEmpty">-</div>
+                        <div className="manualKkanbuEmpty">공통 레이드 없음</div>
                       )}
-                    </div>
-
-                    <div style={{ padding: "10px 12px 12px", fontSize: 12, opacity: 0.95 }}>
-                      <div>
-                        <span style={{ opacity: 0.7 }}>매칭:</span>{" "}
-                        <b>{me.name}</b>
-                        {Number.isFinite(me.ilvl) ? ` (Lv ${me.ilvl})` : ""}
-                      </div>
-
-                      <div style={{ marginTop: 4, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                        {Number.isFinite(me.power) ? <span className="raidBadge power">전투력 {me.power}</span> : null}
-                        {renderRoleBadge(me.role)}
-                      </div>
-
-                      <div style={{ marginTop: 4, opacity: 0.8 }}>
-                        평균 전투력: <b>{Math.round((me.power + friend.power) / 2)}</b>
-                        {Number.isFinite(avgTarget) && avgTarget > 0 ? (
-                          <>
-                            {" · "}목표 차이: <b>{Math.abs(Math.round((me.power + friend.power) / 2) - avgTarget)}</b>
-                          </>
-                        ) : null}
-                      </div>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-            <div style={{ padding: "0 12px 0" }}>
-              <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>
-                매칭 안 된 친구 캐릭 ({unmatchedFriends.length})
+                ) : (
+                  <div className="manualKkanbuEmpty">
+                    내 캐릭터와 친구 캐릭터를 선택하면 깐평과 공통 레이드가 보여.
+                  </div>
+                )}
               </div>
+            );
+          })}
 
-              <div className="raidLeftCols" style={{ marginBottom: 10 }}>
-                {unmatchedFriends.map((friend) => {
-                  const friendName = friend.row?.charName ?? "-";
-                  const friendLevel = friend.row?.charItemLevel ?? friend.ilvl;
-                  const friendPower = friend.row?.charPower ?? friend.power;
+          <div className="manualKkanbuActions">
+            <button
+              className="btn"
+              onClick={addManualPair}
+              disabled={!remainingMyCandidates.length || !remainingFriendCandidates.length}
+            >
+              조합 추가
+            </button>
+          </div>
+        </div>
 
-                  return (
-                    <div
-                      key={`unmatched-friend-${friend.row?.tableName ?? ""}-${friendName}`}
-                      className="raidLeftColCard"
-                    >
-                      <div className="raidLeftColHeader">
-                        <div className="raidLeftColHeaderLeft">
-                          <div className="raidLeftColNameRow">
-                            <div className="raidLeftColName">{friendName}</div>
-                            {friendLevel ? <span className="raidBadge ilvl">Lv {friendLevel}</span> : null}
-                          </div>
-
-                          <div className="raidLeftColPowerLine">
-                            {friendPower ? <span className="raidBadge power">전투력 {friendPower}</span> : null}
-                            {renderRoleBadge(friend.role)}
-                          </div>
-                        </div>
-
-                        {friend.row?.tableName ? <div className="raidLeftColSub">{friend.row.tableName}</div> : null}
-                      </div>
-
-                      <div className="raidLeftColBody">
-                        {friend.raids.length ? (
-                          friend.raids.map((r: string, i: number) => (
-                            <div key={`${friendName}-${i}`} className="raidLeftColItem">
-                              {r}
-                            </div>
-                          ))
-                        ) : (
-                          <div className="raidLeftColEmpty">-</div>
-                        )}
-                      </div>
-
-                      <div style={{ padding: "10px 12px 12px", fontSize: 12, opacity: 0.82 }}>
-                        미매칭
-                      </div>
+        <div className="manualKkanbuRemainWrap">
+          <div className="manualRemainCard">
+            <div className="manualRemainTitle">남은 내 캐릭터</div>
+            {remainingMyCandidates.length ? (
+              <div className="manualRemainList">
+                {remainingMyCandidates.map((me) => (
+                  <div key={me.key} className="manualRemainItem">
+                    <div className="manualRemainName">
+                      {me.name} <span className="manualRemainMeta">Lv {me.ilvl} / 전투력 {me.power}</span>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-            <div style={{ padding: "0 12px 10px" }}>
-              <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>
-                매칭 안 된 내 캐릭 ({unmatchedMine.length})
-              </div>
-
-              <div className="raidLeftCols" style={{ marginBottom: 10 }}>
-                {unmatchedMine.map((me) => (
-                  <div
-                    key={`unmatched-me-${me.tableId}-${me.name}`}
-                    className="raidLeftColCard"
-                  >
-                    <div className="raidLeftColHeader">
-                      <div className="raidLeftColHeaderLeft">
-                        <div className="raidLeftColNameRow">
-                          <div className="raidLeftColName">{me.name}</div>
-                          {Number.isFinite(me.ilvl) ? <span className="raidBadge ilvl">Lv {me.ilvl}</span> : null}
-                        </div>
-
-                        <div className="raidLeftColPowerLine">
-                          {Number.isFinite(me.power) ? <span className="raidBadge power">전투력 {me.power}</span> : null}
-                          {renderRoleBadge(me.role)}
-                        </div>
-                      </div>
-
-                      {me.tableName ? <div className="raidLeftColSub">{me.tableName}</div> : null}
-                    </div>
-
-                    <div className="raidLeftColBody">
-                      {me.raidStatusRows.length ? (
-                        me.raidStatusRows.map(
-                          (
-                            row: { raid: string; diff: DiffName; matchedTo: string | null },
-                            i: number
-                          ) => (
-                            <div
-                              key={`${me.name}-${i}`}
-                              className={`raidLeftColItemRow ${row.matchedTo ? "matchedRow" : "unmatchedRow"}`}
-                            >
-                              <div className={`raidLeftColRaid ${row.matchedTo ? "matchedTitle" : "unmatchedTitle"}`}>
-                                {row.raid} {row.diff}
-                              </div>
-
-                              <div className={`raidMatchStatusInline ${row.matchedTo ? "matchedStatus" : "unmatchedStatus"}`}>
-                                {row.matchedTo ? `매칭: ${row.matchedTo}` : "미매칭"}
-                              </div>
-                            </div>
-                          )
-                        )
-                      ) : (
-                        <div className="raidLeftColEmpty">-</div>
-                      )}
+                    <div className="manualRemainRaids">
+                      {me.remainingRaids.map((raid) => (
+                        <span key={raid} className="manualRaidChip">{raid}</span>
+                      ))}
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
+            ) : (
+              <div className="manualKkanbuEmpty">남은 내 캐릭터 없음</div>
+            )}
           </div>
-        )}
 
-        {/* ✅ 전체 친구 남은 레이드 카드 (항상 표시) */}
-        <div className="raidLeftCols">
-          {rows.map((row: any) => {
-            const raids = Array.isArray(row.remainingRaids) ? row.remainingRaids : [];
-            return (
-              <div key={`${row.tableName ?? ""}-${row.charName}`} className="raidLeftColCard">
-                <div className="raidLeftColHeader">
-                  <div className="raidLeftColHeaderLeft">
-                    <div className="raidLeftColNameRow">
-                      <div className="raidLeftColName">{row.charName}</div>
-                      {row.charItemLevel ? <span className="raidBadge ilvl">Lv {row.charItemLevel}</span> : null}
+          <div className="manualRemainCard">
+            <div className="manualRemainTitle">남은 친구 캐릭터</div>
+            {remainingFriendCandidates.length ? (
+              <div className="manualRemainList">
+                {remainingFriendCandidates.map((fr: FriendCandidate) => (
+                  <div key={fr.key} className="manualRemainItem">
+                    <div className="manualRemainName">
+                      {fr.name}{" "}
+                      <span className="manualRemainMeta">
+                        Lv {fr.ilvl} / 전투력 {fr.power}
+                      </span>
                     </div>
-
-                    {row.charPower ? (
-                      <div className="raidLeftColPowerLine">
-                        <span className="raidBadge power">전투력 {row.charPower}</span>
-                      </div>
-                    ) : null}
+                    <div className="manualRemainRaids">
+                      {fr.remainingRaids.map((raid: string) => (
+                        <span key={raid} className="manualRaidChip">
+                          {raid}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-
-                  {row.tableName ? <div className="raidLeftColSub">{row.tableName}</div> : null}
-                </div>
-
-                <div className="raidLeftColBody">
-                  {raids.length ? (
-                    raids.map((r: string, i: number) => (
-                      <div key={`${row.charName}-${i}`} className="raidLeftColItem">
-                        {r}
-                      </div>
-                    ))
-                  ) : (
-                    <div className="raidLeftColEmpty">-</div>
-                  )}
-                </div>
+                ))}
               </div>
-            );
-          })}
+            ) : (
+              <div className="manualKkanbuEmpty">남은 친구 캐릭터 없음</div>
+            )}
+          </div>
         </div>
       </div>
     );

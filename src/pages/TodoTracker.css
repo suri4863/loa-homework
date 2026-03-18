@@ -2880,4 +2880,223 @@ body.pip-dark .pip-cube.is-pressed {
   transition: opacity 120ms ease;
 }
 
+/*깐부 매칭 수동*/
+.manualKkanbuTopBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 14px;
+}
 
+.manualKkanbuTopField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.manualKkanbuLabel {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.manualKkanbuInput {
+  min-width: 140px;
+}
+
+.manualKkanbuTopSummary {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.manualKkanbuPlanner {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.manualKkanbuPairCard,
+.manualRemainCard {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  padding: 12px;
+}
+
+.manualKkanbuPairHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.manualKkanbuPairTitle,
+.manualRemainTitle {
+  font-weight: 900;
+  color: var(--text);
+}
+
+.manualKkanbuPairGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.manualKkanbuField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.manualKkanbuSelect {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--text);
+  padding: 0 10px;
+}
+
+.manualKkanbuPairResult {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.manualKkanbuResultMain {
+  font-size: 14px;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.manualKkanbuBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.manualKkanbuAvgLine {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+
+.manualKkanbuRaidBox {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.manualKkanbuRaidTitle {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.manualKkanbuRaidList,
+.manualRemainRaids {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.manualRaidChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--soft);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.manualKkanbuActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.manualKkanbuRemainWrap {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.manualRemainList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.manualRemainItem {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--soft);
+  padding: 10px;
+}
+
+.manualRemainName {
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.manualRemainMeta {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.manualKkanbuEmpty {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+@media (max-width: 900px) {
+  .manualKkanbuPairGrid,
+  .manualKkanbuRemainWrap {
+    grid-template-columns: 1fr;
+  }
+
+  .manualKkanbuTopSummary {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+.manualRaidChipBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--soft);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: 0.15s ease;
+}
+
+.manualRaidChipBtn:hover {
+  transform: translateY(-1px);
+}
+
+.manualRaidChipBtn.active {
+  background: rgba(59, 130, 246, 0.18);
+  border-color: rgba(59, 130, 246, 0.55);
+  color: var(--text);
+}
