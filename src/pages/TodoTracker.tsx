@@ -738,19 +738,34 @@ export default function TodoTracker() {
         t.cellType === "CHECK"
     );
 
-    const myCandidates = state.tables.flatMap((tbl) =>
+    const weeklyRaidTitleToId = new Map(
+      weeklyRaidTasks.map((task) => [normalizeRaidName(task.title), task.id] as const)
+    );
+
+    const myCandidates: MyCandidate[] = state.tables.flatMap((tbl) =>
       tbl.characters
         .map((ch) => {
           const ilvl = getCharIlvl(ch);
           const power = parsePowerValue(ch.power);
 
-          const remainingRaids: string[] = weeklyRaidTasks
-            .filter((task) => {
-              const cell = getCellByTableId(state, tbl.id, task.id, ch.id);
-              const checked = cell?.type === "CHECK" ? cell.checked : false;
-              return !checked;
-            })
-            .map((task) => task.title);
+          const charKey = weeklyCharKey(tbl.id, ch.id);
+          const pick =
+            Number.isFinite(ilvl) && ilvl > 0
+              ? (weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(ilvl))
+              : { raids: [], diffs: {} };
+
+          const selectedRaids: string[] = Array.isArray(pick?.raids)
+            ? pick.raids.map((raid: string) => normalizeRaidName(raid))
+            : [];
+
+          const remainingRaids: string[] = selectedRaids.filter((raidName: string) => {
+            const taskId = weeklyRaidTitleToId.get(normalizeRaidName(raidName));
+            if (!taskId) return false;
+
+            const cell = getCellByTableId(state, tbl.id, taskId, ch.id);
+            const checked = cell?.type === "CHECK" ? cell.checked : false;
+            return !checked;
+          });
 
           return {
             key: `${tbl.id}|${ch.id}`,
