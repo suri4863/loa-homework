@@ -220,7 +220,7 @@ export default function TodoTracker() {
   const [friendSnapshots, setFriendSnapshots] = useState<Record<string, any>>({});
 
   // ✅ 수동 깐부 조합 플래너
-  const [kkanbuLevelRange, setKkanbuLevelRange] = useState<string>("1710~1719");
+  const [kkanbuLevelRange, setKkanbuLevelRange] = useState<string>("1700~1719");
   const [kkanbuAvgPowerTarget, setKkanbuAvgPowerTarget] = useState<string>("3000");
 
   type ManualKkanbuPair = {
@@ -232,6 +232,9 @@ export default function TodoTracker() {
   const [manualKkanbuPairs, setManualKkanbuPairs] = useState<ManualKkanbuPair[]>([
     { myKey: "", friendKey: "", selectedRaids: null },
   ]);
+
+  const [shareKkanbuOpen, setShareKkanbuOpen] = useState(false);
+  const [shareKkanbuCopied, setShareKkanbuCopied] = useState(false);
 
   function makeMyCharKey(tableId: string, charId: string) {
     return `${tableId}|${charId}`;
@@ -852,6 +855,52 @@ export default function TodoTracker() {
       };
     });
 
+    const shareablePairResults = pairResults.filter((result) => result.my && result.friend);
+
+    const buildKkanbuShareText = () => {
+      if (!shareablePairResults.length) {
+        return [
+          "[깐부 추천 매칭]",
+          `레벨대: ${kkanbuLevelRange} / 목표 깐평: ${kkanbuAvgPowerTarget}`,
+          "",
+          "공유할 매칭 결과가 아직 없어.",
+        ].join("\n");
+      }
+
+      return [
+        "[깐부 추천 매칭]",
+        `레벨대: ${kkanbuLevelRange} / 목표 깐평: ${kkanbuAvgPowerTarget}`,
+        "",
+        ...shareablePairResults.map((result, idx) => {
+          const myName = result.my?.name ?? "-";
+          const friendName = result.friend?.name ?? "-";
+          const avg = result.avgPower ?? "-";
+          const diff =
+            result.diffFromTarget != null ? ` (목표 차이 ${result.diffFromTarget})` : "";
+          const raids = result.activeSelectedRaids.length
+            ? result.activeSelectedRaids.join(", ")
+            : "선택 안 됨";
+
+          return [
+            `${idx + 1}. ${myName} ↔ ${friendName}`,
+            `- 깐평: ${avg}${diff}`,
+            `- 같이 가는 레이드: ${raids}`,
+          ].join("\n");
+        }),
+      ].join("\n");
+    };
+
+    const handleCopyKkanbuShare = async () => {
+      try {
+        await navigator.clipboard.writeText(buildKkanbuShareText());
+        setShareKkanbuCopied(true);
+        window.setTimeout(() => setShareKkanbuCopied(false), 1500);
+      } catch {
+        setShareKkanbuCopied(false);
+        alert("복사에 실패했어. 다시 시도해줘.");
+      }
+    };
+
     function getCommonRaidsBetween(
       my: MyCandidate,
       friend: FriendCandidate
@@ -1117,6 +1166,14 @@ export default function TodoTracker() {
             >
               추천 매칭
             </button>
+
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setShareKkanbuOpen(true)}
+            >
+              공유하기
+            </button>
           </div>
         </div>
 
@@ -1340,6 +1397,39 @@ export default function TodoTracker() {
             )}
           </div>
         </div>
+        {shareKkanbuOpen ? (
+  <div className="kkanbuShareOverlay" onClick={() => setShareKkanbuOpen(false)}>
+    <div
+      className="kkanbuShareModal"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="kkanbuShareHead">
+        <div className="kkanbuShareTitle">매칭 결과 공유</div>
+        <button
+          type="button"
+          className="mini"
+          onClick={() => setShareKkanbuOpen(false)}
+        >
+          닫기
+        </button>
+      </div>
+
+      <div className="kkanbuSharePreview">
+        <pre className="kkanbuSharePre">{buildKkanbuShareText()}</pre>
+      </div>
+
+      <div className="kkanbuShareActions">
+        <button
+          type="button"
+          className="btn"
+          onClick={handleCopyKkanbuShare}
+        >
+          {shareKkanbuCopied ? "복사 완료!" : "텍스트 복사"}
+        </button>
+      </div>
+    </div>
+  </div>
+) : null}
       </div>
     );
   }

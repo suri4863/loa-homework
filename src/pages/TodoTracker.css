@@ -2718,7 +2718,8 @@ body.pip-dark .pip-cube.is-pressed {
 
 .todayMustDoItem {
   width: 260px;
-  min-height: 180px; /* 필요 없으면 빼도 됨 */
+  min-height: 180px;
+  /* 필요 없으면 빼도 됨 */
   box-sizing: border-box;
 
   border: 1px solid var(--border);
@@ -3065,6 +3066,7 @@ body.pip-dark .pip-cube.is-pressed {
 }
 
 @media (max-width: 900px) {
+
   .manualKkanbuPairGrid,
   .manualKkanbuRemainWrap {
     grid-template-columns: 1fr;
@@ -3099,4 +3101,64 @@ body.pip-dark .pip-cube.is-pressed {
   background: rgba(59, 130, 246, 0.18);
   border-color: rgba(59, 130, 246, 0.55);
   color: var(--text);
+}
+
+.kkanbuShareOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.kkanbuShareModal {
+  width: min(680px, 100%);
+  max-height: 85vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--card);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+
+.kkanbuShareHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.kkanbuShareTitle {
+  font-size: 16px;
+  font-weight: 900;
+  color: var(--text);
+}
+
+.kkanbuSharePreview {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--soft);
+  padding: 14px;
+}
+
+.kkanbuSharePre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.kkanbuShareActions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
 }
