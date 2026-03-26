@@ -747,23 +747,36 @@ html[data-theme="dark"] .rest-input {
   position: relative;
   display: inline-flex;
   align-items: center;
+
+  padding-right: 14px;
+  /* 공간 확보 */
 }
 
 .rest-alert {
   position: absolute;
-  top: -7px;
-  right: -7px;
-  width: 18px;
-  height: 18px;
+
+  top: -6px;
+  right: 0px;
+  /* 텍스트 끝 기준으로 붙임 */
+
+  transform: translateX(20%);
+  /*  오른쪽으로 살짝 밀기 */
+
+  width: 16px;
+  height: 16px;
   border-radius: 999px;
+
   background: var(--rest-alert);
   color: #fff;
-  font-size: 12px;
+
+  font-size: 11px;
   font-weight: 900;
-  line-height: 18px;
+  line-height: 16px;
   text-align: center;
+
   border: 2px solid var(--card);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.18);
+
   cursor: help;
   user-select: none;
 }

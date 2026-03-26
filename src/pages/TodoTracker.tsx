@@ -111,6 +111,19 @@ function formatKoreanDateTime(iso: string) {
   )}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
+function getAzenaRemainingMs(expiresAt?: string | null) {
+  if (!expiresAt) return null;
+  const t = new Date(expiresAt).getTime();
+  if (!Number.isFinite(t)) return null;
+  return t - Date.now();
+}
+
+function isAzenaEndingSoon(expiresAt?: string | null) {
+  const remain = getAzenaRemainingMs(expiresAt);
+  if (remain == null) return false;
+  return remain > 0 && remain <= 24 * 60 * 60 * 1000; // 24시간 이하
+}
+
 function clearExpiredAzena(prev: TodoState): TodoState {
   const now = Date.now();
 
@@ -1398,38 +1411,38 @@ export default function TodoTracker() {
           </div>
         </div>
         {shareKkanbuOpen ? (
-  <div className="kkanbuShareOverlay" onClick={() => setShareKkanbuOpen(false)}>
-    <div
-      className="kkanbuShareModal"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div className="kkanbuShareHead">
-        <div className="kkanbuShareTitle">매칭 결과 공유</div>
-        <button
-          type="button"
-          className="mini"
-          onClick={() => setShareKkanbuOpen(false)}
-        >
-          닫기
-        </button>
-      </div>
+          <div className="kkanbuShareOverlay" onClick={() => setShareKkanbuOpen(false)}>
+            <div
+              className="kkanbuShareModal"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="kkanbuShareHead">
+                <div className="kkanbuShareTitle">매칭 결과 공유</div>
+                <button
+                  type="button"
+                  className="mini"
+                  onClick={() => setShareKkanbuOpen(false)}
+                >
+                  닫기
+                </button>
+              </div>
 
-      <div className="kkanbuSharePreview">
-        <pre className="kkanbuSharePre">{buildKkanbuShareText()}</pre>
-      </div>
+              <div className="kkanbuSharePreview">
+                <pre className="kkanbuSharePre">{buildKkanbuShareText()}</pre>
+              </div>
 
-      <div className="kkanbuShareActions">
-        <button
-          type="button"
-          className="btn"
-          onClick={handleCopyKkanbuShare}
-        >
-          {shareKkanbuCopied ? "복사 완료!" : "텍스트 복사"}
-        </button>
-      </div>
-    </div>
-  </div>
-) : null}
+              <div className="kkanbuShareActions">
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={handleCopyKkanbuShare}
+                >
+                  {shareKkanbuCopied ? "복사 완료!" : "텍스트 복사"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -3913,12 +3926,15 @@ body.pip-dark .pip-select option{
                           </label>
                         </div>
 
-                        {/* ✅ 아제나 (기존 그대로) */}
+                        {/* 아제나 (기존 그대로) */}
                         {(() => {
                           const enabled = Boolean((ch as any).azenaEnabled);
                           const expiresAt = (ch as any).azenaExpiresAt as string | null | undefined;
                           const expired = enabled && expiresAt ? new Date(expiresAt).getTime() <= Date.now() : false;
                           const checked = enabled && !expired;
+                          const azenaEndingSoon = checked && isAzenaEndingSoon(expiresAt);
+                          const remainMs = checked ? getAzenaRemainingMs(expiresAt) : null;
+                          const remainHours = remainMs != null ? Math.ceil(remainMs / (60 * 60 * 1000)) : null;
 
                           return (
                             <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
@@ -3929,6 +3945,15 @@ body.pip-dark .pip-select option{
                                   onChange={(e) => onToggleAzena(tableId, ch.id, e.target.checked)}
                                 />
                                 <span>아제나</span>
+
+                                {azenaEndingSoon && expiresAt ? (
+                                  <span
+                                    className="azena-alert"
+                                    title={`곧 아제나가 끝나요 (${remainHours ?? 0}시간 이내)\n만료: ${formatKoreanDateTime(expiresAt)}`}
+                                  >
+                                    !
+                                  </span>
+                                ) : null}
                               </label>
 
                               <div
@@ -3946,7 +3971,7 @@ body.pip-dark .pip-select option{
                           );
                         })()}
 
-                        {/* ✅ 캐릭 수정/삭제는 active 표에서만 (기존 UX 유지) */}
+                        {/* 캐릭 수정/삭제는 active 표에서만 (기존 UX 유지) */}
                         <div className="char-actions">
                           {isActiveCol && (
                             <>
@@ -4236,6 +4261,9 @@ body.pip-dark .pip-select option{
                               const expiresAt = (ch as any).azenaExpiresAt as string | null | undefined;
                               const expired = enabled && expiresAt ? new Date(expiresAt).getTime() <= Date.now() : false;
                               const checked = enabled && !expired;
+                              const endingSoon = checked && isAzenaEndingSoon(expiresAt);
+                              const remainMs = checked ? getAzenaRemainingMs(expiresAt) : null;
+                              const remainHours = remainMs != null ? Math.ceil(remainMs / (60 * 60 * 1000)) : null;
 
                               return (
                                 <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
@@ -4245,7 +4273,18 @@ body.pip-dark .pip-select option{
                                       checked={checked}
                                       onChange={(e) => onToggleAzena(tableId, ch.id, e.target.checked)}
                                     />
-                                    <span>아제나</span>
+
+                                    <span
+                                      className="rest-wrap"
+                                      title={
+                                        endingSoon && expiresAt
+                                          ? `곧 아제나가 끝나요 (${remainHours ?? 0}시간 이내)\n만료: ${formatKoreanDateTime(expiresAt)}`
+                                          : undefined
+                                      }
+                                    >
+                                      <span>아제나</span>
+                                      {endingSoon ? <span className="rest-alert">!</span> : null}
+                                    </span>
                                   </label>
 
                                   <div
