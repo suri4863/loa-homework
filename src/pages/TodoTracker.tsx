@@ -126,6 +126,7 @@ function isAzenaEndingSoon(expiresAt?: string | null) {
   return remain > 0 && remain <= AZENA_WARNING_MS;
 }
 
+
 function clearExpiredAzena(prev: TodoState): TodoState {
   const now = Date.now();
 
@@ -2493,6 +2494,15 @@ export default function TodoTracker() {
     });
   }
 
+  // 아제나 남은 시간 텍스트 변환
+  const getAzenaRemainText = (remainHours: number | null) => {
+    if (remainHours == null) return "";
+
+    return remainHours >= 24
+      ? `${Math.ceil(remainHours / 24)}일 남음`
+      : `${remainHours}시간 남음`;
+  };
+
   // =========================
   // 캐릭터 CRUD (activeTable 기준)
   // =========================
@@ -3951,18 +3961,12 @@ body.pip-dark .pip-select option{
                                 {azenaEndingSoon && expiresAt ? (
                                   <span
                                     className="azena-alert"
-                                    title={`아제나 만료 임박 (${(() => {
-                                      if (remainHours == null) return "";
-                                      return remainHours >= 24
-                                        ? `${Math.ceil(remainHours / 24)}일 남음`
-                                        : `${remainHours}시간 남음`;
-                                    })()})\n만료: ${formatKoreanDateTime(expiresAt)}`}
+                                    title={`아제나 만료 임박 (${getAzenaRemainText(remainHours)})\n만료: ${formatKoreanDateTime(expiresAt)}`}
                                   >
                                     !
                                   </span>
                                 ) : null}
                               </label>
-
                               <div
                                 style={{
                                   fontSize: 11,
@@ -4285,7 +4289,7 @@ body.pip-dark .pip-select option{
                                       className="rest-wrap"
                                       title={
                                         endingSoon && expiresAt
-                                          ? `곧 아제나가 끝나요 (${remainHours ?? 0}시간 이내)\n만료: ${formatKoreanDateTime(expiresAt)}`
+                                          ? `아제나 만료 임박 (${getAzenaRemainText(remainHours)})\n만료: ${formatKoreanDateTime(expiresAt)}`
                                           : undefined
                                       }
                                     >
