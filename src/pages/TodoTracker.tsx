@@ -118,10 +118,12 @@ function getAzenaRemainingMs(expiresAt?: string | null) {
   return t - Date.now();
 }
 
+const AZENA_WARNING_MS = 72 * 60 * 60 * 1000; // 3일
+
 function isAzenaEndingSoon(expiresAt?: string | null) {
   const remain = getAzenaRemainingMs(expiresAt);
   if (remain == null) return false;
-  return remain > 0 && remain <= 24 * 60 * 60 * 1000; // 24시간 이하
+  return remain > 0 && remain <= AZENA_WARNING_MS;
 }
 
 function clearExpiredAzena(prev: TodoState): TodoState {
@@ -3949,7 +3951,12 @@ body.pip-dark .pip-select option{
                                 {azenaEndingSoon && expiresAt ? (
                                   <span
                                     className="azena-alert"
-                                    title={`곧 아제나가 끝나요 (${remainHours ?? 0}시간 이내)\n만료: ${formatKoreanDateTime(expiresAt)}`}
+                                    title={`아제나 만료 임박 (${(() => {
+                                      if (remainHours == null) return "";
+                                      return remainHours >= 24
+                                        ? `${Math.ceil(remainHours / 24)}일 남음`
+                                        : `${remainHours}시간 남음`;
+                                    })()})\n만료: ${formatKoreanDateTime(expiresAt)}`}
                                   >
                                     !
                                   </span>
