@@ -1152,8 +1152,14 @@ export default function TodoTracker() {
             <div className="manualKkanbuLabel">레벨대</div>
             <input
               className="friendInput manualKkanbuInput"
+              type="text"
               value={kkanbuLevelRange}
               onChange={(e) => setKkanbuLevelRange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Backspace" || e.key === "Delete") {
+                  e.stopPropagation();
+                }
+              }}
               placeholder="예: 1710~1719"
             />
           </div>
@@ -1162,8 +1168,14 @@ export default function TodoTracker() {
             <div className="manualKkanbuLabel">목표 깐평</div>
             <input
               className="friendInput manualKkanbuInput"
+              type="text"
               value={kkanbuAvgPowerTarget}
               onChange={(e) => setKkanbuAvgPowerTarget(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Backspace" || e.key === "Delete") {
+                  e.stopPropagation();
+                }
+              }}
               placeholder="예: 3000"
             />
           </div>
@@ -2818,7 +2830,8 @@ export default function TodoTracker() {
   // =========================
   // 주간 레이드 골드 계산용 데이터 & 유틸
   // =========================
-  type RaidGold = {
+  type RaidRewardInfo = {
+    medal?: number;
     normal?: number;
     hard?: number;
     nightmare?: number;
@@ -2827,12 +2840,15 @@ export default function TodoTracker() {
     stage3?: number;
   };
 
-  const RAID_CLEAR_GOLD: Record<string, RaidGold> = {
-    "베히모스": { normal: 7200 },
-    "서막": { normal: 6100, hard: 7200 },
-    "1막": { normal: 11500, hard: 18000 },
-    "2막": { normal: 16500, hard: 23000 },
-    "3막": { normal: 21000, hard: 27000 },
+  const RAID_REWARD_INFO: Record<string, RaidRewardInfo> = {
+    // 클리어메달 지급 레이드
+    "베히모스": { medal: 950, normal: 7200 },
+    "서막": { medal: 950, normal: 6100, hard: 7200 },
+    "1막": { medal: 1900, normal: 15500, hard: 24500 },
+    "2막": { medal: 2300, normal: 21500, hard: 30500 },
+    "3막": { medal: 2700, normal: 28000, hard: 38000 },
+
+    // 현재는 클리어메달 없는 것으로 반영
     "4막": { normal: 33000, hard: 42000 },
     "종막": { normal: 40000, hard: 52000 },
     "세르카": { normal: 35000, hard: 44000, nightmare: 54000 },
@@ -3106,7 +3122,7 @@ export default function TodoTracker() {
     { key: "ACT3", name: "3막", diffs: [{ name: "노말", minIlvl: 1680, gold: 21000 }, { name: "하드", minIlvl: 1700, gold: 27000 }] },
     { key: "ACT4", name: "4막", diffs: [{ name: "노말", minIlvl: 1700, gold: 33000 }, { name: "하드", minIlvl: 1720, gold: 42000 }] },
     { key: "FINAL", name: "종막", diffs: [{ name: "노말", minIlvl: 1710, gold: 40000 }, { name: "하드", minIlvl: 1730, gold: 52000 }] },
-    { key: "SERKA", name: "세르카", diffs: [{ name: "노말", minIlvl: 1710, gold: 35000 }, { name: "하드", minIlvl: 1730, gold: 44000 }, { name: "나이트메어", minIlvl: 1740, gold: 54000 }] },
+    { key: "SERKA", name: "세르카", diffs: [{ name: "노말", minIlvl: 1710, gold: 35000 }, { name: "하드", minIlvl: 1730, gold: 44000 }, { name: "나이트메어", minIlvl: 1750, gold: 54000 }] },
     { key: "ABYSS1", name: "지평의 성당", diffs: [{ name: "1단계", minIlvl: 1700, gold: 30000 }, { name: "2단계", minIlvl: 1720, gold: 40000 }, { name: "3단계", minIlvl: 1750, gold: 50000 }] },
   ];
 
@@ -3681,7 +3697,7 @@ body.pip-dark .pip-select option{
    *   각 레이드 골드는 (선택 난이도 우선) → 없으면 자동 최고난이도
    */
   function getGoldByDiffName(raidName: string, diff: DiffName) {
-    const g = RAID_CLEAR_GOLD[raidName];
+    const g = RAID_REWARD_INFO[raidName];
     if (!g) return 0;
 
     if (diff === "노말") return g.normal ?? 0;
@@ -3692,6 +3708,10 @@ body.pip-dark .pip-select option{
     if (diff === "3단계") return g.stage3 ?? 0;
 
     return 0;
+  }
+
+  function isWeeklyRaidTaskTitle(title: string) {
+    return Boolean(RAID_REWARD_INFO[title]);
   }
 
   function calcWeeklySelectedGold(ilvl: number, pick: WeeklyRaidPick | undefined) {
@@ -3741,9 +3761,7 @@ body.pip-dark .pip-select option{
     return new Set(r.top3.map((x) => x.raid));
   }
 
-  function isWeeklyRaidTaskTitle(title: string) {
-    return Boolean(RAID_CLEAR_GOLD[title]);
-  }
+
 
   // =========================
   // ✅ 상단: 주간 레이드 골드 진행률(모든 표/모든 캐릭 · Top3 기준)
@@ -4381,7 +4399,7 @@ body.pip-dark .pip-select option{
                                         onDragEnd={() => isActivePane && setDragTaskId(null)}
                                         style={{ cursor: isActivePane ? "grab" : "default" }}
                                         onClick={(e) => {
-                                          if (!RAID_CLEAR_GOLD[task.title]) return;
+                                          if (!RAID_REWARD_INFO[task.title]) return;
                                           setRaidGoldPopup({ title: task.title, x: e.clientX, y: e.clientY });
                                         }}
                                       >
@@ -5594,24 +5612,28 @@ body.pip-dark .pip-select option{
           </div>
 
           <div className="raid-gold-body">
-            {RAID_CLEAR_GOLD[raidGoldPopup.title].normal !== undefined && (
-              <div>노말: {RAID_CLEAR_GOLD[raidGoldPopup.title].normal!.toLocaleString()} G</div>
-            )}
-            {RAID_CLEAR_GOLD[raidGoldPopup.title].hard !== undefined && (
-              <div>하드: {RAID_CLEAR_GOLD[raidGoldPopup.title].hard!.toLocaleString()} G</div>
-            )}
-            {RAID_CLEAR_GOLD[raidGoldPopup.title].nightmare !== undefined && (
-              <div>나이트메어: {RAID_CLEAR_GOLD[raidGoldPopup.title].nightmare!.toLocaleString()} G</div>
+            {RAID_REWARD_INFO[raidGoldPopup.title]?.medal !== undefined && (
+              <div>클리어메달: {RAID_REWARD_INFO[raidGoldPopup.title].medal!.toLocaleString()}</div>
             )}
 
-            {RAID_CLEAR_GOLD[raidGoldPopup.title].stage1 !== undefined && (
-              <div>1단계: {RAID_CLEAR_GOLD[raidGoldPopup.title].stage1!.toLocaleString()} G</div>
+            {RAID_REWARD_INFO[raidGoldPopup.title]?.normal !== undefined && (
+              <div>노말: {RAID_REWARD_INFO[raidGoldPopup.title].normal!.toLocaleString()} G</div>
             )}
-            {RAID_CLEAR_GOLD[raidGoldPopup.title].stage2 !== undefined && (
-              <div>2단계: {RAID_CLEAR_GOLD[raidGoldPopup.title].stage2!.toLocaleString()} G</div>
+            {RAID_REWARD_INFO[raidGoldPopup.title]?.hard !== undefined && (
+              <div>하드: {RAID_REWARD_INFO[raidGoldPopup.title].hard!.toLocaleString()} G</div>
             )}
-            {RAID_CLEAR_GOLD[raidGoldPopup.title].stage3 !== undefined && (
-              <div>3단계: {RAID_CLEAR_GOLD[raidGoldPopup.title].stage3!.toLocaleString()} G</div>
+            {RAID_REWARD_INFO[raidGoldPopup.title]?.nightmare !== undefined && (
+              <div>나이트메어: {RAID_REWARD_INFO[raidGoldPopup.title].nightmare!.toLocaleString()} G</div>
+            )}
+
+            {RAID_REWARD_INFO[raidGoldPopup.title]?.stage1 !== undefined && (
+              <div>1단계: {RAID_REWARD_INFO[raidGoldPopup.title].stage1!.toLocaleString()} G</div>
+            )}
+            {RAID_REWARD_INFO[raidGoldPopup.title]?.stage2 !== undefined && (
+              <div>2단계: {RAID_REWARD_INFO[raidGoldPopup.title].stage2!.toLocaleString()} G</div>
+            )}
+            {RAID_REWARD_INFO[raidGoldPopup.title]?.stage3 !== undefined && (
+              <div>3단계: {RAID_REWARD_INFO[raidGoldPopup.title].stage3!.toLocaleString()} G</div>
             )}
           </div>
         </div>

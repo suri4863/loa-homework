@@ -151,35 +151,50 @@ function withDiff(raid: string, ilvl: number): string {
 
   if (!name) return "";
 
-  if (/(노말|하드|나이트메어)$/.test(name)) {
+  if (/(노말|하드|나이트메어|1단계|2단계|3단계)$/.test(name)) {
     return name;
   }
 
   if (name === "세르카") {
-    return ilvl >= 1720 ? "세르카 나이트메어" : "세르카 노말";
+    if (ilvl >= 1750) return "세르카 나이트메어";
+    if (ilvl >= 1730) return "세르카 하드";
+    return "세르카 노말";
   }
 
   if (name === "종막") {
-    return ilvl >= 1700 ? "종막 노말" : "종막";
+    if (ilvl >= 1730) return "종막 하드";
+    if (ilvl >= 1710) return "종막 노말";
+    return "종막";
   }
 
   if (name === "4막") {
-    return ilvl >= 1700 ? "4막 노말" : "4막";
+    if (ilvl >= 1720) return "4막 하드";
+    if (ilvl >= 1700) return "4막 노말";
+    return "4막";
   }
 
   if (name === "지평의 성당") {
+    if (ilvl >= 1750) return "지평의 성당 3단계";
+    if (ilvl >= 1720) return "지평의 성당 2단계";
+    if (ilvl >= 1700) return "지평의 성당 1단계";
     return "지평의 성당";
   }
 
   if (name === "1막") {
+    if (ilvl >= 1680) return "1막 하드";
+    if (ilvl >= 1660) return "1막 노말";
     return "1막";
   }
 
   if (name === "2막") {
+    if (ilvl >= 1690) return "2막 하드";
+    if (ilvl >= 1670) return "2막 노말";
     return "2막";
   }
 
   if (name === "3막") {
+    if (ilvl >= 1700) return "3막 하드";
+    if (ilvl >= 1680) return "3막 노말";
     return "3막";
   }
 
