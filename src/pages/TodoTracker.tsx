@@ -255,6 +255,29 @@ export default function TodoTracker() {
   const [shareKkanbuOpen, setShareKkanbuOpen] = useState(false);
   const [shareKkanbuCopied, setShareKkanbuCopied] = useState(false);
 
+  const excludedKkanbuTableIds = state.profile.kkanbuExcludedTableIds ?? [];
+
+  function isKkanbuExcludedTable(tableId: string) {
+    return excludedKkanbuTableIds.includes(tableId);
+  }
+
+  function toggleKkanbuExcludedTable(tableId: string) {
+    setState((prev) => {
+      const prevIds = prev.profile.kkanbuExcludedTableIds ?? [];
+      const exists = prevIds.includes(tableId);
+
+      return {
+        ...prev,
+        profile: {
+          ...prev.profile,
+          kkanbuExcludedTableIds: exists
+            ? prevIds.filter((id) => id !== tableId)
+            : [...prevIds, tableId],
+        },
+      };
+    });
+  }
+
   function makeMyCharKey(tableId: string, charId: string) {
     return `${tableId}|${charId}`;
   }
@@ -751,49 +774,51 @@ export default function TodoTracker() {
       return isNaN(num) ? 0 : num;
     }
 
-    const myCandidates: MyCandidate[] = state.tables.flatMap((tbl) =>
-      tbl.characters
-        .map((ch) => {
-          const ilvl = getCharIlvl(ch);
-          const power = parsePowerValue(ch.power);
+    const myCandidates: MyCandidate[] = state.tables
+      .filter((tbl) => !excludedKkanbuTableIds.includes(tbl.id)) // 제외 표는 매칭 후보에서 제거
+      .flatMap((tbl) =>
+        tbl.characters
+          .map((ch) => {
+            const ilvl = getCharIlvl(ch);
+            const power = parsePowerValue(ch.power);
 
-          const charKey = weeklyCharKey(tbl.id, ch.id);
-          const pick =
-            Number.isFinite(ilvl) && ilvl > 0
-              ? (weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(ilvl))
-              : { raids: [], diffs: {} };
+            const charKey = weeklyCharKey(tbl.id, ch.id);
+            const pick =
+              Number.isFinite(ilvl) && ilvl > 0
+                ? (weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(ilvl))
+                : { raids: [], diffs: {} };
 
-          const selectedRaids: string[] = Array.isArray(pick?.raids)
-            ? pick.raids.map((raid: string) => normalizeRaidName(raid))
-            : [];
+            const selectedRaids: string[] = Array.isArray(pick?.raids)
+              ? pick.raids.map((raid: string) => normalizeRaidName(raid))
+              : [];
 
-          const remainingRaids: string[] = selectedRaids.filter((raidName: string) => {
-            const taskId = weeklyRaidTitleToId.get(normalizeRaidName(raidName));
-            if (!taskId) return false;
+            const remainingRaids: string[] = selectedRaids.filter((raidName: string) => {
+              const taskId = weeklyRaidTitleToId.get(normalizeRaidName(raidName));
+              if (!taskId) return false;
 
-            const cell = getCellByTableId(state, tbl.id, taskId, ch.id);
-            const checked = cell?.type === "CHECK" ? cell.checked : false;
-            return !checked;
-          });
+              const cell = getCellByTableId(state, tbl.id, taskId, ch.id);
+              const checked = cell?.type === "CHECK" ? cell.checked : false;
+              return !checked;
+            });
 
-          return {
-            key: `${tbl.id}|${ch.id}`,
-            tableId: tbl.id,
-            tableName: tbl.name ?? "",
-            charId: ch.id,
-            name: ch.name,
-            ilvl,
-            power,
-            remainingRaids,
-          };
-        })
-        .filter(
-          (x) =>
-            x.ilvl >= levelRange.min &&
-            x.ilvl <= levelRange.max &&
-            x.remainingRaids.length > 0
-        )
-    );
+            return {
+              key: `${tbl.id}|${ch.id}`,
+              tableId: tbl.id,
+              tableName: tbl.name ?? "",
+              charId: ch.id,
+              name: ch.name,
+              ilvl,
+              power,
+              remainingRaids,
+            };
+          })
+          .filter(
+            (x) =>
+              x.ilvl >= levelRange.min &&
+              x.ilvl <= levelRange.max &&
+              x.remainingRaids.length > 0
+          )
+      );
 
     const friendCandidates = rows
       .map((row: any) => {
@@ -1135,7 +1160,34 @@ export default function TodoTracker() {
     return (
       <div className="raidLeftColsWrap">
         <div className="raidLeftColsTitle">깐부 수동 조합 플래너</div>
+        <div style={{ marginBottom: 12 }}>
+          <div className="manualKkanbuLabel" style={{ marginBottom: 6 }}>표 제외</div>
 
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {state.tables.map((tbl) => (
+              <label
+                key={tbl.id}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "6px 10px",
+                  border: "1px solid var(--border)",
+                  borderRadius: 10,
+                  background: "var(--card)",
+                  color: "var(--text)",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={isKkanbuExcludedTable(tbl.id)}
+                  onChange={() => toggleKkanbuExcludedTable(tbl.id)}
+                />
+                <span>{tbl.name}</span>
+              </label>
+            ))}
+          </div>
+        </div>
         <div className="manualKkanbuTopBar">
           <div className="manualKkanbuTopField">
             <div className="manualKkanbuLabel">레벨대</div>
@@ -1158,7 +1210,7 @@ export default function TodoTracker() {
                 inputMode="numeric"
                 value={kkanbuLevelMax}
                 onChange={(e) => setKkanbuLevelMax(e.target.value.replace(/[^0-9]/g, ""))}
-                placeholder="1719"
+                placeholder="1720"
               />
             </div>
           </div>

@@ -81,6 +81,9 @@ export type UserProfile = {
   // 이 친구(friendCode) 기준으로 매칭에서 뺄 내 캐릭터 목록
   kkanbuExcludePairs?: KkanbuExcludePair[];
 
+  // 깐부매칭에서 제외할 표 id 목록
+  kkanbuExcludedTableIds?: string[];
+
   autoRaidLeftUploadEnabled?: boolean;
   autoRaidLeftUploadMinutes?: number;
 };
@@ -342,9 +345,11 @@ function makeDefaultState(): TodoState {
     shareMode: "PUBLIC",
     nickname: "",
     kkanbuExcludePairs: [],
+    kkanbuExcludedTableIds: [],
     autoRaidLeftUploadEnabled: false,
     autoRaidLeftUploadMinutes: 30,
   };
+
   return {
     tables: [table],
     activeTableId: table.id,
@@ -375,6 +380,9 @@ function normalizeState(parsed: any): TodoState {
       st.profile.nickname = (st.profile.nickname ?? "").toString();
       st.profile.kkanbuExcludePairs = Array.isArray(st.profile.kkanbuExcludePairs)
         ? st.profile.kkanbuExcludePairs
+        : [];
+      st.profile.kkanbuExcludedTableIds = Array.isArray(st.profile.kkanbuExcludedTableIds)
+        ? st.profile.kkanbuExcludedTableIds
         : [];
       st.profile.autoRaidLeftUploadEnabled = Boolean(st.profile.autoRaidLeftUploadEnabled);
       st.profile.autoRaidLeftUploadMinutes = Number(st.profile.autoRaidLeftUploadMinutes ?? 30);
