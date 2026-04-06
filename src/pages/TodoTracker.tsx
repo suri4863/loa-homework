@@ -176,6 +176,8 @@ export default function TodoTracker() {
     const loaded = DEFAULT_TODO_STATE.load();
     return loaded ?? DEFAULT_TODO_STATE.make();
   });
+
+
   // ✅ 로아 6시(또는 설정된) 기준으로 요일별 콘텐츠 처리
   const resetHour = state.reset?.dailyResetHour ?? 6;
 
@@ -236,7 +238,8 @@ export default function TodoTracker() {
   const [friendSnapshots, setFriendSnapshots] = useState<Record<string, any>>({});
 
   // ✅ 수동 깐부 조합 플래너
-  const [kkanbuLevelRange, setKkanbuLevelRange] = useState<string>("1700~1719");
+  const [kkanbuLevelMin, setKkanbuLevelMin] = useState<string>("1700");
+  const [kkanbuLevelMax, setKkanbuLevelMax] = useState<string>("1719");
   const [kkanbuAvgPowerTarget, setKkanbuAvgPowerTarget] = useState<string>("3000");
 
   type ManualKkanbuPair = {
@@ -715,31 +718,12 @@ export default function TodoTracker() {
     if (snap.shareMode === "PRIVATE") return <div className="todo-hint">친구가 비공개야.</div>;
 
     const rows = (snap.data as any[]).filter((r) => r && r.charName);
-
-    const parseLevelRange = (raw: string) => {
-      const text = String(raw ?? "").trim();
-      if (!text) return { min: 0, max: Number.MAX_SAFE_INTEGER };
-
-      const matched = text.match(/(\d+(?:\.\d+)?)\s*~\s*(\d+(?:\.\d+)?)/);
-      if (matched) {
-        return {
-          min: Number(matched[1]),
-          max: Number(matched[2]),
-        };
-      }
-
-      const single = Number(text.replace(/[^\d.]/g, ""));
-      if (Number.isFinite(single)) {
-        return { min: single, max: single + 9 };
-      }
-
-      return { min: 0, max: Number.MAX_SAFE_INTEGER };
+    const levelRange = {
+      min: Number(kkanbuLevelMin) || 0,
+      max: Number(kkanbuLevelMax) || Number.MAX_SAFE_INTEGER,
     };
 
-    const parsePowerValue = (raw: any) => {
-      const n = Number(String(raw ?? "").replace(/[^\d.]/g, ""));
-      return Number.isFinite(n) ? n : 0;
-    };
+    const avgTarget = Number(String(kkanbuAvgPowerTarget ?? "").replace(/[^\d.]/g, "")) || 0;
 
     const normalizeRaidName = (name: string) =>
       String(name ?? "")
@@ -747,8 +731,6 @@ export default function TodoTracker() {
         .trim()
         .replace(/\s*(노말|하드|나이트메어|1단계|2단계|3단계)\s*$/g, "");
 
-    const levelRange = parseLevelRange(kkanbuLevelRange);
-    const avgTarget = Number(String(kkanbuAvgPowerTarget ?? "").replace(/[^\d.]/g, "")) || 0;
 
     const weeklyRaidTasks = state.tasks.filter(
       (t) =>
@@ -760,6 +742,14 @@ export default function TodoTracker() {
     const weeklyRaidTitleToId = new Map(
       weeklyRaidTasks.map((task) => [normalizeRaidName(task.title), task.id] as const)
     );
+
+    function parsePowerValue(power?: string): number {
+      if (!power) return 0;
+
+      // "123,456" → 123456
+      const num = Number(power.replace(/,/g, ""));
+      return isNaN(num) ? 0 : num;
+    }
 
     const myCandidates: MyCandidate[] = state.tables.flatMap((tbl) =>
       tbl.characters
@@ -827,9 +817,8 @@ export default function TodoTracker() {
           x.remainingRaids.length > 0
       );
 
-    if (!friendCandidates.length) {
-      return <div className="todo-hint">해당 레벨대 친구 캐릭터가 없어.</div>;
-    }
+    const hasNoFriendCandidates = friendCandidates.length === 0;
+    const hasNoMyCandidates = myCandidates.length === 0;
 
     const pairResults = manualKkanbuPairs.map((pair, idx) => {
       const my = myCandidates.find((x) => x.key === pair.myKey) ?? null;
@@ -877,7 +866,7 @@ export default function TodoTracker() {
       if (!shareablePairResults.length) {
         return [
           "[깐부 추천 매칭]",
-          `레벨대: ${kkanbuLevelRange} / 목표 깐평: ${kkanbuAvgPowerTarget}`,
+          `레벨대: ${kkanbuLevelMin}~${kkanbuLevelMax} / 목표 깐평: ${kkanbuAvgPowerTarget}`,
           "",
           "공유할 매칭 결과가 아직 없어.",
         ].join("\n");
@@ -885,7 +874,7 @@ export default function TodoTracker() {
 
       return [
         "[깐부 추천 매칭]",
-        `레벨대: ${kkanbuLevelRange} / 목표 깐평: ${kkanbuAvgPowerTarget}`,
+        `레벨대: ${kkanbuLevelMin}~${kkanbuLevelMax} / 목표 깐평: ${kkanbuAvgPowerTarget}`,
         "",
         ...shareablePairResults.map((result, idx) => {
           const myName = result.my?.name ?? "-";
@@ -1150,18 +1139,28 @@ export default function TodoTracker() {
         <div className="manualKkanbuTopBar">
           <div className="manualKkanbuTopField">
             <div className="manualKkanbuLabel">레벨대</div>
-            <input
-              className="friendInput manualKkanbuInput"
-              type="text"
-              value={kkanbuLevelRange}
-              onChange={(e) => setKkanbuLevelRange(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Backspace" || e.key === "Delete") {
-                  e.stopPropagation();
-                }
-              }}
-              placeholder="예: 1710~1719"
-            />
+
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input
+                className="friendInput manualKkanbuInput"
+                type="text"
+                inputMode="numeric"
+                value={kkanbuLevelMin}
+                onChange={(e) => setKkanbuLevelMin(e.target.value.replace(/[^0-9]/g, ""))}
+                placeholder="1700"
+              />
+
+              <span style={{ color: "var(--muted)", fontWeight: 700 }}>~</span>
+
+              <input
+                className="friendInput manualKkanbuInput"
+                type="text"
+                inputMode="numeric"
+                value={kkanbuLevelMax}
+                onChange={(e) => setKkanbuLevelMax(e.target.value.replace(/[^0-9]/g, ""))}
+                placeholder="1719"
+              />
+            </div>
           </div>
 
           <div className="manualKkanbuTopField">
@@ -1169,13 +1168,9 @@ export default function TodoTracker() {
             <input
               className="friendInput manualKkanbuInput"
               type="text"
+              inputMode="numeric"
               value={kkanbuAvgPowerTarget}
-              onChange={(e) => setKkanbuAvgPowerTarget(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Backspace" || e.key === "Delete") {
-                  e.stopPropagation();
-                }
-              }}
+              onChange={(e) => setKkanbuAvgPowerTarget(e.target.value.replace(/[^0-9]/g, ""))}
               placeholder="예: 3000"
             />
           </div>
@@ -1187,6 +1182,7 @@ export default function TodoTracker() {
             <button
               type="button"
               className="btn"
+              disabled={hasNoMyCandidates || hasNoFriendCandidates}
               onClick={() => {
                 const recommended = autoBuildRecommendedPairs();
                 setManualKkanbuPairs(recommended);
@@ -1206,6 +1202,16 @@ export default function TodoTracker() {
         </div>
 
         <div className="manualKkanbuPlanner">
+          {hasNoFriendCandidates || hasNoMyCandidates ? (
+            <div className="manualKkanbuEmpty" style={{ marginBottom: 12 }}>
+              {hasNoMyCandidates && hasNoFriendCandidates
+                ? "해당 레벨대에 내 캐릭터와 친구 캐릭터가 없어."
+                : hasNoMyCandidates
+                  ? "해당 레벨대에 내 캐릭터가 없어."
+                  : "해당 레벨대에 친구 캐릭터가 없어."}
+            </div>
+          ) : null}
+
           {manualKkanbuPairs.map((pair, index) => {
             const result = pairResults[index];
 
@@ -1368,7 +1374,12 @@ export default function TodoTracker() {
             <button
               className="btn"
               onClick={addManualPair}
-              disabled={!remainingMyCandidates.length || !remainingFriendCandidates.length}
+              disabled={
+                hasNoMyCandidates ||
+                hasNoFriendCandidates ||
+                !remainingMyCandidates.length ||
+                !remainingFriendCandidates.length
+              }
             >
               조합 추가
             </button>
