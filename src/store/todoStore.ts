@@ -97,6 +97,7 @@ export type FriendEntry = {
   addedAt: number;
   lastSnapshot?: RaidLeftSnapshotPayload;
 };
+
 export type RaidLeftSnapshotPayload = {
   version: 2;
   friendCode: string;
@@ -108,21 +109,43 @@ export type RaidLeftSnapshotPayload = {
 
   data: Array<{
     charName: string;
-
-    // 표시용
     charItemLevel?: string;
     charPower?: string;
     charRole?: CharacterRole;
-
     tableName?: string;
     ilvl?: number;
 
+    allRaids: string[];
     remainingRaids: string[];
     clearedCount: number;
     totalCount: number;
   }>;
 };
 
+export type WeeklyScheduleDay = "수" | "목" | "금" | "토" | "일" | "월" | "화";
+
+export type SharedWeeklyScheduleItem = {
+  id: string;
+  day: WeeklyScheduleDay;
+  myCharKey: string;
+  myCharName: string;
+  friendCharKey: string;
+  friendCharName: string;
+  raidNames: string[];
+  avgPower?: number | null;
+  memo?: string;
+  order: number;
+};
+
+export type SharedWeeklySchedule = {
+  id: string;
+  ownerFriendCode: string;
+  targetFriendCode: string;
+  title: string;
+  weekStartDate: string;
+  items: SharedWeeklyScheduleItem[];
+  updatedAt: number;
+};
 
 export type TodoState = {
   tables: TodoTable[];
@@ -726,7 +749,9 @@ export function exportRaidLeftSnapshot(
       }
 
       const remainingRaids = remaining.map((r) => withDiff(r, ilvl));
-      if (remainingRaids.length === 0) continue;
+
+      // 이 줄 삭제
+      // if (remainingRaids.length === 0) continue;
 
       rows.push({
         charName: ch.name,
@@ -735,6 +760,7 @@ export function exportRaidLeftSnapshot(
         charRole: ch.role || "DEALER",
         tableName: table.name,
         ilvl,
+        allRaids: selectedRaidTitles.map((r) => withDiff(r, ilvl)),
         remainingRaids,
         clearedCount,
         totalCount: selectedRaidTitles.length,
@@ -784,7 +810,7 @@ export function importRaidLeftSnapshot(raw: any): RaidLeftSnapshotPayload {
   parsed.exportedAt = typeof parsed.exportedAt === "number" ? parsed.exportedAt : Date.now();
   parsed.data = Array.isArray(parsed.data) ? parsed.data : [];
 
-  // ✅ row 단위 정규화 (v1/v2 공통 처리)
+  // row 단위 정규화 (v1/v2 공통 처리)
   parsed.data = parsed.data.map((r: any) => ({
     charName: String(r?.charName ?? ""),
     charItemLevel: r?.charItemLevel ? String(r.charItemLevel) : undefined,
@@ -792,6 +818,7 @@ export function importRaidLeftSnapshot(raw: any): RaidLeftSnapshotPayload {
     charRole: r?.charRole === "SUPPORT" ? "SUPPORT" : "DEALER",
     tableName: r?.tableName ?? parsed.tableName ?? undefined,
     ilvl: typeof r?.ilvl === "number" ? r.ilvl : undefined,
+    allRaids: Array.isArray(r?.allRaids) ? r.allRaids : [],
     remainingRaids: Array.isArray(r?.remainingRaids) ? r.remainingRaids : [],
     clearedCount: Number(r?.clearedCount ?? 0),
     totalCount: Number(r?.totalCount ?? 0),
@@ -800,7 +827,44 @@ export function importRaidLeftSnapshot(raw: any): RaidLeftSnapshotPayload {
   return parsed as RaidLeftSnapshotPayload;
 }
 
+export function getLatestWeeklyResetTime(weeklyResetWeekday: number, dailyResetHour: number): number {
+  const now = new Date();
+  const anchor = getWeeklyResetAnchor(now, weeklyResetWeekday, dailyResetHour);
+  return anchor.getTime();
+}
 
+export function normalizeFriendRaidSnapshotAfterWeeklyReset(
+  snapshot: RaidLeftSnapshotPayload,
+  weeklyResetWeekday: number,
+  dailyResetHour: number
+): RaidLeftSnapshotPayload {
+  const latestWeeklyResetAt = getLatestWeeklyResetTime(weeklyResetWeekday, dailyResetHour);
+
+  // 이번 주 리셋 이후에 업로드된 스냅샷이면 그대로 사용
+  if ((snapshot.exportedAt ?? 0) >= latestWeeklyResetAt) {
+    return snapshot;
+  }
+
+  // 이번 주 리셋 이전 스냅샷이면
+  // "주간 레이드가 모두 다시 열림" 상태로 화면 표시용 보정
+  return {
+    ...snapshot,
+    data: Array.isArray(snapshot.data)
+      ? snapshot.data.map((row) => {
+        const allRaids = Array.isArray((row as any).allRaids) ? (row as any).allRaids : [];
+        const fallbackRemaining = Array.isArray(row.remainingRaids) ? row.remainingRaids : [];
+        const resetRaids = allRaids.length ? allRaids : fallbackRemaining;
+
+        return {
+          ...row,
+          remainingRaids: [...resetRaids],
+          clearedCount: 0,
+          totalCount: resetRaids.length,
+        };
+      })
+      : [],
+  };
+}
 
 /** Reset anchor 계산 */
 function getDailyResetAnchor(now: Date, dailyHour: number): Date {

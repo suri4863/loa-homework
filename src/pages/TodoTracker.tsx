@@ -11,7 +11,11 @@ import type {
   CellValue,
   GridValues,
   KkanbuExcludePair,
+  SharedWeeklySchedule,
+  SharedWeeklyScheduleItem,
+  WeeklyScheduleDay,
 } from "../store/todoStore";
+
 import BidPopover from "../components/BidPopover";
 
 // =========================
@@ -36,7 +40,7 @@ import {
   setCellByTableId,
   exportRaidLeftSnapshot,
   importRaidLeftSnapshot,
-
+  normalizeFriendRaidSnapshotAfterWeeklyReset,
 } from "../store/todoStore";
 
 // ✅ 계정 요일별 콘텐츠 (06:00 리셋 기준)
@@ -254,6 +258,20 @@ export default function TodoTracker() {
 
   const [shareKkanbuOpen, setShareKkanbuOpen] = useState(false);
   const [shareKkanbuCopied, setShareKkanbuCopied] = useState(false);
+
+  const WEEK_DAYS: WeeklyScheduleDay[] = ["수", "목", "금", "토", "일", "월", "화"];
+
+  const [weeklySchedules, setWeeklySchedules] = useState<SharedWeeklySchedule[]>([]);
+  const [selectedScheduleId, setSelectedScheduleId] = useState<string>("");
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [scheduleTargetDay, setScheduleTargetDay] = useState<WeeklyScheduleDay>("수");
+  const [scheduleCreateMode, setScheduleCreateMode] = useState<"NEW" | "EXISTING">("NEW");
+  const [newScheduleTitle, setNewScheduleTitle] = useState("일정표");
+  const [dragScheduleItem, setDragScheduleItem] = useState<{
+    scheduleId: string;
+    itemId: string;
+  } | null>(null);
 
   const excludedKkanbuTableIds = state.profile.kkanbuExcludedTableIds ?? [];
 
@@ -521,6 +539,240 @@ export default function TodoTracker() {
     return (await res.text()) as any;
   }
 
+  function getCurrentWeekStartDate() {
+    const now = new Date();
+    const copy = new Date(now);
+    copy.setHours(0, 0, 0, 0);
+    return `${copy.getFullYear()}-${String(copy.getMonth() + 1).padStart(2, "0")}-${String(copy.getDate()).padStart(2, "0")}`;
+  }
+
+  function buildScheduleItemsFromPairs(
+    pairResults: Array<{
+      my: any;
+      friend: any;
+      commonRaids: string[];
+      activeSelectedRaids: string[];
+      avgPower?: number | null;
+    }>,
+    targetDay: WeeklyScheduleDay
+  ): SharedWeeklyScheduleItem[] {
+    let order = 0;
+
+    return pairResults.map((result, index) => ({
+      id: `item_${Date.now()}_${index}`,
+      day: targetDay,
+      myCharKey: result.my.key,
+      myCharName: result.my.name,
+      friendCharKey: result.friend.key,
+      friendCharName: result.friend.name,
+      raidNames: result.activeSelectedRaids.length ? result.activeSelectedRaids : result.commonRaids,
+      avgPower: result.avgPower ?? null,
+      memo: "",
+      order: order++,
+    }));
+  }
+
+  async function refreshWeeklySchedules() {
+    if (!SERVER_MODE) return;
+
+    setScheduleLoading(true);
+    try {
+      const rows: any[] = await apiFetch2("/api/weekly-schedules");
+      const parsed: SharedWeeklySchedule[] = rows.map((row) => {
+        const raw = JSON.parse(String(row.scheduleJson ?? "{}"));
+
+        return {
+          id: String(row.id),
+          ownerFriendCode: String(row.ownerFriendCode ?? ""),
+          targetFriendCode: String(row.targetFriendCode ?? ""),
+          title: String(row.title ?? "일정표"),
+          weekStartDate: String(row.weekStartDate ?? ""),
+          items: Array.isArray(raw.items) ? raw.items : [],
+          updatedAt: new Date(row.updatedAt).getTime(),
+        };
+      });
+
+      setWeeklySchedules(parsed);
+    } finally {
+      setScheduleLoading(false);
+    }
+  }
+
+  async function createWeeklyScheduleFromRecommendation(
+    pairResults: Array<{
+      my: any;
+      friend: any;
+      commonRaids: string[];
+      activeSelectedRaids: string[];
+    }>,
+    targetDay: WeeklyScheduleDay
+  ) {
+    if (!SERVER_MODE) {
+      alert("서버 모드에서만 일정표 공유가 가능해.");
+      return;
+    }
+
+    if (!selectedFriendCode) {
+      alert("먼저 친구를 선택해줘.");
+      return;
+    }
+
+    const items = buildScheduleItemsFromPairs(pairResults, targetDay);
+    if (!items.length) {
+      alert("일정표로 만들 추천 매칭이 없어.");
+      return;
+    }
+
+    const title = newScheduleTitle.trim() || "일정표";
+
+    const payload = {
+      title,
+      weekStartDate: getCurrentWeekStartDate(),
+      items,
+    };
+
+    const created = await apiFetch2("/api/weekly-schedules", {
+      method: "POST",
+      body: JSON.stringify({
+        targetFriendCode: selectedFriendCode,
+        title: payload.title,
+        weekStartDate: payload.weekStartDate,
+        scheduleJson: JSON.stringify(payload),
+      }),
+    });
+
+    await refreshWeeklySchedules();
+    if (created?.id) setSelectedScheduleId(String(created.id));
+    alert(`새 일정표 생성 완료! (${targetDay}요일)`);
+  }
+
+  async function appendToExistingWeeklySchedule(
+    scheduleId: string,
+    pairResults: Array<{
+      my: any;
+      friend: any;
+      commonRaids: string[];
+      activeSelectedRaids: string[];
+    }>,
+    targetDay: WeeklyScheduleDay
+  ) {
+    if (!SERVER_MODE) {
+      alert("서버 모드에서만 일정표 공유가 가능해.");
+      return;
+    }
+
+    const schedule = weeklySchedules.find((s) => s.id === scheduleId);
+    if (!schedule) {
+      alert("추가할 일정표를 먼저 선택해줘.");
+      return;
+    }
+
+    const newItems = buildScheduleItemsFromPairs(pairResults, targetDay);
+    if (!newItems.length) {
+      alert("추가할 추천 매칭이 없어.");
+      return;
+    }
+
+    const nextSchedule: SharedWeeklySchedule = {
+      ...schedule,
+      items: [
+        ...schedule.items,
+        ...newItems.map((item, index) => ({
+          ...item,
+          order: schedule.items.length + index,
+        })),
+      ],
+    };
+
+    await saveWeeklySchedule(nextSchedule);
+    setSelectedScheduleId(schedule.id);
+    alert(`기존 일정표에 추가 완료! (${targetDay}요일)`);
+  }
+
+  async function renameWeeklySchedule(scheduleId: string, nextTitle: string) {
+    const schedule = weeklySchedules.find((s) => s.id === scheduleId);
+    if (!schedule) return;
+
+    await saveWeeklySchedule({
+      ...schedule,
+      title: nextTitle.trim() || "일정표",
+    });
+  }
+
+  async function deleteWeeklySchedule(scheduleId: string) {
+    if (!SERVER_MODE) return;
+    if (!confirm("이 일정표를 삭제할까요?")) return;
+
+    await apiFetch2(`/api/weekly-schedules/${scheduleId}`, {
+      method: "DELETE",
+    });
+
+    await refreshWeeklySchedules();
+    if (selectedScheduleId === scheduleId) {
+      setSelectedScheduleId("");
+    }
+  }
+
+  function removeScheduleItem(scheduleId: string, itemId: string) {
+    setWeeklySchedules((prev) =>
+      prev.map((schedule) => {
+        if (schedule.id !== scheduleId) return schedule;
+
+        const nextItems = schedule.items
+          .filter((item) => item.id !== itemId)
+          .map((item, index) => ({ ...item, order: index }));
+
+        return {
+          ...schedule,
+          items: nextItems,
+        };
+      })
+    );
+  }
+
+  function moveScheduleItemToDay(
+    scheduleId: string,
+    itemId: string,
+    nextDay: WeeklyScheduleDay
+  ) {
+    setWeeklySchedules((prev) =>
+      prev.map((schedule) => {
+        if (schedule.id !== scheduleId) return schedule;
+
+        const nextItems = schedule.items.map((item) =>
+          item.id === itemId ? { ...item, day: nextDay } : item
+        );
+
+        return {
+          ...schedule,
+          items: nextItems,
+        };
+      })
+    );
+  }
+
+  async function saveWeeklySchedule(schedule: SharedWeeklySchedule) {
+    if (!SERVER_MODE) return;
+
+    setScheduleSaving(true);
+    try {
+      await apiFetch2(`/api/weekly-schedules/${schedule.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          title: schedule.title,
+          weekStartDate: schedule.weekStartDate,
+          scheduleJson: JSON.stringify({
+            items: schedule.items,
+          }),
+        }),
+      });
+
+      await refreshWeeklySchedules();
+    } finally {
+      setScheduleSaving(false);
+    }
+  }
+
   // ✅ 메모장 (표별 간단 메모)
   const memoKey = useMemo(() => `todoMemo:v1:${state.activeTableId}`, [state.activeTableId]);
   const [memoOpen, setMemoOpen] = useState(false);
@@ -760,11 +1012,17 @@ export default function TodoTracker() {
     const f = state.friends.find((x) => x.code === selectedFriendCode);
     if (!f) return <div className="todo-hint">친구를 찾을 수 없어.</div>;
 
-    const snap: any = friendSnapshots[selectedFriendCode];
-    if (!snap?.data) {
+    const rawSnap: any = friendSnapshots[selectedFriendCode];
+    if (!rawSnap?.data) {
       return <div className="todo-hint">친구 스냅샷이 없어. (서버에서 불러오기 또는 스냅샷 붙여넣기)</div>;
     }
-    if (snap.shareMode === "PRIVATE") return <div className="todo-hint">친구가 비공개야.</div>;
+    if (rawSnap.shareMode === "PRIVATE") return <div className="todo-hint">친구가 비공개야.</div>;
+
+    const snap = normalizeFriendRaidSnapshotAfterWeeklyReset(
+      rawSnap,
+      state.reset?.weeklyResetWeekday ?? 3,
+      state.reset?.dailyResetHour ?? 6
+    );
 
     const rows = (snap.data as any[]).filter((r) => r && r.charName);
     const levelRange = {
@@ -795,9 +1053,13 @@ export default function TodoTracker() {
     function parsePowerValue(power?: string): number {
       if (!power) return 0;
 
-      // "123,456" → 123456
-      const num = Number(power.replace(/,/g, ""));
-      return isNaN(num) ? 0 : num;
+      const cleaned = String(power)
+        .trim()
+        .replace(/,/g, "")
+        .replace(/[^\d.]/g, ""); // +, 공백, 문자 제거
+
+      const num = Number(cleaned);
+      return Number.isFinite(num) ? num : 0;
     }
 
     const myCandidates: MyCandidate[] = state.tables
@@ -1300,6 +1562,77 @@ export default function TodoTracker() {
               추천 매칭
             </button>
 
+            <select
+              className="friendSelect manualKkanbuDaySelect"
+              value={scheduleTargetDay}
+              onChange={(e) => setScheduleTargetDay(e.target.value as WeeklyScheduleDay)}
+              title="일정표 생성 시 배치할 요일"
+            >
+              {WEEK_DAYS.map((day) => (
+                <option key={day} value={day}>
+                  {day}요일에 넣기
+                </option>
+              ))}
+            </select>
+
+            <select
+              className="friendSelect manualKkanbuDaySelect"
+              value={scheduleCreateMode}
+              onChange={(e) => setScheduleCreateMode(e.target.value as "NEW" | "EXISTING")}
+            >
+              <option value="NEW">새 일정표 만들기</option>
+              <option value="EXISTING">기존 일정표에 추가</option>
+            </select>
+
+            {scheduleCreateMode === "NEW" ? (
+              <input
+                className="friendInput manualKkanbuScheduleInput"
+                value={newScheduleTitle}
+                onChange={(e) => setNewScheduleTitle(e.target.value)}
+                placeholder="새 일정표 이름"
+              />
+            ) : (
+              <select
+                className="friendSelect manualKkanbuDaySelect"
+                value={selectedScheduleId}
+                onChange={(e) => setSelectedScheduleId(e.target.value)}
+              >
+                <option value="">추가할 일정표 선택</option>
+                {weeklySchedules
+                  .filter((s) => s.targetFriendCode === selectedFriendCode || s.ownerFriendCode === selectedFriendCode)
+                  .map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.title}
+                    </option>
+                  ))}
+              </select>
+            )}
+
+            <button
+              type="button"
+              className="btn"
+              disabled={!shareablePairResults.length || !selectedFriendCode}
+              onClick={() => {
+                const action =
+                  scheduleCreateMode === "NEW"
+                    ? createWeeklyScheduleFromRecommendation(
+                      shareablePairResults,
+                      scheduleTargetDay
+                    )
+                    : appendToExistingWeeklySchedule(
+                      selectedScheduleId,
+                      shareablePairResults,
+                      scheduleTargetDay
+                    );
+
+                action.catch((e) => {
+                  alert(`일정표 처리 실패: ${String(e)}`);
+                });
+              }}
+            >
+              {scheduleCreateMode === "NEW" ? "일정표 만들기" : "선택 일정표에 추가"}
+            </button>
+
             <button
               type="button"
               className="btn"
@@ -1495,56 +1828,231 @@ export default function TodoTracker() {
           </div>
         </div>
 
-        <div className="manualKkanbuRemainWrap">
-          <div className="manualRemainCard">
-            <div className="manualRemainTitle">남은 내 캐릭터</div>
-            {remainingMyCandidates.length ? (
-              <div className="manualRemainList">
-                {remainingMyCandidates.map((me) => (
-                  <div key={me.key} className="manualRemainItem">
-                    <div className="manualRemainName">
-                      {me.name} <span className="manualRemainMeta">Lv {me.ilvl} / 전투력 {me.power}</span>
+        <>
+          <div className="manualKkanbuRemainWrap manualKkanbuRemainTop">
+            <div className="manualRemainCard">
+              <div className="manualRemainTitle">남은 내 캐릭터</div>
+              {remainingMyCandidates.length ? (
+                <div className="manualRemainList">
+                  {remainingMyCandidates.map((me) => (
+                    <div key={me.key} className="manualRemainItem">
+                      <div className="manualRemainName">
+                        {me.name} <span className="manualRemainMeta">Lv {me.ilvl} / 전투력 {me.power}</span>
+                      </div>
+                      <div className="manualRemainRaids">
+                        {me.remainingRaids.map((raid) => (
+                          <span key={raid} className="manualRaidChip">{raid}</span>
+                        ))}
+                      </div>
                     </div>
-                    <div className="manualRemainRaids">
-                      {me.remainingRaids.map((raid) => (
-                        <span key={raid} className="manualRaidChip">{raid}</span>
-                      ))}
+                  ))}
+                </div>
+              ) : (
+                <div className="manualKkanbuEmpty">남은 내 캐릭터 없음</div>
+              )}
+            </div>
+
+            <div className="manualRemainCard">
+              <div className="manualRemainTitle">남은 친구 캐릭터</div>
+              {remainingFriendCandidates.length ? (
+                <div className="manualRemainList">
+                  {remainingFriendCandidates.map((fr: FriendCandidate) => (
+                    <div key={fr.key} className="manualRemainItem">
+                      <div className="manualRemainName">
+                        {fr.name}{" "}
+                        <span className="manualRemainMeta">
+                          Lv {fr.ilvl} / 전투력 {fr.power}
+                        </span>
+                      </div>
+                      <div className="manualRemainRaids">
+                        {fr.remainingRaids.map((raid: string) => (
+                          <span key={raid} className="manualRaidChip">
+                            {raid}
+                          </span>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="manualKkanbuEmpty">남은 내 캐릭터 없음</div>
-            )}
+                  ))}
+                </div>
+              ) : (
+                <div className="manualKkanbuEmpty">남은 친구 캐릭터 없음</div>
+              )}
+            </div>
           </div>
 
-          <div className="manualRemainCard">
-            <div className="manualRemainTitle">남은 친구 캐릭터</div>
-            {remainingFriendCandidates.length ? (
-              <div className="manualRemainList">
-                {remainingFriendCandidates.map((fr: FriendCandidate) => (
-                  <div key={fr.key} className="manualRemainItem">
-                    <div className="manualRemainName">
-                      {fr.name}{" "}
-                      <span className="manualRemainMeta">
-                        Lv {fr.ilvl} / 전투력 {fr.power}
-                      </span>
-                    </div>
-                    <div className="manualRemainRaids">
-                      {fr.remainingRaids.map((raid: string) => (
-                        <span key={raid} className="manualRaidChip">
-                          {raid}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+          <div className="weeklyScheduleSection">
+            <div className="weeklyScheduleHeader">
+              <div className="weeklyScheduleTitle">공유 일정표</div>
+
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                {SERVER_MODE && (
+                  <button
+                    type="button"
+                    className="mini"
+                    onClick={() => refreshWeeklySchedules().catch((e) => alert(String(e)))}
+                  >
+                    {scheduleLoading ? "불러오는 중..." : "새로고침"}
+                  </button>
+                )}
+
+                <select
+                  className="friendSelect"
+                  value={selectedScheduleId}
+                  onChange={(e) => setSelectedScheduleId(e.target.value)}
+                >
+                  <option value="">일정표 선택</option>
+                  {weeklySchedules
+                    .filter((s) => s.targetFriendCode === selectedFriendCode || s.ownerFriendCode === selectedFriendCode)
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.title}
+                      </option>
+                    ))}
+                </select>
+
+                {selectedScheduleId && (
+                  <>
+                    <button
+                      type="button"
+                      className="mini"
+                      onClick={() => {
+                        const schedule = weeklySchedules.find((s) => s.id === selectedScheduleId);
+                        if (!schedule) return;
+
+                        const nextTitle = prompt("일정표 이름 변경", schedule.title)?.trim();
+                        if (!nextTitle) return;
+
+                        renameWeeklySchedule(schedule.id, nextTitle).catch((e) => {
+                          alert(`이름 변경 실패: ${String(e)}`);
+                        });
+                      }}
+                    >
+                      이름 변경
+                    </button>
+
+                    <button
+                      type="button"
+                      className="mini"
+                      onClick={() => {
+                        deleteWeeklySchedule(selectedScheduleId).catch((e) => {
+                          alert(`일정표 삭제 실패: ${String(e)}`);
+                        });
+                      }}
+                    >
+                      일정표 삭제
+                    </button>
+                  </>
+                )}
               </div>
-            ) : (
-              <div className="manualKkanbuEmpty">남은 친구 캐릭터 없음</div>
+            </div>
+
+            {selectedScheduleId ? (() => {
+              const schedule = weeklySchedules.find((s) => s.id === selectedScheduleId);
+              if (!schedule) return <div className="manualKkanbuEmpty">선택한 일정표가 없어.</div>;
+
+              return (
+                <div className="weeklyScheduleGrid">
+                  {WEEK_DAYS.map((day) => {
+                    const dayItems = schedule.items
+                      .filter((item) => item.day === day)
+                      .sort((a, b) => a.order - b.order);
+
+                    return (
+                      <div
+                        key={day}
+                        className={`weeklyDayCard ${dragScheduleItem ? "drop-active" : ""
+                          }`}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                        }}
+                        onDrop={() => {
+                          if (!dragScheduleItem) return;
+                          if (dragScheduleItem.scheduleId !== schedule.id) return;
+
+                          moveScheduleItemToDay(
+                            dragScheduleItem.scheduleId,
+                            dragScheduleItem.itemId,
+                            day
+                          );
+                          setDragScheduleItem(null);
+                        }}
+                      >
+                        <div className="weeklyDayTitle">{day}</div>
+
+                        {dayItems.length ? (
+                          <div className="weeklyDayList">
+                            {dayItems.map((item) => (
+                              <div
+                                key={item.id}
+                                className={`weeklyScheduleItem ${dragScheduleItem?.itemId === item.id ? "dragging" : ""
+                                  }`}
+                                draggable
+                                onDragStart={() => {
+                                  setDragScheduleItem({
+                                    scheduleId: schedule.id,
+                                    itemId: item.id,
+                                  });
+                                }}
+                                onDragEnd={() => {
+                                  setDragScheduleItem(null);
+                                }}
+                                title="드래그해서 다른 요일로 이동"
+                              >
+                                <div className="weeklyScheduleItemTop">
+                                  <div className="weeklySchedulePair">
+                                    {item.myCharName} - {item.friendCharName}
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    className="mini"
+                                    onClick={() => removeScheduleItem(schedule.id, item.id)}
+                                    title="이 매칭 삭제"
+                                  >
+                                    삭제
+                                  </button>
+                                </div>
+
+                                <div className="weeklyScheduleAvgPower">
+                                  깐평: {item.avgPower ?? "-"}
+                                </div>
+
+                                <div className="weeklyScheduleRaids">
+                                  {item.raidNames.join(", ")}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="manualKkanbuEmpty">배정 없음</div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })() : (
+              <div className="manualKkanbuEmpty">일정표를 선택하거나 새로 만들어줘.</div>
+            )}
+
+            {selectedScheduleId && (
+              <div className="manualKkanbuActions" style={{ marginTop: 12 }}>
+                <button
+                  className="btn"
+                  onClick={() => {
+                    const schedule = weeklySchedules.find((s) => s.id === selectedScheduleId);
+                    if (!schedule) return;
+                    saveWeeklySchedule(schedule).catch((e) => {
+                      alert(`일정표 저장 실패: ${String(e)}`);
+                    });
+                  }}
+                >
+                  {scheduleSaving ? "저장 중..." : "일정표 저장"}
+                </button>
+              </div>
             )}
           </div>
-        </div>
+        </>
         {shareKkanbuOpen ? (
           <div className="kkanbuShareOverlay" onClick={() => setShareKkanbuOpen(false)}>
             <div
@@ -1635,14 +2143,12 @@ export default function TodoTracker() {
     }
   }
 
-
   useEffect(() => {
     if (!SERVER_MODE) return;
     refreshFriends().catch(() => { });
+    refreshWeeklySchedules().catch(() => { });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-
 
   async function setShareMode(mode: "PUBLIC" | "PRIVATE") {
     setState((prev) => ({ ...prev, profile: { ...prev.profile, shareMode: mode } }));

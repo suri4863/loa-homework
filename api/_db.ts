@@ -53,7 +53,20 @@ export async function ensureSchema() {
       updated_at timestamptz not null default now()
     );
   `;
-    // ✅ 백업 비밀번호(해시/솔트) 컬럼
+
+  await sql`
+    create table if not exists shared_weekly_schedules (
+      id bigserial primary key,
+      owner_user_id bigint not null references users(id),
+      target_user_id bigint not null references users(id),
+      title text not null,
+      week_start_date text not null,
+      schedule_json text not null,
+      updated_at timestamptz not null default now(),
+      created_at timestamptz not null default now()
+    );
+  `;
+  // ✅ 백업 비밀번호(해시/솔트) 컬럼
   await sql`
     alter table users
     add column if not exists backup_pw_salt text,

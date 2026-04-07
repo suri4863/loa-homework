@@ -3175,3 +3175,250 @@ body.pip-dark .pip-cube.is-pressed {
   justify-content: flex-end;
   margin-top: 12px;
 }
+
+/*일정표*/
+.weeklyScheduleSection {
+  margin-top: 18px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+  color: var(--text);
+  padding: 14px;
+  box-shadow: var(--shadow);
+}
+
+.weeklyScheduleHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.weeklyScheduleTitle {
+  font-size: 16px;
+  font-weight: 900;
+  color: var(--text);
+}
+
+.weeklyScheduleGrid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(150px, 1fr));
+  gap: 10px;
+  overflow-x: auto;
+}
+
+.weeklyDayCard {
+  min-height: 220px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--soft-2);
+  padding: 10px;
+}
+
+.weeklyDayTitle {
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+
+.weeklyDayList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.weeklyScheduleItem {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 8px;
+}
+
+.weeklySchedulePair {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.weeklyScheduleRaids {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.weeklyScheduleMemo {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--text);
+  padding: 8px 10px;
+  outline: none;
+}
+
+.weeklyScheduleMemo:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-soft);
+}
+
+@media (max-width: 1200px) {
+  .weeklyScheduleGrid {
+    grid-template-columns: repeat(7, 180px);
+  }
+}
+
+.manualKkanbuDaySelect {
+  min-width: 120px;
+} 
+
+.manualKkanbuScheduleInput {
+  min-width: 180px;
+}
+
+.manualKkanbuRemainTop {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.weeklyScheduleHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.weeklyScheduleItemTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.weeklySchedulePair {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.weeklyScheduleRaids {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.weeklyScheduleItem {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 8px 10px;
+}
+
+@media (max-width: 1100px) {
+  .manualKkanbuRemainTop {
+    grid-template-columns: 1fr;
+  }
+}
+
+.manualKkanbuRemainTop {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.manualKkanbuScheduleInput {
+  min-width: 180px;
+}
+
+.weeklyScheduleHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.weeklyScheduleItemTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.weeklyScheduleItem {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 8px 10px;
+}
+
+.weeklySchedulePair {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.weeklyScheduleRaids {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+@media (max-width: 1100px) {
+  .manualKkanbuRemainTop {
+    grid-template-columns: 1fr;
+  }
+}
+.weeklyScheduleItem {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 8px 10px;
+  cursor: grab;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
+}
+
+.weeklyScheduleItem:active {
+  cursor: grabbing;
+}
+
+.weeklyScheduleItem.dragging {
+  opacity: 0.45;
+  transform: scale(0.98);
+}
+
+.weeklyDayCard {
+  min-height: 220px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--soft-2);
+  padding: 10px;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease, background-color 0.12s ease;
+}
+
+.weeklyDayCard.drop-active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-soft);
+}
+
+.weeklyScheduleAvgPower {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+  opacity: 0.9;
+}
