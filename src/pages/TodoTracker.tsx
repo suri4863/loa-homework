@@ -278,6 +278,32 @@ export default function TodoTracker() {
     });
   }
 
+  const excludedFriendKkanbuTableNames = state.profile.kkanbuExcludedFriendTableNames ?? [];
+
+  function isKkanbuExcludedFriendTable(tableName: string) {
+    return excludedFriendKkanbuTableNames.includes(String(tableName ?? "").trim());
+  }
+
+  function toggleKkanbuExcludedFriendTable(tableName: string) {
+    const normalized = String(tableName ?? "").trim();
+    if (!normalized) return;
+
+    setState((prev) => {
+      const prevNames = prev.profile.kkanbuExcludedFriendTableNames ?? [];
+      const exists = prevNames.includes(normalized);
+
+      return {
+        ...prev,
+        profile: {
+          ...prev.profile,
+          kkanbuExcludedFriendTableNames: exists
+            ? prevNames.filter((name) => name !== normalized)
+            : [...prevNames, normalized],
+        },
+      };
+    });
+  }
+
   function makeMyCharKey(tableId: string, charId: string) {
     return `${tableId}|${charId}`;
   }
@@ -821,6 +847,10 @@ export default function TodoTracker() {
       );
 
     const friendCandidates = rows
+      .filter((row: any) => {
+        const tableName = String(row.tableName ?? "").trim();
+        return !excludedFriendKkanbuTableNames.includes(tableName);
+      })
       .map((row: any) => {
         const ilvl = Number(row.ilvl) || parsePowerValue(row.charItemLevel);
         const power = parsePowerValue(row.charPower);
@@ -1161,9 +1191,9 @@ export default function TodoTracker() {
       <div className="raidLeftColsWrap">
         <div className="raidLeftColsTitle">깐부 수동 조합 플래너</div>
         <div style={{ marginBottom: 12 }}>
-          <div className="manualKkanbuLabel" style={{ marginBottom: 6 }}>표 제외</div>
+          <div className="manualKkanbuLabel" style={{ marginBottom: 6 }}>내 표 제외</div>
 
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
             {state.tables.map((tbl) => (
               <label
                 key={tbl.id}
@@ -1184,6 +1214,33 @@ export default function TodoTracker() {
                   onChange={() => toggleKkanbuExcludedTable(tbl.id)}
                 />
                 <span>{tbl.name}</span>
+              </label>
+            ))}
+          </div>
+
+          <div className="manualKkanbuLabel" style={{ marginBottom: 6 }}>친구 표 제외</div>
+
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {[...new Set(rows.map((row: any) => String(row.tableName ?? "").trim()).filter(Boolean))].map((tableName) => (
+              <label
+                key={tableName}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "6px 10px",
+                  border: "1px solid var(--border)",
+                  borderRadius: 10,
+                  background: "var(--card)",
+                  color: "var(--text)",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={isKkanbuExcludedFriendTable(tableName)}
+                  onChange={() => toggleKkanbuExcludedFriendTable(tableName)}
+                />
+                <span>{tableName}</span>
               </label>
             ))}
           </div>
