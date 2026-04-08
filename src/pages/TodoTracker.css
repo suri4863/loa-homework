@@ -3267,10 +3267,6 @@ body.pip-dark .pip-cube.is-pressed {
   }
 }
 
-.manualKkanbuDaySelect {
-  min-width: 120px;
-} 
-
 .manualKkanbuScheduleInput {
   min-width: 180px;
 }
@@ -3409,21 +3405,6 @@ body.pip-dark .pip-cube.is-pressed {
   flex: 1;
 }
 
-.weeklyScheduleMyChar {
-  font-size: 13px;
-  font-weight: 900;
-  color: var(--text);
-  line-height: 1.4;
-  word-break: keep-all;
-}
-
-.weeklyScheduleFriendSelect {
-  width: 100%;
-  min-width: 0;
-  background: var(--card);
-  color: var(--text);
-  border: 1px solid var(--border);
-}
 
 .weeklyScheduleAvgPower {
   font-size: 12px;
@@ -3476,6 +3457,9 @@ body.pip-dark .pip-cube.is-pressed {
   color: var(--text);
   padding: 0 10px;
   height: 34px;
+
+  flex: 0 0 auto;   /* column 안에서 세로로 늘어나지 않게 */
+  align-self: stretch;
 }
 
 .weeklyScheduleOpenBadge {
@@ -3509,4 +3493,47 @@ body.pip-dark .pip-cube.is-pressed {
 
 .weeklyScheduleOpenBadge {
   flex-shrink: 0; /* 줄어들지 않게 */
+}
+
+.weeklyScheduleAddRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+  align-items: center;
+}
+
+.weeklyScheduleAddLabel {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  opacity: 0.9;
+}
+
+.weeklyScheduleAddRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.manualKkanbuDaySelect {
+  width: 240px;
+  min-width: 240px;
+  max-width: 240px;
+  flex: 0 0 auto;
+}
+
+.friendSelect {
+  background: var(--card);
+  color: var(--text);
+}
+.weeklyScheduleAddRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.weeklyScheduleAddRow .btn {
+  margin-left: 12px; /* 저장 버튼 살짝 띄우기 */
 }

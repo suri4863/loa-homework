@@ -272,6 +272,7 @@ export default function TodoTracker() {
     scheduleId: string;
     itemId: string;
   } | null>(null);
+  const [selectedMyScheduleCharKey, setSelectedMyScheduleCharKey] = useState<string>("");
 
   const excludedKkanbuTableIds = state.profile.kkanbuExcludedTableIds ?? [];
 
@@ -818,6 +819,53 @@ export default function TodoTracker() {
     );
   }
 
+  function addMyCharSlotToSchedule(
+    scheduleId: string,
+    me: {
+      key: string;
+      name: string;
+      power: number;
+      remainingRaids: string[];
+    },
+    targetDay: WeeklyScheduleDay
+  ) {
+    setWeeklySchedules((prev) =>
+      prev.map((schedule) => {
+        if (schedule.id !== scheduleId) return schedule;
+
+        const alreadyExists = schedule.items.some((item) => item.myCharKey === me.key);
+        if (alreadyExists) return schedule;
+
+        const newItem: SharedWeeklyScheduleItem = {
+          id: `slot_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+          day: targetDay,
+
+          myCharKey: me.key,
+          myCharName: me.name,
+          myCharPower: me.power ?? null,
+
+          friendCharKey: null,
+          friendCharName: null,
+          friendCharPower: null,
+
+          mode: "OPEN_SLOT",
+
+          baseRaidNames: [...me.remainingRaids],
+          raidNames: [...me.remainingRaids],
+
+          avgPower: null,
+          memo: "",
+          order: schedule.items.length,
+        };
+
+        return {
+          ...schedule,
+          items: [...schedule.items, newItem],
+        };
+      })
+    );
+  }
+
   async function saveWeeklySchedule(schedule: SharedWeeklySchedule) {
     if (!SERVER_MODE) return;
 
@@ -1174,6 +1222,13 @@ export default function TodoTracker() {
               x.remainingRaids.length > 0
           )
       );
+
+    const schedule = weeklySchedules.find((s) => s.id === selectedScheduleId);
+
+    const selectableMyScheduleCandidates = myCandidates.filter((me) => {
+      if (!schedule) return false;
+      return !schedule.items.some((item) => item.myCharKey === me.key);
+    });
 
     const friendCandidates = rows
       .filter((row: any) => {
@@ -1641,6 +1696,38 @@ export default function TodoTracker() {
       });
     };
 
+    async function createEmptyWeeklySchedule() {
+      if (!SERVER_MODE) {
+        alert("서버 모드에서만 일정표 공유가 가능해.");
+        return;
+      }
+
+      if (!selectedFriendCode) {
+        alert("먼저 친구를 선택해줘.");
+        return;
+      }
+
+      const payload = {
+        title: newScheduleTitle.trim() || "일정표",
+        weekStartDate: getCurrentWeekStartDate(),
+        items: [],
+      };
+
+      const created = await apiFetch2("/api/weekly-schedules", {
+        method: "POST",
+        body: JSON.stringify({
+          targetFriendCode: selectedFriendCode,
+          title: payload.title,
+          weekStartDate: payload.weekStartDate,
+          scheduleJson: JSON.stringify(payload),
+        }),
+      });
+
+      await refreshWeeklySchedules();
+      if (created?.id) setSelectedScheduleId(String(created.id));
+      alert("빈 일정표 생성 완료!");
+    }
+
     return (
       <div className="raidLeftColsWrap">
         <div className="raidLeftColsTitle">깐부 수동 조합 플래너</div>
@@ -1803,44 +1890,14 @@ export default function TodoTracker() {
             <button
               type="button"
               className="btn"
-              disabled={!myCandidates.length || !selectedFriendCode}
+              disabled={!selectedFriendCode}
               onClick={() => {
-                const myOnlyItems = buildScheduleItemsFromMySlots(
-                  myCandidates.map((me) => ({
-                    key: me.key,
-                    name: me.name,
-                    power: me.power,
-                    remainingRaids: me.remainingRaids,
-                  })),
-                  scheduleTargetDay
-                );
-
-                const payload = {
-                  title: (newScheduleTitle.trim() || "일정표"),
-                  weekStartDate: getCurrentWeekStartDate(),
-                  items: myOnlyItems,
-                };
-
-                apiFetch2("/api/weekly-schedules", {
-                  method: "POST",
-                  body: JSON.stringify({
-                    targetFriendCode: selectedFriendCode,
-                    title: payload.title,
-                    weekStartDate: payload.weekStartDate,
-                    scheduleJson: JSON.stringify(payload),
-                  }),
-                })
-                  .then(async (created) => {
-                    await refreshWeeklySchedules();
-                    if (created?.id) setSelectedScheduleId(String(created.id));
-                    alert(`내 캐릭 슬롯 일정표 생성 완료! (${scheduleTargetDay}요일)`);
-                  })
-                  .catch((e) => {
-                    alert(`일정표 생성 실패: ${String(e)}`);
-                  });
+                createEmptyWeeklySchedule().catch((e) => {
+                  alert(`일정표 생성 실패: ${String(e)}`);
+                });
               }}
             >
-              내 캐릭 슬롯 일정표 만들기
+              빈 일정표 만들기
             </button>
 
             <button
@@ -2092,21 +2149,11 @@ export default function TodoTracker() {
 
           <div className="weeklyScheduleSection">
             <div className="weeklyScheduleHeader">
-              <div className="weeklyScheduleTitle">공유 일정표</div>
-
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                {SERVER_MODE && (
-                  <button
-                    type="button"
-                    className="mini"
-                    onClick={() => refreshWeeklySchedules().catch((e) => alert(String(e)))}
-                  >
-                    {scheduleLoading ? "불러오는 중..." : "새로고침"}
-                  </button>
-                )}
+              <div className="weeklyScheduleHeaderLeft">
+                <div className="weeklyScheduleTitle">공유 일정표</div>
 
                 <select
-                  className="friendSelect"
+                  className="friendSelect weeklySchedulePicker"
                   value={selectedScheduleId}
                   onChange={(e) => setSelectedScheduleId(e.target.value)}
                 >
@@ -2119,9 +2166,8 @@ export default function TodoTracker() {
                       </option>
                     ))}
                 </select>
-
                 {selectedScheduleId && (
-                  <>
+                  <div className="weeklyScheduleHeaderRight">
                     <button
                       type="button"
                       className="mini"
@@ -2151,10 +2197,70 @@ export default function TodoTracker() {
                     >
                       일정표 삭제
                     </button>
-                  </>
+
+                    {SERVER_MODE && (
+                      <button
+                        type="button"
+                        className="mini"
+                        onClick={() => refreshWeeklySchedules().catch((e) => alert(String(e)))}
+                      >
+                        {scheduleLoading ? "불러오는 중..." : "새로고침"}
+                      </button>
+                    )}
+                  </div>
                 )}
+
               </div>
             </div>
+            {selectedScheduleId && (
+              <div className="weeklyScheduleAddRow">
+                <div className="weeklyScheduleAddLabel">캐릭 추가</div>
+
+                <select
+                  className="friendSelect manualKkanbuDaySelect"
+                  value={selectedMyScheduleCharKey}
+                  onChange={(e) => setSelectedMyScheduleCharKey(e.target.value)}
+                >
+                  <option value="">선택</option>
+                  {selectableMyScheduleCandidates.map((me) => (
+                    <option key={me.key} value={me.key}>
+                      {me.name} / Lv {me.ilvl} / 전투력 {me.power}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  className="mini"
+                  disabled={!schedule || !selectedMyScheduleCharKey}
+                  onClick={() => {
+                    const me = selectableMyScheduleCandidates.find(
+                      (x) => x.key === selectedMyScheduleCharKey
+                    );
+                    if (!me) return;
+
+                    addMyCharSlotToSchedule(selectedScheduleId, me, scheduleTargetDay);
+                    setSelectedMyScheduleCharKey("");
+                  }}
+                >
+                  추가
+                </button>
+
+
+                <button
+                  className="btn"
+                  onClick={() => {
+                    const schedule = weeklySchedules.find((s) => s.id === selectedScheduleId);
+                    if (!schedule) return;
+                    saveWeeklySchedule(schedule).catch((e) => {
+                      alert(`일정표 저장 실패: ${String(e)}`);
+                    });
+                  }}
+                >
+                  {scheduleSaving ? "저장 중..." : "일정표 저장"}
+                </button>
+              </div>
+            )}
 
             {selectedScheduleId ? (() => {
               const schedule = weeklySchedules.find((s) => s.id === selectedScheduleId);
@@ -2211,7 +2317,11 @@ export default function TodoTracker() {
                                 <div className="weeklyScheduleItemTop">
                                   <div className="weeklySchedulePairBlock">
                                     <div className="weeklyScheduleMyCharRow">
-                                      <div className="weeklyScheduleMyChar">{item.myCharName}</div>
+                                      <div className="weeklyScheduleMyChar">
+                                        {item.friendCharName
+                                          ? `${item.myCharName} - ${item.friendCharName}`
+                                          : item.myCharName}
+                                      </div>
 
                                       {!item.friendCharKey && (
                                         <div className="weeklyScheduleOpenBadge">
@@ -2273,23 +2383,6 @@ export default function TodoTracker() {
               );
             })() : (
               <div className="manualKkanbuEmpty">일정표를 선택하거나 새로 만들어줘.</div>
-            )}
-
-            {selectedScheduleId && (
-              <div className="manualKkanbuActions" style={{ marginTop: 12 }}>
-                <button
-                  className="btn"
-                  onClick={() => {
-                    const schedule = weeklySchedules.find((s) => s.id === selectedScheduleId);
-                    if (!schedule) return;
-                    saveWeeklySchedule(schedule).catch((e) => {
-                      alert(`일정표 저장 실패: ${String(e)}`);
-                    });
-                  }}
-                >
-                  {scheduleSaving ? "저장 중..." : "일정표 저장"}
-                </button>
-              </div>
             )}
           </div>
         </>
