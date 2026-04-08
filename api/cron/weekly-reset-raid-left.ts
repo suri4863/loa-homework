@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { sql } from "@vercel/postgres";
-import { ensureSchema, sendError, sendJson } from "../_db.js";
+import { ensureSchema, sendError, sendJson } from "../../lib/_db.js";
 
 type RaidLeftSnapshotRow = {
   charName: string;
