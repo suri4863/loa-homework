@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { sql } from "@vercel/postgres";
-import { getMe, sendError, sendJson, ensureBackupPassword } from "../_db.js";
+import { getMe, sendError, sendJson, ensureBackupPassword } from "../../lib/_db.js";
 
 /**
  * PUT  : 업로드 { password, stateJson }
