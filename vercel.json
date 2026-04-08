@@ -4,5 +4,11 @@
       "source": "/((?!api/|@vite/|@react-refresh|@id/|@fs/|src/|assets/|node_modules/).*)",
       "destination": "/index.html"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/weekly-reset-raid-left",
+      "schedule": "0 21 * * 2"
+    }
   ]
 }
