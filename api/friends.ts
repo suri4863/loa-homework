@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { sql } from "@vercel/postgres";
-import { getMe, sendError, sendJson } from "./_db.js";
+import { getMe, sendError, sendJson } from "../lib/_db.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // ✅ CORS (로컬/다른 도메인에서 호출 시 preflight 통과)

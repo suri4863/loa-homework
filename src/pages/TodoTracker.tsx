@@ -723,7 +723,7 @@ export default function TodoTracker() {
     if (!SERVER_MODE) return;
     if (!confirm("이 일정표를 삭제할까요?")) return;
 
-    await apiFetch2(`/api/weekly-schedules/${scheduleId}`, {
+    await apiFetch2(`/api/weekly-schedules?id=${scheduleId}`, {
       method: "DELETE",
     });
 
@@ -776,7 +776,7 @@ export default function TodoTracker() {
 
     setScheduleSaving(true);
     try {
-      await apiFetch2(`/api/weekly-schedules/${schedule.id}`, {
+      await apiFetch2(`/api/weekly-schedules?id=${schedule.id}`, {
         method: "PUT",
         body: JSON.stringify({
           title: schedule.title,
@@ -2116,7 +2116,7 @@ export default function TodoTracker() {
     setSyncingFriends(true);
     try {
       const friendsRes = await apiFetch2("/api/friends");
-      const incomingRes = await apiFetch2("/api/friend-requests/incoming");
+      const incomingRes = await apiFetch2("/api/friend-requests?type=incoming");
 
       const friendsArr = Array.isArray(friendsRes)
         ? friendsRes
@@ -5753,7 +5753,7 @@ body.pip-dark .pip-select option{
                           if (!toCode) return;
 
                           try {
-                            await apiFetch2("/api/friend-requests", {
+                            await apiFetch2("/api/friend-requests?action=create", {
                               method: "POST",
                               body: JSON.stringify({ toFriendCode: toCode }),
                             });
@@ -5783,7 +5783,7 @@ body.pip-dark .pip-select option{
                                 className="mini"
                                 onClick={async () => {
                                   try {
-                                    await apiFetch2(`/api/friend-requests/${r.id}/accept`, { method: "POST" });
+                                    await apiFetch2(`/api/friend-requests?action=accept&id=${r.id}`, { method: "POST" });
                                     await refreshFriends();
                                   } catch (e: any) {
                                     alert(`수락 실패: ${String(e)}`);
@@ -5796,7 +5796,7 @@ body.pip-dark .pip-select option{
                                 className="mini"
                                 onClick={async () => {
                                   try {
-                                    await apiFetch2(`/api/friend-requests/${r.id}/reject`, { method: "POST" });
+                                    await apiFetch2(`/api/friend-requests?action=reject&id=${r.id}`, { method: "POST" });
                                     await refreshFriends();
                                   } catch (e: any) {
                                     alert(`거절 실패: ${String(e)}`);
