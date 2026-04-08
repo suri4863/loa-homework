@@ -3397,6 +3397,7 @@ body.pip-dark .pip-cube.is-pressed {
   margin-bottom: 4px;
   opacity: 0.9;
 }
+
 .weeklySchedulePairBlock {
   display: flex;
   flex-direction: column;
@@ -3458,7 +3459,8 @@ body.pip-dark .pip-cube.is-pressed {
   padding: 0 10px;
   height: 34px;
 
-  flex: 0 0 auto;   /* column 안에서 세로로 늘어나지 않게 */
+  flex: 0 0 auto;
+  /* column 안에서 세로로 늘어나지 않게 */
   align-self: stretch;
 }
 
@@ -3482,6 +3484,7 @@ body.pip-dark .pip-cube.is-pressed {
     grid-template-columns: repeat(7, 190px);
   }
 }
+
 .weeklyScheduleMyCharRow {
   display: flex;
   align-items: center;
@@ -3492,7 +3495,8 @@ body.pip-dark .pip-cube.is-pressed {
 }
 
 .weeklyScheduleOpenBadge {
-  flex-shrink: 0; /* 줄어들지 않게 */
+  flex-shrink: 0;
+  /* 줄어들지 않게 */
 }
 
 .weeklyScheduleAddRow {
@@ -3527,6 +3531,7 @@ body.pip-dark .pip-cube.is-pressed {
   background: var(--card);
   color: var(--text);
 }
+
 .weeklyScheduleAddRow {
   display: flex;
   flex-wrap: wrap;
@@ -3535,5 +3540,50 @@ body.pip-dark .pip-cube.is-pressed {
 }
 
 .weeklyScheduleAddRow .btn {
-  margin-left: 12px; /* 저장 버튼 살짝 띄우기 */
+  margin-left: 12px;
+  /* 저장 버튼 살짝 띄우기 */
+}
+
+.weeklySchedulePower {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+  margin-top: -2px;
+  margin-bottom: 2px;
+  font-weight: 700;
+}
+
+.weeklyScheduleRaidText {
+  color: var(--muted);
+  transition: color 0.12s ease, opacity 0.12s ease;
+}
+
+/* 캐릭터 / 전투력 → 연하게만 */
+.weeklyScheduleMyChar.is-cleared,
+.weeklySchedulePower.is-cleared {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+/* 레이드만 취소선 */
+.weeklyScheduleRaidText.is-cleared {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-thickness: 1.5px;
+  opacity: 0.6;
+}
+
+.weeklyScheduleItem.drop-before {
+  box-shadow: inset 0 2px 0 0 var(--primary);
+}
+
+.weeklyScheduleItem.drop-after {
+  box-shadow: inset 0 -2px 0 0 var(--primary);
+}
+
+.weeklyDayList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 24px;
 }

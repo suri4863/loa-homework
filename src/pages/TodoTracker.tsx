@@ -271,6 +271,7 @@ export default function TodoTracker() {
   const [dragScheduleItem, setDragScheduleItem] = useState<{
     scheduleId: string;
     itemId: string;
+    fromDay: WeeklyScheduleDay;
   } | null>(null);
   const [selectedMyScheduleCharKey, setSelectedMyScheduleCharKey] = useState<string>("");
 
@@ -798,18 +799,96 @@ export default function TodoTracker() {
     );
   }
 
-  function moveScheduleItemToDay(
+  function parseScheduleMyCharKey(myCharKey: string) {
+    const [tableId, charId] = String(myCharKey ?? "").split("|");
+    return { tableId: tableId ?? "", charId: charId ?? "" };
+  }
+
+  function isScheduleRaidCleared(item: SharedWeeklyScheduleItem, raidName: string) {
+    const { tableId, charId } = parseScheduleMyCharKey(item.myCharKey);
+    if (!tableId || !charId) return false;
+
+    const normalizedTarget = normalizeRaidName(raidName);
+
+    const task = state.tasks.find(
+      (t) =>
+        t.period === "WEEKLY" &&
+        (t.section ?? "").trim() === "주간 레이드" &&
+        normalizeRaidName(String(t.title ?? "")) === normalizedTarget
+    );
+
+    if (!task) return false;
+
+    const cell = getCellByTableId(state, tableId, task.id, charId);
+    return !!(cell && cell.type === "CHECK" && cell.checked);
+  }
+
+  function getScheduleRaidCompletion(item: SharedWeeklyScheduleItem) {
+    const raids = Array.isArray(item.raidNames) ? item.raidNames : [];
+    const clearedMap = raids.map((raid) => ({
+      raid,
+      cleared: isScheduleRaidCleared(item, raid),
+    }));
+
+    const clearedCount = clearedMap.filter((x) => x.cleared).length;
+    const allCleared = raids.length > 0 && clearedCount === raids.length;
+
+    return {
+      clearedMap,
+      clearedCount,
+      allCleared,
+    };
+  }
+
+  function moveScheduleItem(
     scheduleId: string,
     itemId: string,
-    nextDay: WeeklyScheduleDay
+    nextDay: WeeklyScheduleDay,
+    nextIndex?: number
   ) {
     setWeeklySchedules((prev) =>
       prev.map((schedule) => {
         if (schedule.id !== scheduleId) return schedule;
 
-        const nextItems = schedule.items.map((item) =>
-          item.id === itemId ? { ...item, day: nextDay } : item
-        );
+        const movingItem = schedule.items.find((item) => item.id === itemId);
+        if (!movingItem) return schedule;
+
+        const withoutMoving = schedule.items.filter((item) => item.id !== itemId);
+
+        const targetDayItems = withoutMoving
+          .filter((item) => item.day === nextDay)
+          .sort((a, b) => a.order - b.order);
+
+        const insertIndex =
+          typeof nextIndex === "number"
+            ? Math.max(0, Math.min(nextIndex, targetDayItems.length))
+            : targetDayItems.length;
+
+        const movedItem: SharedWeeklyScheduleItem = {
+          ...movingItem,
+          day: nextDay,
+        };
+
+        const rebuiltTargetDayItems = [...targetDayItems];
+        rebuiltTargetDayItems.splice(insertIndex, 0, movedItem);
+
+        const nextItems: SharedWeeklyScheduleItem[] = [];
+
+        for (const day of WEEK_DAYS) {
+          const dayItems =
+            day === nextDay
+              ? rebuiltTargetDayItems
+              : withoutMoving
+                .filter((item) => item.day === day)
+                .sort((a, b) => a.order - b.order);
+
+          dayItems.forEach((item, index) => {
+            nextItems.push({
+              ...item,
+              order: index,
+            });
+          });
+        }
 
         return {
           ...schedule,
@@ -836,6 +915,8 @@ export default function TodoTracker() {
         const alreadyExists = schedule.items.some((item) => item.myCharKey === me.key);
         if (alreadyExists) return schedule;
 
+        const targetDayCount = schedule.items.filter((item) => item.day === targetDay).length;
+
         const newItem: SharedWeeklyScheduleItem = {
           id: `slot_${Date.now()}_${Math.random().toString(16).slice(2)}`,
           day: targetDay,
@@ -855,7 +936,7 @@ export default function TodoTracker() {
 
           avgPower: null,
           memo: "",
-          order: schedule.items.length,
+          order: targetDayCount,
         };
 
         return {
@@ -1730,6 +1811,309 @@ export default function TodoTracker() {
 
     return (
       <div className="raidLeftColsWrap">
+        <div className="weeklyScheduleSection">
+            <div className="weeklyScheduleHeader">
+              <div className="weeklyScheduleHeaderLeft">
+                <div className="weeklyScheduleTitle">공유 일정표</div>
+
+                <select
+                  className="friendSelect weeklySchedulePicker"
+                  value={selectedScheduleId}
+                  onChange={(e) => setSelectedScheduleId(e.target.value)}
+                >
+                  <option value="">일정표 선택</option>
+                  {weeklySchedules
+                    .filter((s) => s.targetFriendCode === selectedFriendCode || s.ownerFriendCode === selectedFriendCode)
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.title}
+                      </option>
+                    ))}
+                </select>
+                {selectedScheduleId && (
+                  <div className="weeklyScheduleHeaderRight">
+                    <button
+                      type="button"
+                      className="mini"
+                      onClick={() => {
+                        const schedule = weeklySchedules.find((s) => s.id === selectedScheduleId);
+                        if (!schedule) return;
+
+                        const nextTitle = prompt("일정표 이름 변경", schedule.title)?.trim();
+                        if (!nextTitle) return;
+
+                        renameWeeklySchedule(schedule.id, nextTitle).catch((e) => {
+                          alert(`이름 변경 실패: ${String(e)}`);
+                        });
+                      }}
+                    >
+                      이름 변경
+                    </button>
+
+                    <button
+                      type="button"
+                      className="mini"
+                      onClick={() => {
+                        deleteWeeklySchedule(selectedScheduleId).catch((e) => {
+                          alert(`일정표 삭제 실패: ${String(e)}`);
+                        });
+                      }}
+                    >
+                      일정표 삭제
+                    </button>
+
+                    {SERVER_MODE && (
+                      <button
+                        type="button"
+                        className="mini"
+                        onClick={() => refreshWeeklySchedules().catch((e) => alert(String(e)))}
+                      >
+                        {scheduleLoading ? "불러오는 중..." : "새로고침"}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+              </div>
+            </div>
+            {selectedScheduleId && (
+              <div className="weeklyScheduleAddRow">
+                <div className="weeklyScheduleAddLabel">캐릭 추가</div>
+
+                <select
+                  className="friendSelect manualKkanbuDaySelect"
+                  value={selectedMyScheduleCharKey}
+                  onChange={(e) => setSelectedMyScheduleCharKey(e.target.value)}
+                >
+                  <option value="">선택</option>
+                  {selectableMyScheduleCandidates.map((me) => (
+                    <option key={me.key} value={me.key}>
+                      {me.name} / Lv {me.ilvl} / 전투력 {me.power}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  className="mini"
+                  disabled={!schedule || !selectedMyScheduleCharKey}
+                  onClick={() => {
+                    const me = selectableMyScheduleCandidates.find(
+                      (x) => x.key === selectedMyScheduleCharKey
+                    );
+                    if (!me) return;
+
+                    addMyCharSlotToSchedule(selectedScheduleId, me, scheduleTargetDay);
+                    setSelectedMyScheduleCharKey("");
+                  }}
+                >
+                  추가
+                </button>
+
+
+                <button
+                  className="btn"
+                  onClick={() => {
+                    const schedule = weeklySchedules.find((s) => s.id === selectedScheduleId);
+                    if (!schedule) return;
+                    saveWeeklySchedule(schedule).catch((e) => {
+                      alert(`일정표 저장 실패: ${String(e)}`);
+                    });
+                  }}
+                >
+                  {scheduleSaving ? "저장 중..." : "일정표 저장"}
+                </button>
+              </div>
+            )}
+
+            {selectedScheduleId ? (() => {
+              const schedule = weeklySchedules.find((s) => s.id === selectedScheduleId);
+              if (!schedule) return <div className="manualKkanbuEmpty">선택한 일정표가 없어.</div>;
+
+              return (
+                <div className="weeklyScheduleGrid">
+                  {WEEK_DAYS.map((day) => {
+                    const dayItems = schedule.items
+                      .filter((item) => item.day === day)
+                      .sort((a, b) => a.order - b.order);
+
+                    return (
+                      <div
+                        key={day}
+                        className={`weeklyDayCard ${dragScheduleItem ? "drop-active" : ""
+                          }`}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                        }}
+                        onDrop={() => {
+                          if (!dragScheduleItem) return;
+                          if (dragScheduleItem.scheduleId !== schedule.id) return;
+
+                          moveScheduleItem(
+                            dragScheduleItem.scheduleId,
+                            dragScheduleItem.itemId,
+                            day
+                          );
+                          setDragScheduleItem(null);
+                        }}
+                      >
+                        <div className="weeklyDayTitle">{day}</div>
+
+                        {dayItems.length ? (
+                          <div
+                            className="weeklyDayList"
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                            }}
+                            onDrop={() => {
+                              if (!dragScheduleItem) return;
+                              if (dragScheduleItem.scheduleId !== schedule.id) return;
+
+                              moveScheduleItem(
+                                dragScheduleItem.scheduleId,
+                                dragScheduleItem.itemId,
+                                day,
+                                dayItems.length
+                              );
+                              setDragScheduleItem(null);
+                            }}
+                          >
+                            {dayItems.map((item, index) => {
+                              const completion = getScheduleRaidCompletion(item);
+
+                              return (
+                                <div
+                                  key={item.id}
+                                  className={`weeklyScheduleItem ${dragScheduleItem?.itemId === item.id ? "dragging" : ""
+                                    }`}
+                                  draggable
+                                  onDragStart={() => {
+                                    setDragScheduleItem({
+                                      scheduleId: schedule.id,
+                                      itemId: item.id,
+                                      fromDay: day,
+                                    });
+                                  }}
+                                  onDragEnd={() => {
+                                    setDragScheduleItem(null);
+                                  }}
+                                  onDragOver={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                  }}
+                                  onDrop={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+
+                                    if (!dragScheduleItem) return;
+                                    if (dragScheduleItem.scheduleId !== schedule.id) return;
+
+                                    moveScheduleItem(
+                                      dragScheduleItem.scheduleId,
+                                      dragScheduleItem.itemId,
+                                      day,
+                                      index
+                                    );
+                                    setDragScheduleItem(null);
+                                  }}
+                                  title="드래그해서 요일 이동 또는 위아래 순서 변경"
+                                >
+                                  <div className="weeklyScheduleItemTop">
+                                    <div className="weeklySchedulePairBlock">
+                                      <div className="weeklyScheduleMyCharRow">
+                                        <div
+                                          className={`weeklyScheduleMyChar ${completion.allCleared ? "is-cleared" : ""
+                                            }`}
+                                        >
+                                          {item.friendCharName
+                                            ? `${item.myCharName} - ${item.friendCharName}`
+                                            : item.myCharName}
+                                        </div>
+
+                                        {!item.friendCharKey && (
+                                          <div className="weeklyScheduleOpenBadge">
+                                            선택 대기중
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      <div
+                                        className={`weeklySchedulePower ${completion.allCleared ? "is-cleared" : ""
+                                          }`}
+                                      >
+                                        전투력{" "}
+                                        {item.friendCharPower != null
+                                          ? `${item.myCharPower ?? "-"} - ${item.friendCharPower}`
+                                          : `${item.myCharPower ?? "-"}`}
+                                      </div>
+
+                                      <select
+                                        className="friendSelect weeklyScheduleFriendSelect"
+                                        value={item.friendCharKey ?? ""}
+                                        onChange={(e) =>
+                                          assignFriendToScheduleItem(schedule.id, item.id, e.target.value)
+                                        }
+                                      >
+                                        <option value="">
+                                          {schedule.targetFriendCode === myFriendCode
+                                            ? "내 캐릭"
+                                            : "친구 캐릭"}
+                                        </option>
+                                        {getSelectableFriendOptionsForScheduleItem(schedule, item).map((fr) => (
+                                          <option key={fr.key} value={fr.key}>
+                                            {fr.name} / Lv {fr.ilvl} / 전투력 {fr.power}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+
+                                    <button
+                                      type="button"
+                                      className="mini"
+                                      onClick={() => removeScheduleItem(schedule.id, item.id)}
+                                      title="이 매칭 삭제"
+                                    >
+                                      삭제
+                                    </button>
+                                  </div>
+
+                                  <div className="weeklyScheduleAvgPower">
+                                    깐평: {item.avgPower ?? "-"}
+                                  </div>
+
+                                  <div className="weeklyScheduleRaids">
+                                    {(completion.clearedMap ?? []).length ? (
+                                      completion.clearedMap.map((raidItem, raidIndex) => (
+                                        <React.Fragment key={`${item.id}_${raidItem.raid}`}>
+                                          <span
+                                            className={`weeklyScheduleRaidText ${raidItem.cleared ? "is-cleared" : ""
+                                              }`}
+                                          >
+                                            {raidItem.raid}
+                                          </span>
+                                          {raidIndex < completion.clearedMap.length - 1 ? ", " : ""}
+                                        </React.Fragment>
+                                      ))
+                                    ) : (
+                                      "공통 레이드 없음"
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="manualKkanbuEmpty">배정 없음</div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })() : (
+              <div className="manualKkanbuEmpty">일정표를 선택하거나 새로 만들어줘.</div>
+            )}
+          </div>
         <div className="raidLeftColsTitle">깐부 수동 조합 플래너</div>
         <div style={{ marginBottom: 12 }}>
           <div className="manualKkanbuLabel" style={{ marginBottom: 6 }}>내 표 제외</div>
@@ -2145,245 +2529,6 @@ export default function TodoTracker() {
                 <div className="manualKkanbuEmpty">남은 친구 캐릭터 없음</div>
               )}
             </div>
-          </div>
-
-          <div className="weeklyScheduleSection">
-            <div className="weeklyScheduleHeader">
-              <div className="weeklyScheduleHeaderLeft">
-                <div className="weeklyScheduleTitle">공유 일정표</div>
-
-                <select
-                  className="friendSelect weeklySchedulePicker"
-                  value={selectedScheduleId}
-                  onChange={(e) => setSelectedScheduleId(e.target.value)}
-                >
-                  <option value="">일정표 선택</option>
-                  {weeklySchedules
-                    .filter((s) => s.targetFriendCode === selectedFriendCode || s.ownerFriendCode === selectedFriendCode)
-                    .map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.title}
-                      </option>
-                    ))}
-                </select>
-                {selectedScheduleId && (
-                  <div className="weeklyScheduleHeaderRight">
-                    <button
-                      type="button"
-                      className="mini"
-                      onClick={() => {
-                        const schedule = weeklySchedules.find((s) => s.id === selectedScheduleId);
-                        if (!schedule) return;
-
-                        const nextTitle = prompt("일정표 이름 변경", schedule.title)?.trim();
-                        if (!nextTitle) return;
-
-                        renameWeeklySchedule(schedule.id, nextTitle).catch((e) => {
-                          alert(`이름 변경 실패: ${String(e)}`);
-                        });
-                      }}
-                    >
-                      이름 변경
-                    </button>
-
-                    <button
-                      type="button"
-                      className="mini"
-                      onClick={() => {
-                        deleteWeeklySchedule(selectedScheduleId).catch((e) => {
-                          alert(`일정표 삭제 실패: ${String(e)}`);
-                        });
-                      }}
-                    >
-                      일정표 삭제
-                    </button>
-
-                    {SERVER_MODE && (
-                      <button
-                        type="button"
-                        className="mini"
-                        onClick={() => refreshWeeklySchedules().catch((e) => alert(String(e)))}
-                      >
-                        {scheduleLoading ? "불러오는 중..." : "새로고침"}
-                      </button>
-                    )}
-                  </div>
-                )}
-
-              </div>
-            </div>
-            {selectedScheduleId && (
-              <div className="weeklyScheduleAddRow">
-                <div className="weeklyScheduleAddLabel">캐릭 추가</div>
-
-                <select
-                  className="friendSelect manualKkanbuDaySelect"
-                  value={selectedMyScheduleCharKey}
-                  onChange={(e) => setSelectedMyScheduleCharKey(e.target.value)}
-                >
-                  <option value="">선택</option>
-                  {selectableMyScheduleCandidates.map((me) => (
-                    <option key={me.key} value={me.key}>
-                      {me.name} / Lv {me.ilvl} / 전투력 {me.power}
-                    </option>
-                  ))}
-                </select>
-
-                <button
-                  type="button"
-                  className="mini"
-                  disabled={!schedule || !selectedMyScheduleCharKey}
-                  onClick={() => {
-                    const me = selectableMyScheduleCandidates.find(
-                      (x) => x.key === selectedMyScheduleCharKey
-                    );
-                    if (!me) return;
-
-                    addMyCharSlotToSchedule(selectedScheduleId, me, scheduleTargetDay);
-                    setSelectedMyScheduleCharKey("");
-                  }}
-                >
-                  추가
-                </button>
-
-
-                <button
-                  className="btn"
-                  onClick={() => {
-                    const schedule = weeklySchedules.find((s) => s.id === selectedScheduleId);
-                    if (!schedule) return;
-                    saveWeeklySchedule(schedule).catch((e) => {
-                      alert(`일정표 저장 실패: ${String(e)}`);
-                    });
-                  }}
-                >
-                  {scheduleSaving ? "저장 중..." : "일정표 저장"}
-                </button>
-              </div>
-            )}
-
-            {selectedScheduleId ? (() => {
-              const schedule = weeklySchedules.find((s) => s.id === selectedScheduleId);
-              if (!schedule) return <div className="manualKkanbuEmpty">선택한 일정표가 없어.</div>;
-
-              return (
-                <div className="weeklyScheduleGrid">
-                  {WEEK_DAYS.map((day) => {
-                    const dayItems = schedule.items
-                      .filter((item) => item.day === day)
-                      .sort((a, b) => a.order - b.order);
-
-                    return (
-                      <div
-                        key={day}
-                        className={`weeklyDayCard ${dragScheduleItem ? "drop-active" : ""
-                          }`}
-                        onDragOver={(e) => {
-                          e.preventDefault();
-                        }}
-                        onDrop={() => {
-                          if (!dragScheduleItem) return;
-                          if (dragScheduleItem.scheduleId !== schedule.id) return;
-
-                          moveScheduleItemToDay(
-                            dragScheduleItem.scheduleId,
-                            dragScheduleItem.itemId,
-                            day
-                          );
-                          setDragScheduleItem(null);
-                        }}
-                      >
-                        <div className="weeklyDayTitle">{day}</div>
-
-                        {dayItems.length ? (
-                          <div className="weeklyDayList">
-                            {dayItems.map((item) => (
-                              <div
-                                key={item.id}
-                                className={`weeklyScheduleItem ${dragScheduleItem?.itemId === item.id ? "dragging" : ""
-                                  }`}
-                                draggable
-                                onDragStart={() => {
-                                  setDragScheduleItem({
-                                    scheduleId: schedule.id,
-                                    itemId: item.id,
-                                  });
-                                }}
-                                onDragEnd={() => {
-                                  setDragScheduleItem(null);
-                                }}
-                                title="드래그해서 다른 요일로 이동"
-                              >
-                                <div className="weeklyScheduleItemTop">
-                                  <div className="weeklySchedulePairBlock">
-                                    <div className="weeklyScheduleMyCharRow">
-                                      <div className="weeklyScheduleMyChar">
-                                        {item.friendCharName
-                                          ? `${item.myCharName} - ${item.friendCharName}`
-                                          : item.myCharName}
-                                      </div>
-
-                                      {!item.friendCharKey && (
-                                        <div className="weeklyScheduleOpenBadge">
-                                          선택 대기중
-                                        </div>
-                                      )}
-                                    </div>
-
-                                    <select
-                                      className="friendSelect weeklyScheduleFriendSelect"
-                                      value={item.friendCharKey ?? ""}
-                                      onChange={(e) =>
-                                        assignFriendToScheduleItem(schedule.id, item.id, e.target.value)
-                                      }
-                                    >
-                                      <option value="">
-                                        {schedule.targetFriendCode === myFriendCode
-                                          ? "내 캐릭"
-                                          : "친구 캐릭"}
-                                      </option>
-                                      {getSelectableFriendOptionsForScheduleItem(schedule, item).map((fr) => (
-                                        <option key={fr.key} value={fr.key}>
-                                          {fr.name} / Lv {fr.ilvl} / 전투력 {fr.power}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-
-                                  <button
-                                    type="button"
-                                    className="mini"
-                                    onClick={() => removeScheduleItem(schedule.id, item.id)}
-                                    title="이 매칭 삭제"
-                                  >
-                                    삭제
-                                  </button>
-                                </div>
-
-                                <div className="weeklyScheduleAvgPower">
-                                  깐평: {item.avgPower ?? "-"}
-                                </div>
-
-                                <div className="weeklyScheduleRaids">
-                                  {(item.raidNames ?? []).length
-                                    ? item.raidNames.join(", ")
-                                    : "공통 레이드 없음"}
-                                </div>
-
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="manualKkanbuEmpty">배정 없음</div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })() : (
-              <div className="manualKkanbuEmpty">일정표를 선택하거나 새로 만들어줘.</div>
-            )}
           </div>
         </>
         {shareKkanbuOpen ? (
