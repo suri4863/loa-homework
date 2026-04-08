@@ -854,26 +854,32 @@ export function normalizeFriendRaidSnapshotAfterWeeklyReset(
 ): RaidLeftSnapshotPayload {
   const latestWeeklyResetAt = getLatestWeeklyResetTime(weeklyResetWeekday, dailyResetHour);
 
-  // 이번 주 리셋 이후에 업로드된 스냅샷이면 그대로 사용
   if ((snapshot.exportedAt ?? 0) >= latestWeeklyResetAt) {
     return snapshot;
   }
 
-  // 이번 주 리셋 이전 스냅샷이면
-  // "주간 레이드가 모두 다시 열림" 상태로 화면 표시용 보정
   return {
     ...snapshot,
     data: Array.isArray(snapshot.data)
       ? snapshot.data.map((row) => {
-        const allRaids = Array.isArray((row as any).allRaids) ? (row as any).allRaids : [];
-        const fallbackRemaining = Array.isArray(row.remainingRaids) ? row.remainingRaids : [];
-        const resetRaids = allRaids.length ? allRaids : fallbackRemaining;
+        const allRaids = Array.isArray((row as any).allRaids)
+          ? (row as any).allRaids.filter(Boolean)
+          : [];
+
+        const fallbackRemaining = Array.isArray(row.remainingRaids)
+          ? row.remainingRaids.filter(Boolean)
+          : [];
+
+        const resetRaids = allRaids.length > 0 ? allRaids : fallbackRemaining;
 
         return {
           ...row,
           remainingRaids: [...resetRaids],
           clearedCount: 0,
-          totalCount: resetRaids.length,
+          totalCount:
+            Number(row.totalCount ?? 0) > 0
+              ? Number(row.totalCount ?? 0)
+              : resetRaids.length,
         };
       })
       : [],
