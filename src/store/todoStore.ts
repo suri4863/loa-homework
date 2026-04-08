@@ -124,16 +124,30 @@ export type RaidLeftSnapshotPayload = {
 
 export type WeeklyScheduleDay = "수" | "목" | "금" | "토" | "일" | "월" | "화";
 
+export type SharedWeeklyScheduleItemMode = "MATCHED" | "OPEN_SLOT";
+
 export type SharedWeeklyScheduleItem = {
   id: string;
   day: WeeklyScheduleDay;
+
   myCharKey: string;
   myCharName: string;
-  friendCharKey: string;
-  friendCharName: string;
+  myCharPower: number | null;
+
+  friendCharKey: string | null;
+  friendCharName: string | null;
+  friendCharPower: number | null;
+
+  mode: SharedWeeklyScheduleItemMode;
+
+  // 내 캐릭 기준 원본 레이드 목록
+  baseRaidNames: string[];
+
+  // 현재 배정 결과로 실제 같이 가는 레이드
   raidNames: string[];
-  avgPower?: number | null;
-  memo?: string;
+
+  avgPower: number | null;
+  memo: string;
   order: number;
 };
 

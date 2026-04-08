@@ -64,6 +64,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return sendJson(res, { ok: true, id: inserted.rows[0].id });
     }
 
+    if (req.method === "PUT") {
+      const id = Number(req.query.id);
+      const title = String(req.body?.title ?? "").trim();
+      const weekStartDate = String(req.body?.weekStartDate ?? "").trim();
+      const scheduleJson = String(req.body?.scheduleJson ?? "").trim();
+
+      if (!id) return res.status(400).send("Invalid id");
+      if (!title) return res.status(400).send("Missing title");
+      if (!weekStartDate) return res.status(400).send("Missing weekStartDate");
+      if (!scheduleJson) return res.status(400).send("Missing scheduleJson");
+
+      const updated = await sql`
+        update shared_weekly_schedules
+        set
+          title = ${title},
+          week_start_date = ${weekStartDate},
+          schedule_json = ${scheduleJson},
+          updated_at = now()
+        where id = ${id}
+          and (owner_user_id = ${me.id} or target_user_id = ${me.id})
+      `;
+
+      return sendJson(res, { ok: true, rowCount: updated.rowCount ?? 0 });
+    }
+
+    if (req.method === "DELETE") {
+      const id = Number(req.query.id);
+      if (!id) return res.status(400).send("Invalid id");
+
+      const deleted = await sql`
+        delete from shared_weekly_schedules
+        where id = ${id}
+          and (owner_user_id = ${me.id} or target_user_id = ${me.id})
+      `;
+
+      return sendJson(res, { ok: true, rowCount: deleted.rowCount ?? 0 });
+    }
+
     return res.status(405).send("Method Not Allowed");
   } catch (e) {
     return sendError(res, e);

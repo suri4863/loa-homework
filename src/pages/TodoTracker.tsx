@@ -566,6 +566,38 @@ export default function TodoTracker() {
     return `${copy.getFullYear()}-${String(copy.getMonth() + 1).padStart(2, "0")}-${String(copy.getDate()).padStart(2, "0")}`;
   }
 
+  function buildScheduleItemsFromMySlots(
+    myList: Array<{
+      key: string;
+      name: string;
+      power: number;
+      remainingRaids: string[];
+    }>,
+    targetDay: WeeklyScheduleDay
+  ): SharedWeeklyScheduleItem[] {
+    return myList.map((me, index) => ({
+      id: `slot_${Date.now()}_${index}`,
+      day: targetDay,
+
+      myCharKey: me.key,
+      myCharName: me.name,
+      myCharPower: me.power ?? null,
+
+      friendCharKey: null,
+      friendCharName: null,
+      friendCharPower: null,
+
+      mode: "OPEN_SLOT",
+
+      baseRaidNames: [...me.remainingRaids],
+      raidNames: [...me.remainingRaids],
+
+      avgPower: null,
+      memo: "",
+      order: index,
+    }));
+  }
+
   function buildScheduleItemsFromPairs(
     pairResults: Array<{
       my: any;
@@ -576,21 +608,36 @@ export default function TodoTracker() {
     }>,
     targetDay: WeeklyScheduleDay
   ): SharedWeeklyScheduleItem[] {
-    let order = 0;
+    return pairResults.map((result, index) => {
+      const raidNames =
+        result.activeSelectedRaids.length > 0
+          ? result.activeSelectedRaids
+          : result.commonRaids;
 
-    return pairResults.map((result, index) => ({
-      id: `item_${Date.now()}_${index}`,
-      day: targetDay,
-      myCharKey: result.my.key,
-      myCharName: result.my.name,
-      friendCharKey: result.friend.key,
-      friendCharName: result.friend.name,
-      raidNames: result.activeSelectedRaids.length ? result.activeSelectedRaids : result.commonRaids,
-      avgPower: result.avgPower ?? null,
-      memo: "",
-      order: order++,
-    }));
+      return {
+        id: `item_${Date.now()}_${index}`,
+        day: targetDay,
+
+        myCharKey: result.my.key,
+        myCharName: result.my.name,
+        myCharPower: result.my.power ?? null,
+
+        friendCharKey: result.friend.key,
+        friendCharName: result.friend.name,
+        friendCharPower: result.friend.power ?? null,
+
+        mode: "MATCHED",
+
+        baseRaidNames: [...raidNames],
+        raidNames: [...raidNames],
+
+        avgPower: result.avgPower ?? null,
+        memo: "",
+        order: index,
+      };
+    });
   }
+
 
   async function refreshWeeklySchedules() {
     if (!SERVER_MODE) return;
@@ -1243,6 +1290,130 @@ export default function TodoTracker() {
       }
     };
 
+    const myScheduleCandidates = myCandidates.map((me) => ({
+      key: me.key,
+      tableName: me.tableName,
+      name: me.name,
+      ilvl: me.ilvl,
+      power: me.power,
+      remainingRaids: me.remainingRaids,
+    }));
+
+    const myFriendCode = String(state.profile.friendCode ?? "").trim();
+
+    function getScheduleAssignableCandidates(
+      schedule: SharedWeeklySchedule
+    ): Array<FriendCandidate | (typeof myScheduleCandidates)[number]> {
+      // 내가 일정표 대상자(target)라면 -> 내 캐릭을 선택해야 함
+      if (schedule.targetFriendCode === myFriendCode) {
+        return myScheduleCandidates;
+      }
+
+      // 내가 일정표 소유자(owner)라면 -> 상대(선택된 친구) 캐릭을 선택해야 함
+      return friendCandidates;
+    }
+
+    function getCommonRaidsForScheduleItem(
+      item: SharedWeeklyScheduleItem,
+      friend: FriendCandidate
+    ): string[] {
+      const baseRaids =
+        Array.isArray(item.baseRaidNames) && item.baseRaidNames.length
+          ? item.baseRaidNames
+          : item.raidNames ?? [];
+
+      return baseRaids
+        .map((raid: string) => normalizeRaidName(raid))
+        .filter((raid: string, index: number, arr: string[]) => arr.indexOf(raid) === index)
+        .filter((raid: string) =>
+          friend.remainingRaids.some((fr: string) => normalizeRaidName(fr) === raid)
+        );
+    }
+
+    function getSelectableFriendOptionsForScheduleItem(
+      schedule: SharedWeeklySchedule,
+      item: SharedWeeklyScheduleItem
+    ): Array<
+      {
+        key: string;
+        tableName?: string;
+        name: string;
+        ilvl: number;
+        power: number;
+        remainingRaids: string[];
+        commonRaids: string[];
+      }
+    > {
+      const usedFriendKeys = new Set(
+        schedule.items
+          .filter((x) => x.id !== item.id && x.friendCharKey)
+          .map((x) => String(x.friendCharKey))
+      );
+
+      const sourceCandidates = getScheduleAssignableCandidates(schedule);
+
+      return sourceCandidates
+        .filter((fr) => !usedFriendKeys.has(fr.key))
+        .map((fr) => ({
+          ...fr,
+          commonRaids: getCommonRaidsForScheduleItem(item, fr),
+        }))
+        .filter((fr) => fr.commonRaids.length > 0);
+    }
+    function assignFriendToScheduleItem(
+      scheduleId: string,
+      itemId: string,
+      friendKey: string
+    ) {
+      setWeeklySchedules((prev) =>
+        prev.map((schedule) => {
+          if (schedule.id !== scheduleId) return schedule;
+
+          const nextItems = schedule.items.map((item) => {
+            if (item.id !== itemId) return item;
+
+            // 선택 해제
+            if (!friendKey) {
+              return {
+                ...item,
+                mode: "OPEN_SLOT" as const,
+                friendCharKey: null,
+                friendCharName: null,
+                friendCharPower: null,
+                raidNames: Array.isArray(item.baseRaidNames) ? [...item.baseRaidNames] : [],
+                avgPower: null,
+              };
+            }
+
+            const candidatePool = getScheduleAssignableCandidates(schedule);
+            const friend = candidatePool.find((fr) => fr.key === friendKey);
+            if (!friend) return item;
+
+            const commonRaids = getCommonRaidsForScheduleItem(item, friend);
+            const avgPower =
+              item.myCharPower != null && friend.power > 0
+                ? Math.round((item.myCharPower + friend.power) / 2)
+                : null;
+
+            return {
+              ...item,
+              mode: "MATCHED" as const,
+              friendCharKey: friend.key,
+              friendCharName: friend.name,
+              friendCharPower: friend.power ?? null,
+              raidNames: [...commonRaids],
+              avgPower,
+            };
+          });
+
+          return {
+            ...schedule,
+            items: nextItems,
+          };
+        })
+      );
+    }
+
     function getCommonRaidsBetween(
       my: MyCandidate,
       friend: FriendCandidate
@@ -1254,6 +1425,7 @@ export default function TodoTracker() {
           friend.remainingRaids.some((fr: string) => normalizeRaidName(fr) === raid)
         );
     }
+
 
     function autoBuildRecommendedPairs(): ManualKkanbuPair[] {
       const myPool: MyCandidate[] = myCandidates.map((x) => ({
@@ -1631,26 +1803,44 @@ export default function TodoTracker() {
             <button
               type="button"
               className="btn"
-              disabled={!shareablePairResults.length || !selectedFriendCode}
+              disabled={!myCandidates.length || !selectedFriendCode}
               onClick={() => {
-                const action =
-                  scheduleCreateMode === "NEW"
-                    ? createWeeklyScheduleFromRecommendation(
-                      shareablePairResults,
-                      scheduleTargetDay
-                    )
-                    : appendToExistingWeeklySchedule(
-                      selectedScheduleId,
-                      shareablePairResults,
-                      scheduleTargetDay
-                    );
+                const myOnlyItems = buildScheduleItemsFromMySlots(
+                  myCandidates.map((me) => ({
+                    key: me.key,
+                    name: me.name,
+                    power: me.power,
+                    remainingRaids: me.remainingRaids,
+                  })),
+                  scheduleTargetDay
+                );
 
-                action.catch((e) => {
-                  alert(`일정표 처리 실패: ${String(e)}`);
-                });
+                const payload = {
+                  title: (newScheduleTitle.trim() || "일정표"),
+                  weekStartDate: getCurrentWeekStartDate(),
+                  items: myOnlyItems,
+                };
+
+                apiFetch2("/api/weekly-schedules", {
+                  method: "POST",
+                  body: JSON.stringify({
+                    targetFriendCode: selectedFriendCode,
+                    title: payload.title,
+                    weekStartDate: payload.weekStartDate,
+                    scheduleJson: JSON.stringify(payload),
+                  }),
+                })
+                  .then(async (created) => {
+                    await refreshWeeklySchedules();
+                    if (created?.id) setSelectedScheduleId(String(created.id));
+                    alert(`내 캐릭 슬롯 일정표 생성 완료! (${scheduleTargetDay}요일)`);
+                  })
+                  .catch((e) => {
+                    alert(`일정표 생성 실패: ${String(e)}`);
+                  });
               }}
             >
-              {scheduleCreateMode === "NEW" ? "일정표 만들기" : "선택 일정표에 추가"}
+              내 캐릭 슬롯 일정표 만들기
             </button>
 
             <button
@@ -2019,8 +2209,35 @@ export default function TodoTracker() {
                                 title="드래그해서 다른 요일로 이동"
                               >
                                 <div className="weeklyScheduleItemTop">
-                                  <div className="weeklySchedulePair">
-                                    {item.myCharName} - {item.friendCharName}
+                                  <div className="weeklySchedulePairBlock">
+                                    <div className="weeklyScheduleMyCharRow">
+                                      <div className="weeklyScheduleMyChar">{item.myCharName}</div>
+
+                                      {!item.friendCharKey && (
+                                        <div className="weeklyScheduleOpenBadge">
+                                          선택 대기중
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    <select
+                                      className="friendSelect weeklyScheduleFriendSelect"
+                                      value={item.friendCharKey ?? ""}
+                                      onChange={(e) =>
+                                        assignFriendToScheduleItem(schedule.id, item.id, e.target.value)
+                                      }
+                                    >
+                                      <option value="">
+                                        {schedule.targetFriendCode === myFriendCode
+                                          ? "내 캐릭"
+                                          : "친구 캐릭"}
+                                      </option>
+                                      {getSelectableFriendOptionsForScheduleItem(schedule, item).map((fr) => (
+                                        <option key={fr.key} value={fr.key}>
+                                          {fr.name} / Lv {fr.ilvl} / 전투력 {fr.power}
+                                        </option>
+                                      ))}
+                                    </select>
                                   </div>
 
                                   <button
@@ -2038,8 +2255,11 @@ export default function TodoTracker() {
                                 </div>
 
                                 <div className="weeklyScheduleRaids">
-                                  {item.raidNames.join(", ")}
+                                  {(item.raidNames ?? []).length
+                                    ? item.raidNames.join(", ")
+                                    : "공통 레이드 없음"}
                                 </div>
+
                               </div>
                             ))}
                           </div>

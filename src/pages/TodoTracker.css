@@ -3204,17 +3204,18 @@ body.pip-dark .pip-cube.is-pressed {
 
 .weeklyScheduleGrid {
   display: grid;
-  grid-template-columns: repeat(7, minmax(150px, 1fr));
+  grid-template-columns: repeat(7, minmax(180px, 1fr));
   gap: 10px;
   overflow-x: auto;
+  min-width: 0;
 }
 
-.weeklyDayCard {
-  min-height: 220px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--soft-2);
-  padding: 10px;
+.weeklyScheduleGrid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(180px, 1fr));
+  gap: 10px;
+  overflow-x: auto;
+  min-width: 0;
 }
 
 .weeklyDayTitle {
@@ -3230,12 +3231,6 @@ body.pip-dark .pip-cube.is-pressed {
   gap: 8px;
 }
 
-.weeklyScheduleItem {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card);
-  padding: 8px;
-}
 
 .weeklySchedulePair {
   font-size: 13px;
@@ -3296,13 +3291,6 @@ body.pip-dark .pip-cube.is-pressed {
   margin-bottom: 12px;
 }
 
-.weeklyScheduleItemTop {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 6px;
-}
 
 .weeklySchedulePair {
   font-size: 13px;
@@ -3315,13 +3303,6 @@ body.pip-dark .pip-cube.is-pressed {
   font-size: 12px;
   color: var(--muted);
   line-height: 1.5;
-}
-
-.weeklyScheduleItem {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card);
-  padding: 8px 10px;
 }
 
 @media (max-width: 1100px) {
@@ -3356,13 +3337,7 @@ body.pip-dark .pip-cube.is-pressed {
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 6px;
-}
-
-.weeklyScheduleItem {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card);
-  padding: 8px 10px;
+  min-width: 0;
 }
 
 .weeklySchedulePair {
@@ -3383,6 +3358,7 @@ body.pip-dark .pip-cube.is-pressed {
     grid-template-columns: 1fr;
   }
 }
+
 .weeklyScheduleItem {
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -3390,6 +3366,9 @@ body.pip-dark .pip-cube.is-pressed {
   padding: 8px 10px;
   cursor: grab;
   transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
+
+  min-width: 0;
+  overflow: hidden;
 }
 
 .weeklyScheduleItem:active {
@@ -3421,4 +3400,113 @@ body.pip-dark .pip-cube.is-pressed {
   color: var(--text);
   margin-bottom: 4px;
   opacity: 0.9;
+}
+.weeklySchedulePairBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.weeklyScheduleMyChar {
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--text);
+  line-height: 1.4;
+  word-break: keep-all;
+}
+
+.weeklyScheduleFriendSelect {
+  width: 100%;
+  min-width: 0;
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.weeklyScheduleAvgPower {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.weeklyScheduleOpenBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.weeklySchedulePairBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.weeklyScheduleMyChar {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.4;
+
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weeklyScheduleFriendSelect {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--text);
+  padding: 0 10px;
+  height: 34px;
+}
+
+.weeklyScheduleOpenBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+@media (max-width: 1400px) {
+  .weeklyScheduleGrid {
+    grid-template-columns: repeat(7, 190px);
+  }
+}
+.weeklyScheduleMyCharRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+
+  min-width: 0;
+}
+
+.weeklyScheduleOpenBadge {
+  flex-shrink: 0; /* 줄어들지 않게 */
 }
