@@ -490,6 +490,26 @@ export default function TodoTracker() {
   const [lastRaidSnapUploadedAt, setLastRaidSnapUploadedAt] = useState<number | null>(null);
   const raidSnapUploadingRef = useRef(false);
   const raidSnapAutoTimerRef = useRef<number | null>(null);
+  const lastWeeklyResetUploadedRef = useRef<number>(0);
+
+  // 주간 리셋이 실제 반영되면 서버에도 즉시 초기화된 스냅샷 업로드
+  useEffect(() => {
+    if (!SERVER_MODE) return;
+    if (!state.profile.autoRaidLeftUploadEnabled) return;
+
+    const weeklyResetAt = state.reset?.lastWeeklyResetAt ?? 0;
+    if (!weeklyResetAt) return;
+
+    if (lastWeeklyResetUploadedRef.current === weeklyResetAt) return;
+    lastWeeklyResetUploadedRef.current = weeklyResetAt;
+
+    uploadRaidLeftSnapshot("auto").catch(() => { });
+  }, [
+    SERVER_MODE,
+    state.profile.autoRaidLeftUploadEnabled,
+    state.reset?.lastWeeklyResetAt,
+  ]);
+
   useEffect(() => {
     return () => {
       if (nickSaveTimerRef.current) {
@@ -853,7 +873,7 @@ export default function TodoTracker() {
     }
   }
 
-  // ✅ 자동 업로드 타이머 (서버모드에서만)
+  //  자동 업로드 타이머 (서버모드에서만)
   useEffect(() => {
     if (!SERVER_MODE) return;
 
@@ -3054,13 +3074,13 @@ export default function TodoTracker() {
     };
   }, []);
 
-  // ✅ 앱 시작 시 1회 자동 리셋 체크
+  //  앱 시작 시 1회 자동 리셋 체크
   useEffect(() => {
     setState((prev) => clearExpiredAzena(applyAutoResetIfNeeded(prev)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ 앱 켜둔 채로 6시 넘어가도 반영되게 1분마다 체크
+  //  앱 켜둔 채로 6시 넘어가도 반영되게 1분마다 체크
   useEffect(() => {
     const id = setInterval(() => {
       setState((prev) => clearExpiredAzena(applyAutoResetIfNeeded(prev)));
@@ -3068,7 +3088,7 @@ export default function TodoTracker() {
     return () => clearInterval(id);
   }, []);
 
-  // ✅ 자동 저장
+  //  자동 저장
   useEffect(() => {
     DEFAULT_TODO_STATE.save(state);
   }, [state]);
