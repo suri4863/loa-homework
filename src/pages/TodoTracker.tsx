@@ -1490,6 +1490,30 @@ export default function TodoTracker() {
 
     const myFriendCode = String(state.profile.friendCode ?? "").trim();
 
+    function getLiveMyCharPower(myCharKey: string): number | null {
+      const [tableId, charId] = String(myCharKey ?? "").split("|");
+      if (!tableId || !charId) return null;
+
+      const table = state.tables.find((t) => t.id === tableId);
+      const ch = table?.characters.find((c) => c.id === charId);
+      if (!ch) return null;
+
+      return parsePowerValue(ch.power);
+    }
+
+    function getLiveFriendCharPower(
+      schedule: SharedWeeklySchedule,
+      item: SharedWeeklyScheduleItem
+    ): number | null {
+      if (!item.friendCharKey) return null;
+
+      const sourceCandidates = getScheduleAssignableCandidates(schedule);
+      const friend = sourceCandidates.find((fr) => fr.key === item.friendCharKey);
+      if (!friend) return item.friendCharPower ?? null;
+
+      return friend.power ?? null;
+    }
+
     function getScheduleAssignableCandidates(
       schedule: SharedWeeklySchedule
     ): Array<FriendCandidate | (typeof myScheduleCandidates)[number]> {
@@ -2112,6 +2136,12 @@ export default function TodoTracker() {
                         >
                           {dayItems.map((item, index) => {
                             const completion = getScheduleRaidCompletion(item);
+                            const liveMyPower = getLiveMyCharPower(item.myCharKey);
+                            const liveFriendPower = getLiveFriendCharPower(schedule, item);
+                            const liveAvgPower =
+                              liveMyPower != null && liveFriendPower != null
+                                ? Math.round((liveMyPower + liveFriendPower) / 2)
+                                : null;
 
                             return (
                               <div
@@ -2174,9 +2204,9 @@ export default function TodoTracker() {
                                         }`}
                                     >
                                       전투력{" "}
-                                      {item.friendCharPower != null
-                                        ? `${item.myCharPower ?? "-"} - ${item.friendCharPower}`
-                                        : `${item.myCharPower ?? "-"}`}
+                                      {liveFriendPower != null
+                                        ? `${liveMyPower ?? "-"} - ${liveFriendPower}`
+                                        : `${liveMyPower ?? "-"}`}
                                     </div>
 
                                     <select
@@ -2210,7 +2240,7 @@ export default function TodoTracker() {
                                 </div>
 
                                 <div className="weeklyScheduleAvgPower">
-                                  깐평: {item.avgPower ?? "-"}
+                                  깐평: {liveAvgPower ?? "-"}
                                 </div>
 
                                 <div className="weeklyScheduleRaids">
