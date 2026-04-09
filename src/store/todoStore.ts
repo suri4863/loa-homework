@@ -764,8 +764,8 @@ export function exportRaidLeftSnapshot(
 
       const remainingRaids = remaining.map((r) => withDiff(r, ilvl));
 
-      // 이 줄 삭제
-      // if (remainingRaids.length === 0) continue;
+
+      if (remainingRaids.length === 0) continue;
 
       rows.push({
         charName: ch.name,
@@ -854,36 +854,25 @@ export function normalizeFriendRaidSnapshotAfterWeeklyReset(
 ): RaidLeftSnapshotPayload {
   const latestWeeklyResetAt = getLatestWeeklyResetTime(weeklyResetWeekday, dailyResetHour);
 
-  if ((snapshot.exportedAt ?? 0) >= latestWeeklyResetAt) {
-    return snapshot;
-  }
-
+  // 리셋 이전 스냅샷이어도 친구가 실제 업로드한 remainingRaids는 유지
+  // 여기서 강제로 allRaids로 복구하면 체크한 캐릭터가 다시 전부 남은 것처럼 보임
   return {
     ...snapshot,
+    isStaleAfterWeeklyReset: (snapshot.exportedAt ?? 0) < latestWeeklyResetAt,
     data: Array.isArray(snapshot.data)
-      ? snapshot.data.map((row) => {
-        const allRaids = Array.isArray((row as any).allRaids)
+      ? snapshot.data.map((row) => ({
+        ...row,
+        allRaids: Array.isArray((row as any).allRaids)
           ? (row as any).allRaids.filter(Boolean)
-          : [];
-
-        const fallbackRemaining = Array.isArray(row.remainingRaids)
+          : [],
+        remainingRaids: Array.isArray(row.remainingRaids)
           ? row.remainingRaids.filter(Boolean)
-          : [];
-
-        const resetRaids = allRaids.length > 0 ? allRaids : fallbackRemaining;
-
-        return {
-          ...row,
-          remainingRaids: [...resetRaids],
-          clearedCount: 0,
-          totalCount:
-            Number(row.totalCount ?? 0) > 0
-              ? Number(row.totalCount ?? 0)
-              : resetRaids.length,
-        };
-      })
+          : [],
+        clearedCount: Number(row.clearedCount ?? 0),
+        totalCount: Number(row.totalCount ?? 0),
+      }))
       : [],
-  };
+  } as RaidLeftSnapshotPayload & { isStaleAfterWeeklyReset?: boolean };
 }
 
 /** Reset anchor 계산 */

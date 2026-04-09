@@ -243,7 +243,7 @@ export default function TodoTracker() {
 
   // ✅ 수동 깐부 조합 플래너
   const [kkanbuLevelMin, setKkanbuLevelMin] = useState<string>("1700");
-  const [kkanbuLevelMax, setKkanbuLevelMax] = useState<string>("1719");
+  const [kkanbuLevelMax, setKkanbuLevelMax] = useState<string>("1800");
   const [kkanbuAvgPowerTarget, setKkanbuAvgPowerTarget] = useState<string>("3000");
 
   type ManualKkanbuPair = {
@@ -1243,15 +1243,20 @@ export default function TodoTracker() {
     if (!rawSnap?.data) {
       return <div className="todo-hint">친구 스냅샷이 없어. (서버에서 불러오기 또는 스냅샷 붙여넣기)</div>;
     }
-    if (rawSnap.shareMode === "PRIVATE") return <div className="todo-hint">친구가 비공개야.</div>;
+    if (rawSnap.shareMode === "PRIVATE") {
+      return <div className="todo-hint">친구가 비공개야.</div>;
+    }
 
     const snap = normalizeFriendRaidSnapshotAfterWeeklyReset(
       rawSnap,
       state.reset?.weeklyResetWeekday ?? 3,
       state.reset?.dailyResetHour ?? 6
-    );
+    ) as typeof rawSnap & { isStaleAfterWeeklyReset?: boolean };
 
     const rows = (snap.data as any[]).filter((r) => r && r.charName);
+
+    const isStaleFriendSnapshot = Boolean(snap.isStaleAfterWeeklyReset);
+
     const levelRange = {
       min: Number(kkanbuLevelMin) || 0,
       max: Number(kkanbuLevelMax) || Number.MAX_SAFE_INTEGER,
