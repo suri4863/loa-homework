@@ -2358,7 +2358,7 @@ export default function TodoTracker() {
                                       </option>
                                       {getSelectableFriendOptionsForScheduleItem(schedule, item).map((fr) => (
                                         <option key={fr.key} value={fr.key}>
-                                          {fr.name} / Lv {fr.ilvl} / 전투력 {fr.power}
+                                          {fr.name} / Lv {fr.ilvl} / 전투력 {fr.power > 0 ? fr.power : "-"}
                                         </option>
                                       ))}
                                     </select>
@@ -2375,7 +2375,7 @@ export default function TodoTracker() {
                                 </div>
 
                                 <div className="weeklyScheduleAvgPower">
-                                  깐평: {liveAvgPower ?? "-"}
+                                  깐평: {liveAvgPower && liveAvgPower > 0 ? liveAvgPower : "-"}
                                 </div>
 
                                 <div className="weeklyScheduleRaids">
@@ -2716,7 +2716,7 @@ export default function TodoTracker() {
                       <option value="">친구 캐릭 선택</option>
                       {selectableFriend.map((fr) => (
                         <option key={fr.key} value={fr.key}>
-                          {fr.name} / Lv {fr.ilvl} / 전투력 {fr.power}
+                          {fr.name} / Lv {fr.ilvl} / 전투력 {fr.power > 0 ? fr.power : "-"}
                         </option>
                       ))}
                     </select>
