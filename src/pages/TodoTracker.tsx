@@ -274,6 +274,7 @@ export default function TodoTracker() {
     fromDay: WeeklyScheduleDay;
   } | null>(null);
   const [selectedMyScheduleCharKey, setSelectedMyScheduleCharKey] = useState<string>("");
+  const [selectedMyScheduleRaidNames, setSelectedMyScheduleRaidNames] = useState<string[]>([]);
 
   const excludedKkanbuTableIds = state.profile.kkanbuExcludedTableIds ?? [];
 
@@ -898,6 +899,20 @@ export default function TodoTracker() {
     );
   }
 
+  function toggleSelectedScheduleRaid(raidName: string) {
+    const normalized = normalizeRaidName(raidName);
+
+    setSelectedMyScheduleRaidNames((prev) => {
+      const exists = prev.some((x) => normalizeRaidName(x) === normalized);
+
+      if (exists) {
+        return prev.filter((x) => normalizeRaidName(x) !== normalized);
+      }
+
+      return [...prev, raidName];
+    });
+  }
+
   function addMyCharSlotToSchedule(
     scheduleId: string,
     me: {
@@ -906,16 +921,32 @@ export default function TodoTracker() {
       power: number;
       remainingRaids: string[];
     },
-    targetDay: WeeklyScheduleDay
+    targetDay: WeeklyScheduleDay,
+    selectedRaidNames?: string[]
   ) {
     setWeeklySchedules((prev) =>
       prev.map((schedule) => {
         if (schedule.id !== scheduleId) return schedule;
 
-        const alreadyExists = schedule.items.some((item) => item.myCharKey === me.key);
-        if (alreadyExists) return schedule;
-
         const targetDayCount = schedule.items.filter((item) => item.day === targetDay).length;
+
+        const scheduledRaidSet = new Set(
+          schedule.items
+            .filter((item) => item.myCharKey === me.key)
+            .flatMap((item) => item.baseRaidNames ?? [])
+            .map((raid) => normalizeRaidName(raid))
+        );
+
+        const baseRaids =
+          Array.isArray(selectedRaidNames) && selectedRaidNames.length > 0
+            ? selectedRaidNames.filter(
+              (raid) => !scheduledRaidSet.has(normalizeRaidName(raid))
+            )
+            : me.remainingRaids.filter(
+              (raid) => !scheduledRaidSet.has(normalizeRaidName(raid))
+            );
+
+        if (!baseRaids.length) return schedule;
 
         const newItem: SharedWeeklyScheduleItem = {
           id: `slot_${Date.now()}_${Math.random().toString(16).slice(2)}`,
@@ -931,8 +962,8 @@ export default function TodoTracker() {
 
           mode: "OPEN_SLOT",
 
-          baseRaidNames: [...me.remainingRaids],
-          raidNames: [...me.remainingRaids],
+          baseRaidNames: [...baseRaids],
+          raidNames: [...baseRaids],
 
           avgPower: null,
           memo: "",
@@ -1308,7 +1339,19 @@ export default function TodoTracker() {
 
     const selectableMyScheduleCandidates = myCandidates.filter((me) => {
       if (!schedule) return false;
-      return !schedule.items.some((item) => item.myCharKey === me.key);
+
+      const scheduledRaidSet = new Set(
+        schedule.items
+          .filter((item) => item.myCharKey === me.key)
+          .flatMap((item) => item.baseRaidNames ?? [])
+          .map((raid) => normalizeRaidName(raid))
+      );
+
+      const remainingSchedulableRaids = me.remainingRaids.filter(
+        (raid) => !scheduledRaidSet.has(normalizeRaidName(raid))
+      );
+
+      return remainingSchedulableRaids.length > 0;
     });
 
     const friendCandidates = rows
@@ -1884,12 +1927,80 @@ export default function TodoTracker() {
           </div>
           {selectedScheduleId && (
             <div className="weeklyScheduleAddRow">
+              {selectedMyScheduleCharKey ? (() => {
+                const selectedMe = selectableMyScheduleCandidates.find(
+                  (x) => x.key === selectedMyScheduleCharKey
+                );
+
+                if (!selectedMe || !schedule) return null;
+
+                const scheduledRaidSet = new Set(
+                  schedule.items
+                    .filter((item) => item.myCharKey === selectedMe.key)
+                    .flatMap((item) => item.baseRaidNames ?? [])
+                    .map((raid) => normalizeRaidName(raid))
+                );
+
+                const availableRaids = selectedMe.remainingRaids.filter(
+                  (raid) => !scheduledRaidSet.has(normalizeRaidName(raid))
+                );
+
+                if (!availableRaids.length) return null;
+
+                return (
+                  <div className="weeklyScheduleRaidPicker">
+                    <div className="weeklyScheduleRaidPickerLabel">추가할 레이드</div>
+
+                    <div className="weeklyScheduleRaidPickerList">
+                      {availableRaids.map((raid) => {
+                        const active = selectedMyScheduleRaidNames.some(
+                          (x) => normalizeRaidName(x) === normalizeRaidName(raid)
+                        );
+
+                        return (
+                          <button
+                            key={raid}
+                            type="button"
+                            className={`manualRaidChipBtn ${active ? "active" : ""}`}
+                            onClick={() => toggleSelectedScheduleRaid(raid)}
+                          >
+                            {raid}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })() : null}
               <div className="weeklyScheduleAddLabel">캐릭 추가</div>
 
               <select
                 className="friendSelect manualKkanbuDaySelect"
                 value={selectedMyScheduleCharKey}
-                onChange={(e) => setSelectedMyScheduleCharKey(e.target.value)}
+                onChange={(e) => {
+                  const nextKey = e.target.value;
+                  setSelectedMyScheduleCharKey(nextKey);
+
+                  const me = selectableMyScheduleCandidates.find((x) => x.key === nextKey);
+
+                  if (!me || !schedule) {
+                    setSelectedMyScheduleRaidNames([]);
+                    return;
+                  }
+
+                  const scheduledRaidSet = new Set(
+                    schedule.items
+                      .filter((item) => item.myCharKey === me.key)
+                      .flatMap((item) => item.baseRaidNames ?? [])
+                      .map((raid) => normalizeRaidName(raid))
+                  );
+
+                  const availableRaids = me.remainingRaids.filter(
+                    (raid) => !scheduledRaidSet.has(normalizeRaidName(raid))
+                  );
+
+                  setSelectedMyScheduleRaidNames(availableRaids);
+                }}
               >
                 <option value="">선택</option>
                 {selectableMyScheduleCandidates.map((me) => (
@@ -1902,15 +2013,26 @@ export default function TodoTracker() {
               <button
                 type="button"
                 className="mini"
-                disabled={!schedule || !selectedMyScheduleCharKey}
+                disabled={
+                  !schedule ||
+                  !selectedMyScheduleCharKey ||
+                  selectedMyScheduleRaidNames.length === 0
+                }
                 onClick={() => {
                   const me = selectableMyScheduleCandidates.find(
                     (x) => x.key === selectedMyScheduleCharKey
                   );
                   if (!me) return;
 
-                  addMyCharSlotToSchedule(selectedScheduleId, me, scheduleTargetDay);
+                  addMyCharSlotToSchedule(
+                    selectedScheduleId,
+                    me,
+                    scheduleTargetDay,
+                    selectedMyScheduleRaidNames
+                  );
+
                   setSelectedMyScheduleCharKey("");
+                  setSelectedMyScheduleRaidNames([]);
                 }}
               >
                 추가
