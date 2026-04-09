@@ -1683,15 +1683,11 @@ export default function TodoTracker() {
 
       return sourceCandidates
         .map((fr) => {
-          const commonRaids = getCommonRaidsForScheduleItem(item, fr);
-
-          const usableRaids = commonRaids.filter((r) =>
-            (fr.remainingRaids ?? []).includes(r)
-          );
+          const remaining = fr.remainingRaids ?? [];
 
           return {
             ...fr,
-            commonRaids: usableRaids, 
+            commonRaids: remaining, // 남은 레이드 기준
           };
         })
         .filter((fr) => {
