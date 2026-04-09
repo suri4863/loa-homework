@@ -1231,6 +1231,63 @@ export default function TodoTracker() {
       </span>
     );
   }
+  function recalcScheduleItemAvgPower(item: SharedWeeklyScheduleItem) {
+    return item.myCharPower != null && item.friendCharPower != null
+      ? Math.round((item.myCharPower + item.friendCharPower) / 2)
+      : null;
+  }
+
+  function syncSchedulePowerSnapshotsForChar(
+    schedules: SharedWeeklySchedule[],
+    myFriendCode: string,
+    tableId: string,
+    charId: string,
+    nextPower: number | null
+  ) {
+    const myCharKey = `${tableId}|${charId}`;
+
+    return schedules.map((schedule) => {
+      const isOwnerView = schedule.ownerFriendCode === myFriendCode;
+      const isTargetView = schedule.targetFriendCode === myFriendCode;
+
+      const nextItems = schedule.items.map((item) => {
+        let changed = false;
+        let nextItem = item;
+
+        // 내가 owner일 때: 내 캐릭은 myCharKey
+        if (isOwnerView && item.myCharKey === myCharKey) {
+          nextItem = {
+            ...nextItem,
+            myCharPower: nextPower,
+          };
+          changed = true;
+        }
+
+        // 내가 target일 때: 내 캐릭은 friendCharKey로 들어있음
+        if (isTargetView && item.friendCharKey === myCharKey) {
+          nextItem = {
+            ...nextItem,
+            friendCharPower: nextPower,
+          };
+          changed = true;
+        }
+
+        if (!changed) return item;
+
+        return {
+          ...nextItem,
+          avgPower: recalcScheduleItemAvgPower(nextItem),
+        };
+      });
+
+      return nextItems === schedule.items
+        ? schedule
+        : {
+          ...schedule,
+          items: nextItems,
+        };
+    });
+  }
 
   function renderFriendRaidLeftColumns() {
     if (!selectedFriendCode) return <div className="todo-hint">친구를 선택해줘.</div>;
@@ -1490,8 +1547,8 @@ export default function TodoTracker() {
 
     const myFriendCode = String(state.profile.friendCode ?? "").trim();
 
-    function getLiveMyCharPower(myCharKey: string): number | null {
-      const [tableId, charId] = String(myCharKey ?? "").split("|");
+    function getLivePowerFromMyTables(charKey: string): number | null {
+      const [tableId, charId] = String(charKey ?? "").split("|");
       if (!tableId || !charId) return null;
 
       const table = state.tables.find((t) => t.id === tableId);
@@ -1499,6 +1556,65 @@ export default function TodoTracker() {
       if (!ch) return null;
 
       return parsePowerValue(ch.power);
+    }
+
+    function getScheduleViewerPerspective(schedule: SharedWeeklySchedule) {
+      const isOwnerView = schedule.ownerFriendCode === myFriendCode;
+      const isTargetView = schedule.targetFriendCode === myFriendCode;
+
+      return {
+        isOwnerView,
+        isTargetView,
+      };
+    }
+
+    function getDisplayedSchedulePowers(
+      schedule: SharedWeeklySchedule,
+      item: SharedWeeklyScheduleItem
+    ) {
+      const { isOwnerView, isTargetView } = getScheduleViewerPerspective(schedule);
+
+      // owner가 볼 때:
+      // - myChar = 내 로컬 캐릭이므로 실시간 조회 가능
+      // - friendChar = 스냅샷/선택값 기준
+      if (isOwnerView) {
+        const myPower = getLivePowerFromMyTables(item.myCharKey);
+        const friendPower = item.friendCharPower ?? null;
+
+        return {
+          myPower,
+          friendPower,
+          avgPower:
+            myPower != null && friendPower != null
+              ? Math.round((myPower + friendPower) / 2)
+              : null,
+        };
+      }
+
+      // target이 볼 때:
+      // - friendCharKey가 "내 캐릭"이므로 로컬에서 실시간 조회 가능
+      // - myCharPower는 상대(owner) 저장값 사용
+      if (isTargetView) {
+        const myPower = item.myCharPower ?? null;
+        const friendPower = item.friendCharKey
+          ? getLivePowerFromMyTables(item.friendCharKey)
+          : null;
+
+        return {
+          myPower,
+          friendPower,
+          avgPower:
+            myPower != null && friendPower != null
+              ? Math.round((myPower + friendPower) / 2)
+              : null,
+        };
+      }
+
+      return {
+        myPower: item.myCharPower ?? null,
+        friendPower: item.friendCharPower ?? null,
+        avgPower: item.avgPower ?? null,
+      };
     }
 
     function getLiveFriendCharPower(
@@ -1577,7 +1693,7 @@ export default function TodoTracker() {
           commonRaids: getCommonRaidsForScheduleItem(item, fr),
         }));
     }
-    
+
     function assignFriendToScheduleItem(
       scheduleId: string,
       itemId: string,
@@ -2141,13 +2257,9 @@ export default function TodoTracker() {
                         >
                           {dayItems.map((item, index) => {
                             const completion = getScheduleRaidCompletion(item);
-                            const liveMyPower = getLiveMyCharPower(item.myCharKey);
-                            const liveFriendPower = getLiveFriendCharPower(schedule, item);
-                            const liveAvgPower =
-                              liveMyPower != null && liveFriendPower != null
-                                ? Math.round((liveMyPower + liveFriendPower) / 2)
-                                : null;
-
+                            const liveMyPower = item.myCharPower ?? null;
+                            const liveFriendPower = item.friendCharPower ?? null;
+                            const liveAvgPower = item.avgPower ?? null;
                             return (
                               <div
                                 key={item.id}
@@ -3859,6 +3971,7 @@ export default function TodoTracker() {
       .toUpperCase();
 
     const role: CharacterRole = roleInput === "SUPPORT" ? "SUPPORT" : "DEALER";
+    const nextPower = parseNum(power);
 
     setState((prev) => {
       const table = getActiveTable(prev);
@@ -3874,6 +3987,16 @@ export default function TodoTracker() {
         tables: prev.tables.map((t) => (t.id === nextTable.id ? nextTable : t)),
       };
     });
+
+    setWeeklySchedules((prev) =>
+      syncSchedulePowerSnapshotsForChar(
+        prev,
+        String(state.profile.friendCode ?? "").trim(),
+        state.activeTableId,
+        ch.id,
+        nextPower
+      )
+    );
   }
 
   function deleteCharacter(ch: Character) {
