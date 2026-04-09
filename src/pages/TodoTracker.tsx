@@ -1671,31 +1671,35 @@ export default function TodoTracker() {
       remainingRaids: string[];
       commonRaids: string[];
     }> {
-      const assignedKeys = new Set(
-        schedule.items
-          .filter((x) => x.id !== item.id && x.friendCharKey)
-          .map((x) => String(x.friendCharKey))
-      );
-
       const currentSelectedKey = item.friendCharKey ? String(item.friendCharKey) : "";
-
       const sourceCandidates = getScheduleAssignableCandidates(schedule);
 
       return sourceCandidates
         .map((fr) => {
-          const remaining = fr.remainingRaids ?? [];
+          // 같은 친구 캐릭이 다른 카드들에서 이미 사용한 레이드 목록
+          const usedRaidSet = new Set(
+            schedule.items
+              .filter((x) => x.id !== item.id && String(x.friendCharKey ?? "") === fr.key)
+              .flatMap((x) => x.raidNames ?? [])
+              .map((raid) => normalizeRaidName(raid))
+          );
+
+          const commonRaids = getCommonRaidsForScheduleItem(item, fr).filter(
+            (raid) => !usedRaidSet.has(normalizeRaidName(raid))
+          );
 
           return {
             ...fr,
-            commonRaids: remaining, // 남은 레이드 기준
+            commonRaids,
           };
         })
         .filter((fr) => {
-          if (fr.key !== currentSelectedKey && assignedKeys.has(fr.key)) return false;
+          // 현재 카드에 이미 선택된 값은 그대로 보이게 허용
+          if (fr.key === currentSelectedKey) return true;
 
+          // 공통 레이드가 하나라도 남아있을 때만 후보 표시
           return fr.commonRaids.length > 0;
         });
-
     }
 
     function assignFriendToScheduleItem(
@@ -1727,7 +1731,17 @@ export default function TodoTracker() {
             const friend = candidatePool.find((fr) => fr.key === friendKey);
             if (!friend) return item;
 
-            const commonRaids = getCommonRaidsForScheduleItem(item, friend);
+            const usedRaidSet = new Set(
+              schedule.items
+                .filter((x) => x.id !== item.id && String(x.friendCharKey ?? "") === friend.key)
+                .flatMap((x) => x.raidNames ?? [])
+                .map((raid) => normalizeRaidName(raid))
+            );
+
+            const commonRaids = getCommonRaidsForScheduleItem(item, friend).filter(
+              (raid) => !usedRaidSet.has(normalizeRaidName(raid))
+            );
+
             const avgPower =
               item.myCharPower != null && friend.power > 0
                 ? Math.round((item.myCharPower + friend.power) / 2)
