@@ -1426,6 +1426,49 @@ export default function TodoTracker() {
       return remainingSchedulableRaids.length > 0;
     });
 
+    // 공유 일정표에 이미 들어간 레이드 표시용
+    const scheduledMyRaidSetByChar = new Map<string, Set<string>>();
+    const scheduledFriendRaidSetByChar = new Map<string, Set<string>>();
+
+    if (schedule) {
+      for (const item of schedule.items) {
+        const itemBaseRaids = (item.baseRaidNames ?? []).map((raid) => normalizeRaidName(raid));
+
+        if (item.myCharKey) {
+          const prev = scheduledMyRaidSetByChar.get(item.myCharKey) ?? new Set<string>();
+          itemBaseRaids.forEach((raid) => prev.add(raid));
+          scheduledMyRaidSetByChar.set(item.myCharKey, prev);
+        }
+
+        if (item.friendCharKey) {
+          const prev = scheduledFriendRaidSetByChar.get(String(item.friendCharKey)) ?? new Set<string>();
+          itemBaseRaids.forEach((raid) => prev.add(raid));
+          scheduledFriendRaidSetByChar.set(String(item.friendCharKey), prev);
+        }
+      }
+    }
+
+    function getRemainScheduleState(
+      charKey: string,
+      remainingRaids: string[],
+      raidSetMap: Map<string, Set<string>>
+    ) {
+      const scheduledSet = raidSetMap.get(charKey) ?? new Set<string>();
+
+      const scheduledRaids = remainingRaids.filter((raid) =>
+        scheduledSet.has(normalizeRaidName(raid))
+      );
+
+      const allScheduled =
+        remainingRaids.length > 0 && scheduledRaids.length === remainingRaids.length;
+
+      return {
+        scheduledSet,
+        scheduledRaids,
+        allScheduled,
+      };
+    }
+
     const friendCandidates = rows
       .filter((row: any) => {
         const tableName = String(row.tableName ?? "").trim();
@@ -2822,18 +2865,45 @@ export default function TodoTracker() {
               <div className="manualRemainTitle">남은 내 캐릭터</div>
               {remainingMyCandidates.length ? (
                 <div className="manualRemainList">
-                  {remainingMyCandidates.map((me) => (
-                    <div key={me.key} className="manualRemainItem">
-                      <div className="manualRemainName">
-                        {me.name} <span className="manualRemainMeta">Lv {me.ilvl} / 전투력 {me.power}</span>
+                  {remainingMyCandidates.map((me) => {
+                    const scheduleState = getRemainScheduleState(
+                      me.key,
+                      me.remainingRaids,
+                      scheduledMyRaidSetByChar
+                    );
+
+                    return (
+                      <div
+                        key={me.key}
+                        className={`manualRemainItem ${scheduleState.allScheduled ? "is-schedule-full" : ""}`}
+                      >
+                        <div
+                          className={`manualRemainName ${scheduleState.allScheduled ? "is-schedule-full" : ""}`}
+                        >
+                          {me.name}{" "}
+                          <span className="manualRemainMeta">
+                            Lv {me.ilvl} / 전투력 {me.power}
+                          </span>
+                        </div>
+
+                        <div className="manualRemainRaids">
+                          {me.remainingRaids.map((raid) => {
+                            const isScheduled = scheduleState.scheduledSet.has(normalizeRaidName(raid));
+
+                            return (
+                              <span
+                                key={raid}
+                                className={`manualRaidChip ${isScheduled ? "is-scheduled" : ""} ${scheduleState.allScheduled ? "is-schedule-full" : ""
+                                  }`}
+                              >
+                                {raid}
+                              </span>
+                            );
+                          })}
+                        </div>
                       </div>
-                      <div className="manualRemainRaids">
-                        {me.remainingRaids.map((raid) => (
-                          <span key={raid} className="manualRaidChip">{raid}</span>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="manualKkanbuEmpty">남은 내 캐릭터 없음</div>
@@ -2844,23 +2914,45 @@ export default function TodoTracker() {
               <div className="manualRemainTitle">남은 친구 캐릭터</div>
               {remainingFriendCandidates.length ? (
                 <div className="manualRemainList">
-                  {remainingFriendCandidates.map((fr: FriendCandidate) => (
-                    <div key={fr.key} className="manualRemainItem">
-                      <div className="manualRemainName">
-                        {fr.name}{" "}
-                        <span className="manualRemainMeta">
-                          Lv {fr.ilvl} / 전투력 {fr.power}
-                        </span>
-                      </div>
-                      <div className="manualRemainRaids">
-                        {fr.remainingRaids.map((raid: string) => (
-                          <span key={raid} className="manualRaidChip">
-                            {raid}
+                  {remainingFriendCandidates.map((fr: FriendCandidate) => {
+                    const scheduleState = getRemainScheduleState(
+                      fr.key,
+                      fr.remainingRaids,
+                      scheduledFriendRaidSetByChar
+                    );
+
+                    return (
+                      <div
+                        key={fr.key}
+                        className={`manualRemainItem ${scheduleState.allScheduled ? "is-schedule-full" : ""}`}
+                      >
+                        <div
+                          className={`manualRemainName ${scheduleState.allScheduled ? "is-schedule-full" : ""}`}
+                        >
+                          {fr.name}{" "}
+                          <span className="manualRemainMeta">
+                            Lv {fr.ilvl} / 전투력 {fr.power}
                           </span>
-                        ))}
+                        </div>
+
+                        <div className="manualRemainRaids">
+                          {fr.remainingRaids.map((raid: string) => {
+                            const isScheduled = scheduleState.scheduledSet.has(normalizeRaidName(raid));
+
+                            return (
+                              <span
+                                key={raid}
+                                className={`manualRaidChip ${isScheduled ? "is-scheduled" : ""} ${scheduleState.allScheduled ? "is-schedule-full" : ""
+                                  }`}
+                              >
+                                {raid}
+                              </span>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="manualKkanbuEmpty">남은 친구 캐릭터 없음</div>
