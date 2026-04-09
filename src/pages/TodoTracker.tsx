@@ -1682,16 +1682,24 @@ export default function TodoTracker() {
       const sourceCandidates = getScheduleAssignableCandidates(schedule);
 
       return sourceCandidates
+        .map((fr) => {
+          const commonRaids = getCommonRaidsForScheduleItem(item, fr);
+
+          const usableRaids = commonRaids.filter((r) =>
+            (fr.remainingRaids ?? []).includes(r)
+          );
+
+          return {
+            ...fr,
+            commonRaids: usableRaids, 
+          };
+        })
         .filter((fr) => {
           if (fr.key !== currentSelectedKey && assignedKeys.has(fr.key)) return false;
 
-          const commonRaids = getCommonRaidsForScheduleItem(item, fr);
-          return commonRaids.length > 0;
-        })
-        .map((fr) => ({
-          ...fr,
-          commonRaids: getCommonRaidsForScheduleItem(item, fr),
-        }));
+          return fr.commonRaids.length > 0;
+        });
+
     }
 
     function assignFriendToScheduleItem(
