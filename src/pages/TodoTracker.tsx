@@ -1054,7 +1054,7 @@ export default function TodoTracker() {
     setRaidSnapUploadState("uploading");
 
     try {
-      const s = stateRef.current;
+      const s = state;
       const snapshotJson = exportRaidLeftSnapshot(s, "ALL", weeklyRaidPickRef.current);
 
       await apiFetch2("/api/me/raid-left-snapshot", {
@@ -1073,7 +1073,6 @@ export default function TodoTracker() {
       setRaidSnapUploadState("error");
       window.setTimeout(() => setRaidSnapUploadState("idle"), 2000);
 
-      // 자동 업로드는 조용히 실패(알림 스팸 방지)
       if (source === "manual") throw e;
     } finally {
       raidSnapUploadingRef.current = false;
