@@ -739,9 +739,16 @@ export function exportRaidLeftSnapshot(
 
       const charKey = weeklyCharKey(table.id, ch.id);
       const pick = weeklyRaidPickByChar?.[charKey];
-      const selectedRaidTitles = Array.isArray(pick?.raids)
-        ? pick!.raids.map((x) => normalizeRaidName(x)).filter(Boolean)
-        : [];
+
+      // 업로드 시점에 weeklyRaidPick이 아직 없으면,
+      // 현재 주간 레이드 task 제목들을 기본 후보로 사용
+      const fallbackRaidTitles = weeklyRaidTasks
+        .map((task) => normalizeRaidName(String(task.title ?? "")))
+        .filter(Boolean);
+
+      const selectedRaidTitles = Array.isArray(pick?.raids) && pick.raids.length > 0
+        ? pick.raids.map((x) => normalizeRaidName(x)).filter(Boolean)
+        : fallbackRaidTitles;
 
       if (!selectedRaidTitles.length) continue;
 

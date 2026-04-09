@@ -1055,6 +1055,17 @@ export default function TodoTracker() {
 
     try {
       const s = state;
+
+      const hasWeeklyPick =
+        weeklyRaidPickRef.current &&
+        Object.keys(weeklyRaidPickRef.current).length > 0;
+
+      // 자동 업로드인데 weekly pick이 아직 준비 안 됐으면 스킵
+      if (source === "auto" && !hasWeeklyPick) {
+        setRaidSnapUploadState("idle");
+        return;
+      }
+
       const snapshotJson = exportRaidLeftSnapshot(s, "ALL", weeklyRaidPickRef.current);
 
       await apiFetch2("/api/me/raid-left-snapshot", {
