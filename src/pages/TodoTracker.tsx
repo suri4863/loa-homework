@@ -1546,33 +1546,38 @@ export default function TodoTracker() {
     function getSelectableFriendOptionsForScheduleItem(
       schedule: SharedWeeklySchedule,
       item: SharedWeeklyScheduleItem
-    ): Array<
-      {
-        key: string;
-        tableName?: string;
-        name: string;
-        ilvl: number;
-        power: number;
-        remainingRaids: string[];
-        commonRaids: string[];
-      }
-    > {
-      const usedFriendKeys = new Set(
+    ): Array<{
+      key: string;
+      tableName?: string;
+      name: string;
+      ilvl: number;
+      power: number;
+      remainingRaids: string[];
+      commonRaids: string[];
+    }> {
+      const assignedKeys = new Set(
         schedule.items
           .filter((x) => x.id !== item.id && x.friendCharKey)
           .map((x) => String(x.friendCharKey))
       );
 
+      const currentSelectedKey = item.friendCharKey ? String(item.friendCharKey) : "";
+
       const sourceCandidates = getScheduleAssignableCandidates(schedule);
 
       return sourceCandidates
-        .filter((fr) => !usedFriendKeys.has(fr.key))
+        .filter((fr) => {
+          if (fr.key !== currentSelectedKey && assignedKeys.has(fr.key)) return false;
+
+          const commonRaids = getCommonRaidsForScheduleItem(item, fr);
+          return commonRaids.length > 0;
+        })
         .map((fr) => ({
           ...fr,
           commonRaids: getCommonRaidsForScheduleItem(item, fr),
-        }))
-        .filter((fr) => fr.commonRaids.length > 0);
+        }));
     }
+    
     function assignFriendToScheduleItem(
       scheduleId: string,
       itemId: string,
