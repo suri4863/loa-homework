@@ -14,8 +14,8 @@ export default function BidCalculator() {
   const [open, setOpen] = useState(false);
 
   const [itemPrice, setItemPrice] = useState<number>(2000);
-  const [preset, setPreset] = useState<PartyPreset>(8);
-  const [customParty, setCustomParty] = useState<number>(8);
+  const [preset, setPreset] = useState<PartyPreset>("custom");
+  const [customParty, setCustomParty] = useState<number>(40);
 
   const partySize = preset === "custom" ? customParty : preset;
   const fee = useMemo(() => Math.floor(itemPrice * 0.05), [itemPrice]);
@@ -24,14 +24,14 @@ export default function BidCalculator() {
 
   // 손익분기점: (아이템가격 - 수수료) * (본인 제외 인원) / (본인 포함 인원)
   const breakEvenBid = useMemo(() => {
-    const p = clampInt(partySize, 2, 16);
+    const p = clampInt(partySize, 2, 45);
     const net = Math.max(0, itemPrice - fee);
     return Math.floor((net * (p - 1)) / p);
   }, [itemPrice, fee, partySize]);
 
   // 직접 사용: 아이템가격 * (본인 제외 인원) / (본인 포함 인원)
   const directUseBid = useMemo(() => {
-    const p = clampInt(partySize, 2, 16);
+    const p = clampInt(partySize, 2, 45);
     return Math.floor((itemPrice * (p - 1)) / p);
   }, [itemPrice, partySize]);
 
@@ -234,15 +234,15 @@ export default function BidCalculator() {
 
               {preset === "custom" && (
                 <div>
-                  <div style={{ fontSize: 12, color: v("--muted"), marginBottom: 6 }}>인원(2~16)</div>
+                  <div style={{ fontSize: 12, color: v("--muted"), marginBottom: 6 }}>인원(2~45)</div>
                   <input
                     type="number"
                     inputMode="numeric"
                     min={2}
-                    max={16}
+                    max={45}
                     value={customParty}
                     onKeyDown={preventWeirdKeys}
-                    onChange={(e) => setCustomParty(clampInt(Number(e.target.value), 2, 16))}
+                    onChange={(e) => setCustomParty(clampInt(Number(e.target.value), 2, 45))}
                     style={inputStyle}
                   />
                 </div>
