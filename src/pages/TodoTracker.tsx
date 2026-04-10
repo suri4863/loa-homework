@@ -2329,14 +2329,15 @@ export default function TodoTracker() {
                         >
                           {dayItems.map((item, index) => {
                             const completion = getScheduleRaidCompletion(item);
-                            const liveMyPower = item.myCharPower ?? null;
-                            const liveFriendPower = item.friendCharPower ?? null;
-                            const liveAvgPower = item.avgPower ?? null;
+                            const displayedPowers = getDisplayedSchedulePowers(schedule, item);
+                            const liveMyPower = displayedPowers.myPower;
+                            const liveFriendPower = displayedPowers.friendPower;
+                            const liveAvgPower = displayedPowers.avgPower;
+
                             return (
                               <div
                                 key={item.id}
-                                className={`weeklyScheduleItem ${dragScheduleItem?.itemId === item.id ? "dragging" : ""
-                                  }`}
+                                className={`weeklyScheduleItem ${dragScheduleItem?.itemId === item.id ? "dragging" : ""}`}
                                 draggable
                                 onDragStart={() => {
                                   setDragScheduleItem({
@@ -2373,8 +2374,7 @@ export default function TodoTracker() {
                                   <div className="weeklySchedulePairBlock">
                                     <div className="weeklyScheduleMyCharRow">
                                       <div
-                                        className={`weeklyScheduleMyChar ${completion.allCleared ? "is-cleared" : ""
-                                          }`}
+                                        className={`weeklyScheduleMyChar ${completion.allCleared ? "is-cleared" : ""}`}
                                       >
                                         {item.friendCharName
                                           ? `${item.myCharName} - ${item.friendCharName}`
@@ -2389,8 +2389,7 @@ export default function TodoTracker() {
                                     </div>
 
                                     <div
-                                      className={`weeklySchedulePower ${completion.allCleared ? "is-cleared" : ""
-                                        }`}
+                                      className={`weeklySchedulePower ${completion.allCleared ? "is-cleared" : ""}`}
                                     >
                                       전투력{" "}
                                       {liveFriendPower != null
@@ -2437,8 +2436,7 @@ export default function TodoTracker() {
                                     completion.clearedMap.map((raidItem, raidIndex) => (
                                       <React.Fragment key={`${item.id}_${raidItem.raid}`}>
                                         <span
-                                          className={`weeklyScheduleRaidText ${raidItem.cleared ? "is-cleared" : ""
-                                            }`}
+                                          className={`weeklyScheduleRaidText ${raidItem.cleared ? "is-cleared" : ""}`}
                                         >
                                           {raidItem.raid}
                                         </span>
