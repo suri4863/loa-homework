@@ -15,11 +15,12 @@ export default function BidPopover() {
   const [itemPrice, setItemPrice] = useState<number | "">("");
   const price = typeof itemPrice === "number" ? itemPrice : 0;
 
-  // ✅ 판매 수수료 = 아이템 가격의 5% (소수점 버림)
+  //  판매 수수료 = 아이템 가격의 5% (소수점 버림)
   const fee = useMemo(() => Math.floor(price * 0.05), [price]);
 
-  const [preset, setPreset] = useState<PartyPreset>(8);
-  const [customParty, setCustomParty] = useState<number>(8);
+  // 기본값: 직접 / 40인
+  const [preset, setPreset] = useState<PartyPreset>("custom");
+  const [customParty, setCustomParty] = useState<number>(40);
   const [copied, setCopied] = useState(false);
 
   const btnRef = useRef<HTMLButtonElement | null>(null);
@@ -29,13 +30,13 @@ export default function BidPopover() {
 
   // 직접 사용
   const directUseBid = useMemo(() => {
-    const p = clampInt(partySize, 2, 16);
+    const p = clampInt(partySize, 2, 45);
     return Math.floor((price * (p - 1)) / p);
   }, [price, partySize]);
 
   // ✅ 손익분기점: floor((가격-수수료) * (N-1) / N)
   const breakEvenBid = useMemo(() => {
-    const p = clampInt(partySize, 2, 16);
+    const p = clampInt(partySize, 2, 45);
     const net = Math.max(0, price - fee);
     return Math.floor((net * (p - 1)) / p);
   }, [price, fee, partySize]);
@@ -83,9 +84,7 @@ export default function BidPopover() {
   }, [open]);
 
   const copyBids = async () => {
-    // ✅ 선점 금액 숫자만 복사
     await navigator.clipboard.writeText(String(preemptBid));
-
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
@@ -119,7 +118,11 @@ export default function BidPopover() {
                 className="bid-input"
                 type="number"
                 value={itemPrice}
-                onChange={(e) => setItemPrice(Math.max(0, Number(e.target.value)))}
+                min={0}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setItemPrice(value === "" ? "" : Math.max(0, Number(value)));
+                }}
               />
             </div>
 
@@ -155,12 +158,14 @@ export default function BidPopover() {
             {/* 직접 입력 */}
             {preset === "custom" && (
               <div className="bid-field">
-                <div className="bid-label">인원(2~16)</div>
+                <div className="bid-label">인원(2~45)</div>
                 <input
                   className="bid-input"
                   type="number"
+                  min={2}
+                  max={45}
                   value={customParty}
-                  onChange={(e) => setCustomParty(clampInt(Number(e.target.value), 2, 16))}
+                  onChange={(e) => setCustomParty(clampInt(Number(e.target.value), 2, 45))}
                 />
               </div>
             )}
