@@ -1430,26 +1430,22 @@ export default function TodoTracker() {
           ? row.remainingRaids.filter(Boolean)
           : [];
 
-        if (schedulePlanningMode === "NEXT_RESET" && isStaleFriendSnapshot) {
-          return {
-            ...row,
-            charName: String(row?.charName ?? ""),
-            charItemLevel: row?.charItemLevel ? String(row.charItemLevel) : undefined,
-            charPower: row?.charPower ? String(row.charPower) : undefined,
-            tableName: row?.tableName ? String(row.tableName) : "",
-            ilvl: typeof row?.ilvl === "number" ? row.ilvl : 0,
-            allRaids: normalizedAllRaids,
-            remainingRaids:
-              normalizedAllRaids.length > 0
-                ? [...normalizedAllRaids]
-                : [...normalizedRemainingRaids],
-            clearedCount: 0,
-            totalCount:
-              normalizedAllRaids.length > 0
-                ? normalizedAllRaids.length
-                : Number(row?.totalCount ?? normalizedRemainingRaids.length),
-          };
-        }
+        const nextRemainingRaids =
+          schedulePlanningMode === "NEXT_RESET"
+            ? (normalizedAllRaids.length > 0
+              ? [...normalizedAllRaids]
+              : [...normalizedRemainingRaids])
+            : [...normalizedRemainingRaids];
+
+        const nextClearedCount =
+          schedulePlanningMode === "NEXT_RESET"
+            ? 0
+            : Number(row?.clearedCount ?? 0);
+
+        const nextTotalCount =
+          normalizedAllRaids.length > 0
+            ? normalizedAllRaids.length
+            : Number(row?.totalCount ?? normalizedRemainingRaids.length);
 
         return {
           ...row,
@@ -1459,9 +1455,9 @@ export default function TodoTracker() {
           tableName: row?.tableName ? String(row.tableName) : "",
           ilvl: typeof row?.ilvl === "number" ? row.ilvl : 0,
           allRaids: normalizedAllRaids,
-          remainingRaids: normalizedRemainingRaids,
-          clearedCount: Number(row?.clearedCount ?? 0),
-          totalCount: Number(row?.totalCount ?? normalizedRemainingRaids.length),
+          remainingRaids: nextRemainingRaids,
+          clearedCount: nextClearedCount,
+          totalCount: nextTotalCount,
         };
       })
       .filter((r: FriendSnapshotRow) => Boolean(r && r.charName));
@@ -1649,8 +1645,10 @@ export default function TodoTracker() {
         const allRaids = normalizedAllRaids;
 
         const remainingRaids =
-          schedulePlanningMode === "NEXT_RESET" && isStaleFriendSnapshot
-            ? normalizedAllRaids
+          schedulePlanningMode === "NEXT_RESET"
+            ? normalizedAllRaids.length > 0
+              ? normalizedAllRaids
+              : normalizedRemainingRaids
             : normalizedRemainingRaids.length > 0
               ? normalizedRemainingRaids
               : normalizedAllRaids;
