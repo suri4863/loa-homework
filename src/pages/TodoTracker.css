@@ -3631,3 +3631,27 @@ html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
   gap: 8px;
   min-height: 24px;
 }
+
+.weeklyPlanningModeHint {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+/*일정표 이번 주 저번 주 다음 주 취소선 */
+.weeklyScheduleItem.is-past {
+  opacity: 0.55;
+}
+
+.weeklyScheduleMyChar.is-past,
+.weeklySchedulePower.is-past,
+.weeklyScheduleRaidText.is-past {
+  opacity: 0.65;
+}
+
+.weeklyScheduleItem.is-future .weeklyScheduleRaidText.is-cleared,
+.weeklyScheduleItem.is-future .weeklyScheduleMyChar.is-cleared,
+.weeklyScheduleItem.is-future .weeklySchedulePower.is-cleared {
+  text-decoration: none;
+  opacity: 1;
+}

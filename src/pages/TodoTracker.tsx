@@ -267,6 +267,7 @@ export default function TodoTracker() {
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [scheduleTargetDay, setScheduleTargetDay] = useState<WeeklyScheduleDay>("수");
   const [scheduleCreateMode, setScheduleCreateMode] = useState<"NEW" | "EXISTING">("NEW");
+  const [schedulePlanningMode, setSchedulePlanningMode] = useState<"CURRENT" | "NEXT_RESET">("CURRENT");
   const [newScheduleTitle, setNewScheduleTitle] = useState("일정표");
   const [dragScheduleItem, setDragScheduleItem] = useState<{
     scheduleId: string;
@@ -409,6 +410,8 @@ export default function TodoTracker() {
     ilvl: number;
     power: number;
     remainingRaids: string[];
+    allRaids: string[];
+    activeRaids: string[];
   };
 
   type FriendCandidate = {
@@ -418,9 +421,11 @@ export default function TodoTracker() {
     ilvl: number;
     power: number;
     remainingRaids: string[];
+    allRaids: string[];
+    activeRaids: string[];
   };
 
-  // ✅ 깐부 매칭(친구 남은 레이드에서)
+  // 깐부 매칭(친구 남은 레이드에서)
   function makeFriendCharKey(friendCode: string, tableName: string | undefined, charName: string) {
     return `${friendCode}|${tableName ?? ""}|${charName}`;
   }
@@ -562,11 +567,56 @@ export default function TodoTracker() {
     return (await res.text()) as any;
   }
 
-  function getCurrentWeekStartDate() {
+  function formatDateOnly(d: Date) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
+  function getScheduleWeekStartDate(mode: "CURRENT" | "NEXT_RESET") {
+    const resetWeekday = state.reset?.weeklyResetWeekday ?? 3; // 수요일
+    const resetHour = state.reset?.dailyResetHour ?? 6;
+
     const now = new Date();
-    const copy = new Date(now);
-    copy.setHours(0, 0, 0, 0);
-    return `${copy.getFullYear()}-${String(copy.getMonth() + 1).padStart(2, "0")}-${String(copy.getDate()).padStart(2, "0")}`;
+    const base = new Date(now);
+
+    // 로아 기준 게임 날짜
+    if (base.getHours() < resetHour) {
+      base.setDate(base.getDate() - 1);
+    }
+    base.setHours(0, 0, 0, 0);
+
+    const currentWeekday = base.getDay();
+    const diff = (currentWeekday - resetWeekday + 7) % 7;
+
+    // 이번 주 시작(최근 리셋일)
+    base.setDate(base.getDate() - diff);
+
+    if (mode === "NEXT_RESET") {
+      base.setDate(base.getDate() + 7);
+    }
+
+    return formatDateOnly(base);
+  }
+
+  function getWeeklyScheduleTimeState(schedule: SharedWeeklySchedule) {
+    if (!schedule.weekStartDate) return "CURRENT" as const;
+
+    const currentWeekStart = getScheduleWeekStartDate("CURRENT");
+
+    if (schedule.weekStartDate < currentWeekStart) return "PAST" as const;
+    if (schedule.weekStartDate > currentWeekStart) return "FUTURE" as const;
+    return "CURRENT" as const;
+  }
+
+  function isPastWeeklySchedule(schedule: SharedWeeklySchedule) {
+    return getWeeklyScheduleTimeState(schedule) === "PAST";
+  }
+
+  function isFutureWeeklySchedule(schedule: SharedWeeklySchedule) {
+    return getWeeklyScheduleTimeState(schedule) === "FUTURE";
+  }
+
+  function isCurrentWeeklySchedule(schedule: SharedWeeklySchedule) {
+    return getWeeklyScheduleTimeState(schedule) === "CURRENT";
   }
 
   function buildScheduleItemsFromMySlots(
@@ -696,8 +746,11 @@ export default function TodoTracker() {
     const title = newScheduleTitle.trim() || "일정표";
 
     const payload = {
-      title,
-      weekStartDate: getCurrentWeekStartDate(),
+      title:
+        schedulePlanningMode === "NEXT_RESET"
+          ? `${title} (다음 주)`
+          : title,
+      weekStartDate: getScheduleWeekStartDate(schedulePlanningMode),
       items,
     };
 
@@ -805,7 +858,14 @@ export default function TodoTracker() {
     return { tableId: tableId ?? "", charId: charId ?? "" };
   }
 
-  function isScheduleRaidCleared(item: SharedWeeklyScheduleItem, raidName: string) {
+  function isScheduleRaidCleared(
+    schedule: SharedWeeklySchedule,
+    item: SharedWeeklyScheduleItem,
+    raidName: string
+  ) {
+    // 미래 일정표는 항상 클린
+    if (isFutureWeeklySchedule(schedule)) return false;
+
     const { tableId, charId } = parseScheduleMyCharKey(item.myCharKey);
     if (!tableId || !charId) return false;
 
@@ -824,20 +884,28 @@ export default function TodoTracker() {
     return !!(cell && cell.type === "CHECK" && cell.checked);
   }
 
-  function getScheduleRaidCompletion(item: SharedWeeklyScheduleItem) {
+  function getScheduleRaidCompletion(
+    schedule: SharedWeeklySchedule,
+    item: SharedWeeklyScheduleItem
+  ) {
     const raids = Array.isArray(item.raidNames) ? item.raidNames : [];
     const clearedMap = raids.map((raid) => ({
       raid,
-      cleared: isScheduleRaidCleared(item, raid),
+      cleared: isScheduleRaidCleared(schedule, item, raid),
     }));
 
     const clearedCount = clearedMap.filter((x) => x.cleared).length;
     const allCleared = raids.length > 0 && clearedCount === raids.length;
+    const timeState = getWeeklyScheduleTimeState(schedule);
 
     return {
       clearedMap,
       clearedCount,
       allCleared,
+      timeState,
+      isPast: timeState === "PAST",
+      isCurrent: timeState === "CURRENT",
+      isFuture: timeState === "FUTURE",
     };
   }
 
@@ -899,6 +967,24 @@ export default function TodoTracker() {
     );
   }
 
+  function getMyAllWeeklyRaids(
+    tableId: string,
+    charId: string,
+    ilvl: number
+  ): string[] {
+    const charKey = weeklyCharKey(tableId, charId);
+    const pick =
+      Number.isFinite(ilvl) && ilvl > 0
+        ? (weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(ilvl))
+        : { raids: [], diffs: {} };
+
+    const selectedRaids: string[] = Array.isArray(pick?.raids)
+      ? pick.raids.map((raid: string) => normalizeRaidName(raid))
+      : [];
+
+    return selectedRaids.filter(Boolean);
+  }
+
   function toggleSelectedScheduleRaid(raidName: string) {
     const normalized = normalizeRaidName(raidName);
 
@@ -919,7 +1005,7 @@ export default function TodoTracker() {
       key: string;
       name: string;
       power: number;
-      remainingRaids: string[];
+      activeRaids: string[];
     },
     targetDay: WeeklyScheduleDay,
     selectedRaidNames?: string[]
@@ -942,7 +1028,7 @@ export default function TodoTracker() {
             ? selectedRaidNames.filter(
               (raid) => !scheduledRaidSet.has(normalizeRaidName(raid))
             )
-            : me.remainingRaids.filter(
+            : me.activeRaids.filter(
               (raid) => !scheduledRaidSet.has(normalizeRaidName(raid))
             );
 
@@ -1379,7 +1465,9 @@ export default function TodoTracker() {
               ? pick.raids.map((raid: string) => normalizeRaidName(raid))
               : [];
 
-            const remainingRaids: string[] = selectedRaids.filter((raidName: string) => {
+            const allRaids: string[] = getMyAllWeeklyRaids(tbl.id, ch.id, ilvl);
+
+            const remainingRaids: string[] = allRaids.filter((raidName: string) => {
               const taskId = weeklyRaidTitleToId.get(normalizeRaidName(raidName));
               if (!taskId) return false;
 
@@ -1387,6 +1475,9 @@ export default function TodoTracker() {
               const checked = cell?.type === "CHECK" ? cell.checked : false;
               return !checked;
             });
+
+            const activeRaids =
+              schedulePlanningMode === "NEXT_RESET" ? allRaids : remainingRaids;
 
             return {
               key: `${tbl.id}|${ch.id}`,
@@ -1397,13 +1488,15 @@ export default function TodoTracker() {
               ilvl,
               power,
               remainingRaids,
+              allRaids,
+              activeRaids,
             };
           })
           .filter(
             (x) =>
               x.ilvl >= levelRange.min &&
               x.ilvl <= levelRange.max &&
-              x.remainingRaids.length > 0
+              x.activeRaids.length > 0
           )
       );
 
@@ -1419,7 +1512,7 @@ export default function TodoTracker() {
           .map((raid) => normalizeRaidName(raid))
       );
 
-      const remainingSchedulableRaids = me.remainingRaids.filter(
+      const remainingSchedulableRaids = me.activeRaids.filter(
         (raid) => !scheduledRaidSet.has(normalizeRaidName(raid))
       );
 
@@ -1468,7 +1561,6 @@ export default function TodoTracker() {
         allScheduled,
       };
     }
-
     const friendCandidates = rows
       .filter((row: any) => {
         const tableName = String(row.tableName ?? "").trim();
@@ -1478,12 +1570,23 @@ export default function TodoTracker() {
         const ilvl = Number(row.ilvl) || parsePowerValue(row.charItemLevel);
         const power = parsePowerValue(row.charPower);
 
-        const remainingRaids =
+        const normalizedRemainingRaids =
           Array.isArray(row.remainingRaids) && row.remainingRaids.length > 0
-            ? row.remainingRaids
-            : Array.isArray(row.allRaids)
-              ? row.allRaids
-              : [];
+            ? row.remainingRaids.map((raid: string) => normalizeRaidName(raid))
+            : [];
+
+        const normalizedAllRaids =
+          Array.isArray(row.allRaids) && row.allRaids.length > 0
+            ? row.allRaids.map((raid: string) => normalizeRaidName(raid))
+            : normalizedRemainingRaids;
+
+        const allRaids = normalizedAllRaids;
+        const remainingRaids = normalizedRemainingRaids.length > 0
+          ? normalizedRemainingRaids
+          : normalizedAllRaids;
+
+        const activeRaids =
+          schedulePlanningMode === "NEXT_RESET" ? allRaids : remainingRaids;
 
         return {
           key: `${row.tableName ?? ""}|${row.charName ?? ""}`,
@@ -1492,13 +1595,15 @@ export default function TodoTracker() {
           ilvl,
           power,
           remainingRaids,
+          allRaids,
+          activeRaids,
         };
       })
       .filter(
         (x) =>
           x.ilvl >= levelRange.min &&
           x.ilvl <= levelRange.max &&
-          x.remainingRaids.length > 0
+          x.activeRaids.length > 0
       );
 
     const hasNoFriendCandidates = friendCandidates.length === 0;
@@ -1510,11 +1615,11 @@ export default function TodoTracker() {
 
       const commonRaids: string[] =
         my && friend
-          ? my.remainingRaids
+          ? my.activeRaids
             .map((raid: string) => normalizeRaidName(raid))
             .filter((raid: string, index: number, arr: string[]) => arr.indexOf(raid) === index)
             .filter((raid: string) =>
-              friend.remainingRaids.some((fr: string) => normalizeRaidName(fr) === raid)
+              friend.activeRaids.some((fr: string) => normalizeRaidName(fr) === raid)
             )
           : [];
 
@@ -1590,13 +1695,15 @@ export default function TodoTracker() {
       }
     };
 
-    const myScheduleCandidates = myCandidates.map((me) => ({
+    const myScheduleCandidates: FriendCandidate[] = myCandidates.map((me) => ({
       key: me.key,
       tableName: me.tableName,
       name: me.name,
       ilvl: me.ilvl,
       power: me.power,
       remainingRaids: me.remainingRaids,
+      allRaids: me.allRaids,
+      activeRaids: me.activeRaids,
     }));
 
     const myFriendCode = String(state.profile.friendCode ?? "").trim();
@@ -1686,13 +1793,11 @@ export default function TodoTracker() {
 
     function getScheduleAssignableCandidates(
       schedule: SharedWeeklySchedule
-    ): Array<FriendCandidate | (typeof myScheduleCandidates)[number]> {
-      // 내가 일정표 대상자(target)라면 -> 내 캐릭을 선택해야 함
+    ): FriendCandidate[] {
       if (schedule.targetFriendCode === myFriendCode) {
         return myScheduleCandidates;
       }
 
-      // 내가 일정표 소유자(owner)라면 -> 상대(선택된 친구) 캐릭을 선택해야 함
       return friendCandidates;
     }
 
@@ -1709,7 +1814,7 @@ export default function TodoTracker() {
         .map((raid: string) => normalizeRaidName(raid))
         .filter((raid: string, index: number, arr: string[]) => arr.indexOf(raid) === index)
         .filter((raid: string) =>
-          friend.remainingRaids.some((fr: string) => normalizeRaidName(fr) === raid)
+          friend.activeRaids.some((fr: string) => normalizeRaidName(fr) === raid)
         );
     }
 
@@ -1824,11 +1929,11 @@ export default function TodoTracker() {
       my: MyCandidate,
       friend: FriendCandidate
     ): string[] {
-      return my.remainingRaids
+      return my.activeRaids
         .map((raid: string) => normalizeRaidName(raid))
         .filter((raid: string, index: number, arr: string[]) => arr.indexOf(raid) === index)
         .filter((raid: string) =>
-          friend.remainingRaids.some((fr: string) => normalizeRaidName(fr) === raid)
+          friend.activeRaids.some((fr: string) => normalizeRaidName(fr) === raid)
         );
     }
 
@@ -1836,12 +1941,12 @@ export default function TodoTracker() {
     function autoBuildRecommendedPairs(): ManualKkanbuPair[] {
       const myPool: MyCandidate[] = myCandidates.map((x) => ({
         ...x,
-        remainingRaids: [...x.remainingRaids],
+        remainingRaids: [...x.activeRaids],
       }));
 
       const friendPool: FriendCandidate[] = friendCandidates.map((x) => ({
         ...x,
-        remainingRaids: [...x.remainingRaids],
+        remainingRaids: [...x.activeRaids],
       }));
 
       const result: ManualKkanbuPair[] = [];
@@ -1950,7 +2055,7 @@ export default function TodoTracker() {
       .map((me) => {
         const used = usedRaidsByMyKey.get(me.key) ?? new Set<string>();
 
-        const remainingRaids = me.remainingRaids.filter(
+        const remainingRaids = me.activeRaids.filter(
           (raid: string) => !used.has(normalizeRaidName(raid))
         );
 
@@ -1965,7 +2070,7 @@ export default function TodoTracker() {
       .map((fr) => {
         const used = usedRaidsByFriendKey.get(fr.key) ?? new Set<string>();
 
-        const remainingRaids = fr.remainingRaids.filter(
+        const remainingRaids = fr.activeRaids.filter(
           (raid: string) => !used.has(normalizeRaidName(raid))
         );
 
@@ -2006,11 +2111,11 @@ export default function TodoTracker() {
 
           const commonRaids: string[] =
             my && friend
-              ? my.remainingRaids
+              ? my.activeRaids
                 .map((r: string) => normalizeRaidName(r))
                 .filter((r: string, idx: number, arr: string[]) => arr.indexOf(r) === idx)
                 .filter((r: string) =>
-                  friend.remainingRaids.some((fr: string) => normalizeRaidName(fr) === r)
+                  friend.activeRaids.some((fr: string) => normalizeRaidName(fr) === r)
                 )
               : [];
 
@@ -2059,8 +2164,11 @@ export default function TodoTracker() {
       }
 
       const payload = {
-        title: newScheduleTitle.trim() || "일정표",
-        weekStartDate: getCurrentWeekStartDate(),
+        title:
+          schedulePlanningMode === "NEXT_RESET"
+            ? `${(newScheduleTitle.trim() || "일정표")} (다음 주)`
+            : (newScheduleTitle.trim() || "일정표"),
+        weekStartDate: getScheduleWeekStartDate(schedulePlanningMode),
         items: [],
       };
 
@@ -2162,7 +2270,7 @@ export default function TodoTracker() {
                     .map((raid) => normalizeRaidName(raid))
                 );
 
-                const availableRaids = selectedMe.remainingRaids.filter(
+                const availableRaids = selectedMe.activeRaids.filter(
                   (raid) => !scheduledRaidSet.has(normalizeRaidName(raid))
                 );
 
@@ -2216,7 +2324,7 @@ export default function TodoTracker() {
                       .map((raid) => normalizeRaidName(raid))
                   );
 
-                  const availableRaids = me.remainingRaids.filter(
+                  const availableRaids = me.activeRaids.filter(
                     (raid) => !scheduledRaidSet.has(normalizeRaidName(raid))
                   );
 
@@ -2328,7 +2436,7 @@ export default function TodoTracker() {
                           }}
                         >
                           {dayItems.map((item, index) => {
-                            const completion = getScheduleRaidCompletion(item);
+                            const completion = getScheduleRaidCompletion(schedule, item);
                             const displayedPowers = getDisplayedSchedulePowers(schedule, item);
                             const liveMyPower = displayedPowers.myPower;
                             const liveFriendPower = displayedPowers.friendPower;
@@ -2337,7 +2445,7 @@ export default function TodoTracker() {
                             return (
                               <div
                                 key={item.id}
-                                className={`weeklyScheduleItem ${dragScheduleItem?.itemId === item.id ? "dragging" : ""}`}
+                                className={`weeklyScheduleItem ${dragScheduleItem?.itemId === item.id ? "dragging" : ""} ${completion.isPast ? "is-past" : ""} ${completion.isFuture ? "is-future" : ""}`}
                                 draggable
                                 onDragStart={() => {
                                   setDragScheduleItem({
@@ -2374,7 +2482,7 @@ export default function TodoTracker() {
                                   <div className="weeklySchedulePairBlock">
                                     <div className="weeklyScheduleMyCharRow">
                                       <div
-                                        className={`weeklyScheduleMyChar ${completion.allCleared ? "is-cleared" : ""}`}
+                                        className={`weeklyScheduleMyChar ${completion.allCleared ? "is-cleared" : ""} ${completion.isPast ? "is-past" : ""}`}
                                       >
                                         {item.friendCharName
                                           ? `${item.myCharName} - ${item.friendCharName}`
@@ -2389,7 +2497,7 @@ export default function TodoTracker() {
                                     </div>
 
                                     <div
-                                      className={`weeklySchedulePower ${completion.allCleared ? "is-cleared" : ""}`}
+                                      className={`weeklySchedulePower ${completion.allCleared ? "is-cleared" : ""} ${completion.isPast ? "is-past" : ""}`}
                                     >
                                       전투력{" "}
                                       {liveFriendPower != null
@@ -2436,7 +2544,7 @@ export default function TodoTracker() {
                                     completion.clearedMap.map((raidItem, raidIndex) => (
                                       <React.Fragment key={`${item.id}_${raidItem.raid}`}>
                                         <span
-                                          className={`weeklyScheduleRaidText ${raidItem.cleared ? "is-cleared" : ""}`}
+                                          className={`weeklyScheduleRaidText ${raidItem.cleared ? "is-cleared" : ""} ${completion.isPast ? "is-past" : ""}`}
                                         >
                                           {raidItem.raid}
                                         </span>
@@ -2573,6 +2681,16 @@ export default function TodoTracker() {
             >
               추천 매칭
             </button>
+            <select
+              className="friendSelect manualKkanbuDaySelect"
+              value={schedulePlanningMode}
+              onChange={(e) =>
+                setSchedulePlanningMode(e.target.value as "CURRENT" | "NEXT_RESET")
+              }
+            >
+              <option value="CURRENT">현재 주 기준</option>
+              <option value="NEXT_RESET">다음 주 초기화 기준</option>
+            </select>
 
             <select
               className="friendSelect manualKkanbuDaySelect"
