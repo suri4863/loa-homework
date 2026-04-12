@@ -860,24 +860,41 @@ export function normalizeFriendRaidSnapshotAfterWeeklyReset(
   dailyResetHour: number
 ): RaidLeftSnapshotPayload {
   const latestWeeklyResetAt = getLatestWeeklyResetTime(weeklyResetWeekday, dailyResetHour);
+  const isStaleAfterWeeklyReset = (snapshot.exportedAt ?? 0) < latestWeeklyResetAt;
 
-  // 리셋 이전 스냅샷이어도 친구가 실제 업로드한 remainingRaids는 유지
-  // 여기서 강제로 allRaids로 복구하면 체크한 캐릭터가 다시 전부 남은 것처럼 보임
   return {
     ...snapshot,
-    isStaleAfterWeeklyReset: (snapshot.exportedAt ?? 0) < latestWeeklyResetAt,
+    isStaleAfterWeeklyReset,
     data: Array.isArray(snapshot.data)
-      ? snapshot.data.map((row) => ({
-        ...row,
-        allRaids: Array.isArray((row as any).allRaids)
+      ? snapshot.data.map((row) => {
+        const allRaids = Array.isArray((row as any).allRaids)
           ? (row as any).allRaids.filter(Boolean)
-          : [],
-        remainingRaids: Array.isArray(row.remainingRaids)
+          : [];
+
+        const remainingRaids = Array.isArray(row.remainingRaids)
           ? row.remainingRaids.filter(Boolean)
-          : [],
-        clearedCount: Number(row.clearedCount ?? 0),
-        totalCount: Number(row.totalCount ?? 0),
-      }))
+          : [];
+
+        // 주간 초기화 이후인데 친구 스냅샷이 예전 것이면
+        // 다음 주 기준으로는 전부 다시 남은 상태로 간주
+        if (isStaleAfterWeeklyReset) {
+          return {
+            ...row,
+            allRaids,
+            remainingRaids: allRaids,
+            clearedCount: 0,
+            totalCount: allRaids.length,
+          };
+        }
+
+        return {
+          ...row,
+          allRaids,
+          remainingRaids,
+          clearedCount: Number(row.clearedCount ?? 0),
+          totalCount: Number(row.totalCount ?? remainingRaids.length),
+        };
+      })
       : [],
   } as RaidLeftSnapshotPayload & { isStaleAfterWeeklyReset?: boolean };
 }
