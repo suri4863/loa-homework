@@ -1406,9 +1406,73 @@ export default function TodoTracker() {
       state.reset?.dailyResetHour ?? 6
     ) as typeof rawSnap & { isStaleAfterWeeklyReset?: boolean };
 
-    const rows = (snap.data as any[]).filter((r) => r && r.charName);
-
     const isStaleFriendSnapshot = Boolean(snap.isStaleAfterWeeklyReset);
+
+    type FriendSnapshotRow = {
+      charName: string;
+      charItemLevel?: string;
+      charPower?: string;
+      tableName?: string;
+      ilvl?: number;
+      allRaids: string[];
+      remainingRaids: string[];
+      clearedCount: number;
+      totalCount: number;
+    };
+
+    const rows: FriendSnapshotRow[] = (Array.isArray(snap.data) ? snap.data : [])
+      .map((row: any): FriendSnapshotRow => {
+        const normalizedAllRaids = Array.isArray(row?.allRaids)
+          ? row.allRaids.filter(Boolean)
+          : [];
+
+        const normalizedRemainingRaids = Array.isArray(row?.remainingRaids)
+          ? row.remainingRaids.filter(Boolean)
+          : [];
+
+        if (schedulePlanningMode === "NEXT_RESET" && isStaleFriendSnapshot) {
+          return {
+            ...row,
+            charName: String(row?.charName ?? ""),
+            charItemLevel: row?.charItemLevel ? String(row.charItemLevel) : undefined,
+            charPower: row?.charPower ? String(row.charPower) : undefined,
+            tableName: row?.tableName ? String(row.tableName) : "",
+            ilvl: typeof row?.ilvl === "number" ? row.ilvl : 0,
+            allRaids: normalizedAllRaids,
+            remainingRaids:
+              normalizedAllRaids.length > 0
+                ? [...normalizedAllRaids]
+                : [...normalizedRemainingRaids],
+            clearedCount: 0,
+            totalCount:
+              normalizedAllRaids.length > 0
+                ? normalizedAllRaids.length
+                : Number(row?.totalCount ?? normalizedRemainingRaids.length),
+          };
+        }
+
+        return {
+          ...row,
+          charName: String(row?.charName ?? ""),
+          charItemLevel: row?.charItemLevel ? String(row.charItemLevel) : undefined,
+          charPower: row?.charPower ? String(row.charPower) : undefined,
+          tableName: row?.tableName ? String(row.tableName) : "",
+          ilvl: typeof row?.ilvl === "number" ? row.ilvl : 0,
+          allRaids: normalizedAllRaids,
+          remainingRaids: normalizedRemainingRaids,
+          clearedCount: Number(row?.clearedCount ?? 0),
+          totalCount: Number(row?.totalCount ?? normalizedRemainingRaids.length),
+        };
+      })
+      .filter((r: FriendSnapshotRow) => Boolean(r && r.charName));
+
+    const friendTableNames: string[] = Array.from(
+      new Set<string>(
+        rows
+          .map((row: FriendSnapshotRow) => String(row.tableName ?? "").trim())
+          .filter((name: string) => Boolean(name))
+      )
+    );
 
     const levelRange = {
       min: Number(kkanbuLevelMin) || 0,
@@ -1493,7 +1557,7 @@ export default function TodoTracker() {
             };
           })
           .filter(
-            (x) =>
+            (x: MyCandidate) =>
               x.ilvl >= levelRange.min &&
               x.ilvl <= levelRange.max &&
               x.activeRaids.length > 0
@@ -1580,10 +1644,16 @@ export default function TodoTracker() {
             ? row.allRaids.map((raid: string) => normalizeRaidName(raid))
             : normalizedRemainingRaids;
 
+        // NEXT_RESET + 오래된 친구 스냅샷이면
+        // friend remaining도 전체 초기화 상태로 간주
         const allRaids = normalizedAllRaids;
-        const remainingRaids = normalizedRemainingRaids.length > 0
-          ? normalizedRemainingRaids
-          : normalizedAllRaids;
+
+        const remainingRaids =
+          schedulePlanningMode === "NEXT_RESET" && isStaleFriendSnapshot
+            ? normalizedAllRaids
+            : normalizedRemainingRaids.length > 0
+              ? normalizedRemainingRaids
+              : normalizedAllRaids;
 
         const activeRaids =
           schedulePlanningMode === "NEXT_RESET" ? allRaids : remainingRaids;
@@ -1600,7 +1670,7 @@ export default function TodoTracker() {
         };
       })
       .filter(
-        (x) =>
+        (x: FriendCandidate) =>
           x.ilvl >= levelRange.min &&
           x.ilvl <= levelRange.max &&
           x.activeRaids.length > 0
@@ -1609,9 +1679,9 @@ export default function TodoTracker() {
     const hasNoFriendCandidates = friendCandidates.length === 0;
     const hasNoMyCandidates = myCandidates.length === 0;
 
-    const pairResults = manualKkanbuPairs.map((pair, idx) => {
-      const my = myCandidates.find((x) => x.key === pair.myKey) ?? null;
-      const friend = friendCandidates.find((x) => x.key === pair.friendKey) ?? null;
+    const pairResults = manualKkanbuPairs.map((pair: ManualKkanbuPair, idx: number) => {
+      const my = myCandidates.find((x: MyCandidate) => x.key === pair.myKey) ?? null;
+      const friend = friendCandidates.find((x: FriendCandidate) => x.key === pair.friendKey) ?? null;
 
       const commonRaids: string[] =
         my && friend
@@ -1834,17 +1904,16 @@ export default function TodoTracker() {
       const sourceCandidates = getScheduleAssignableCandidates(schedule);
 
       return sourceCandidates
-        .map((fr) => {
-          // 같은 친구 캐릭이 다른 카드들에서 이미 사용한 레이드 목록
-          const usedRaidSet = new Set(
+        .map((fr: FriendCandidate) => {
+          const usedRaidSet = new Set<string>(
             schedule.items
-              .filter((x) => x.id !== item.id && String(x.friendCharKey ?? "") === fr.key)
-              .flatMap((x) => x.raidNames ?? [])
-              .map((raid) => normalizeRaidName(raid))
+              .filter((x: SharedWeeklyScheduleItem) => x.id !== item.id && String(x.friendCharKey ?? "") === fr.key)
+              .flatMap((x: SharedWeeklyScheduleItem) => x.raidNames ?? [])
+              .map((raid: string) => normalizeRaidName(raid))
           );
 
           const commonRaids = getCommonRaidsForScheduleItem(item, fr).filter(
-            (raid) => !usedRaidSet.has(normalizeRaidName(raid))
+            (raid: string) => !usedRaidSet.has(normalizeRaidName(raid))
           );
 
           return {
@@ -1852,11 +1921,8 @@ export default function TodoTracker() {
             commonRaids,
           };
         })
-        .filter((fr) => {
-          // 현재 카드에 이미 선택된 값은 그대로 보이게 허용
+        .filter((fr: FriendCandidate & { commonRaids: string[] }) => {
           if (fr.key === currentSelectedKey) return true;
-
-          // 공통 레이드가 하나라도 남아있을 때만 후보 표시
           return fr.commonRaids.length > 0;
         });
     }
@@ -2603,7 +2669,7 @@ export default function TodoTracker() {
           <div className="manualKkanbuLabel" style={{ marginBottom: 6 }}>친구 표 제외</div>
 
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {[...new Set(rows.map((row: any) => String(row.tableName ?? "").trim()).filter(Boolean))].map((tableName) => (
+            {friendTableNames.map((tableName: string) => (
               <label
                 key={tableName}
                 style={{
@@ -2822,28 +2888,28 @@ export default function TodoTracker() {
               }
 
               const selectableMy = myCandidates
-                .map((me) => {
+                .map((me: MyCandidate) => {
                   const used = usedMy.get(me.key) ?? new Set<string>();
                   return {
                     ...me,
-                    remainingRaids: me.remainingRaids.filter(
+                    remainingRaids: me.activeRaids.filter(
                       (raid: string) => !used.has(normalizeRaidName(raid))
                     ),
                   };
                 })
-                .filter((me) => me.remainingRaids.length > 0);
+                .filter((me: MyCandidate & { remainingRaids: string[] }) => me.remainingRaids.length > 0);
 
               const selectableFriend = friendCandidates
-                .map((fr) => {
+                .map((fr: FriendCandidate) => {
                   const used = usedFriend.get(fr.key) ?? new Set<string>();
                   return {
                     ...fr,
-                    remainingRaids: fr.remainingRaids.filter(
+                    remainingRaids: fr.activeRaids.filter(
                       (raid: string) => !used.has(normalizeRaidName(raid))
                     ),
                   };
                 })
-                .filter((fr) => fr.remainingRaids.length > 0);
+                .filter((fr: FriendCandidate & { remainingRaids: string[] }) => fr.remainingRaids.length > 0);
 
               return { selectableMy, selectableFriend };
             };

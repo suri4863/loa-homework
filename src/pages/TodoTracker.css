@@ -1641,14 +1641,12 @@ html[data-theme="dark"] .rest-input {
   color: var(--text);
 }
 
-/* ✅ 남은 레이드 자동 업로드 UI (정식 스타일은 하단 friendRow 섹션에 있음) */
+/* 남은 레이드 자동 업로드 UI (정식 스타일은 하단 friendRow 섹션에 있음) */
 .friendAutoToggle {
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
-
-.friendAutoInterval {}
 
 .friendAutoLast {
   white-space: nowrap;
