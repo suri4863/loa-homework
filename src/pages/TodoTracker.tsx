@@ -1422,19 +1422,32 @@ export default function TodoTracker() {
 
     const rows: FriendSnapshotRow[] = (Array.isArray(snap.data) ? snap.data : [])
       .map((row: any): FriendSnapshotRow => {
+        const rowIlvl =
+          typeof row?.ilvl === "number"
+            ? row.ilvl
+            : Number(row?.charItemLevel ?? 0);
+
         const normalizedAllRaids = Array.isArray(row?.allRaids)
-          ? row.allRaids.filter(Boolean)
+          ? row.allRaids.map((raid: string) => normalizeRaidName(raid)).filter(Boolean)
           : [];
 
         const normalizedRemainingRaids = Array.isArray(row?.remainingRaids)
-          ? row.remainingRaids.filter(Boolean)
+          ? row.remainingRaids.map((raid: string) => normalizeRaidName(raid)).filter(Boolean)
           : [];
 
-        const nextRemainingRaids =
+        const baseFallbackRaids =
+          normalizedAllRaids.length > 0 ? normalizedAllRaids : normalizedRemainingRaids;
+
+        const nextResetRaids = getFriendNextResetDefaultRaids(rowIlvl, baseFallbackRaids);
+
+        const finalAllRaids =
           schedulePlanningMode === "NEXT_RESET"
-            ? (normalizedAllRaids.length > 0
-              ? [...normalizedAllRaids]
-              : [...normalizedRemainingRaids])
+            ? nextResetRaids
+            : baseFallbackRaids;
+
+        const finalRemainingRaids =
+          schedulePlanningMode === "NEXT_RESET"
+            ? [...nextResetRaids]
             : [...normalizedRemainingRaids];
 
         const nextClearedCount =
@@ -1443,9 +1456,9 @@ export default function TodoTracker() {
             : Number(row?.clearedCount ?? 0);
 
         const nextTotalCount =
-          normalizedAllRaids.length > 0
-            ? normalizedAllRaids.length
-            : Number(row?.totalCount ?? normalizedRemainingRaids.length);
+          schedulePlanningMode === "NEXT_RESET"
+            ? finalAllRaids.length
+            : Number(row?.totalCount ?? finalRemainingRaids.length);
 
         return {
           ...row,
@@ -1453,9 +1466,9 @@ export default function TodoTracker() {
           charItemLevel: row?.charItemLevel ? String(row.charItemLevel) : undefined,
           charPower: row?.charPower ? String(row.charPower) : undefined,
           tableName: row?.tableName ? String(row.tableName) : "",
-          ilvl: typeof row?.ilvl === "number" ? row.ilvl : 0,
-          allRaids: normalizedAllRaids,
-          remainingRaids: nextRemainingRaids,
+          ilvl: rowIlvl,
+          allRaids: finalAllRaids,
+          remainingRaids: finalRemainingRaids,
           clearedCount: nextClearedCount,
           totalCount: nextTotalCount,
         };
@@ -1483,6 +1496,18 @@ export default function TodoTracker() {
         .trim()
         .replace(/\s*(노말|하드|나이트메어|1단계|2단계|3단계)\s*$/g, "");
 
+    function getFriendNextResetDefaultRaids(ilvl: number, fallbackRaids: string[]): string[] {
+      const pick =
+        Number.isFinite(ilvl) && ilvl > 0
+          ? getDefaultWeeklyRaidPick(ilvl)
+          : { raids: [] as string[] };
+
+      const defaultRaids = Array.isArray(pick.raids)
+        ? pick.raids.map((raid: string) => normalizeRaidName(raid)).filter(Boolean)
+        : [];
+
+      return defaultRaids.length > 0 ? defaultRaids : fallbackRaids;
+    }
 
     const weeklyRaidTasks = state.tasks.filter(
       (t) =>
@@ -1621,6 +1646,7 @@ export default function TodoTracker() {
         allScheduled,
       };
     }
+    
     const friendCandidates = rows
       .filter((row: any) => {
         const tableName = String(row.tableName ?? "").trim();
@@ -1640,15 +1666,19 @@ export default function TodoTracker() {
             ? row.allRaids.map((raid: string) => normalizeRaidName(raid))
             : normalizedRemainingRaids;
 
-        // NEXT_RESET + 오래된 친구 스냅샷이면
-        // friend remaining도 전체 초기화 상태로 간주
-        const allRaids = normalizedAllRaids;
+        const computedNextResetRaids = getFriendNextResetDefaultRaids(
+          ilvl,
+          normalizedAllRaids.length > 0 ? normalizedAllRaids : normalizedRemainingRaids
+        );
+
+        const allRaids =
+          schedulePlanningMode === "NEXT_RESET"
+            ? computedNextResetRaids
+            : normalizedAllRaids;
 
         const remainingRaids =
           schedulePlanningMode === "NEXT_RESET"
-            ? normalizedAllRaids.length > 0
-              ? normalizedAllRaids
-              : normalizedRemainingRaids
+            ? computedNextResetRaids
             : normalizedRemainingRaids.length > 0
               ? normalizedRemainingRaids
               : normalizedAllRaids;
