@@ -1504,18 +1504,20 @@ export default function TodoTracker() {
     const makeFriendRowKey = (row: any) =>
       `${String(row?.tableName ?? "").trim()}|${String(row?.charName ?? "").trim()}`;
 
-    // 1순위: 스냅샷(allRaids 신뢰)
-    for (const row of snapRows) {
+    // 다음 주 기준은 "계획(plan)"이 더 신뢰도 높음
+    // 1순위: 친구가 올린 다음 주 레이드 계획
+    for (const row of planRows) {
       nextResetRowMap.set(makeFriendRowKey(row), row);
     }
 
-    // 2순위: 스냅샷에 없는 캐릭만 plan으로 보충
-    for (const row of planRows) {
+    // 2순위: plan에 없는 캐릭만 스냅샷으로 보충
+    for (const row of snapRows) {
       const key = makeFriendRowKey(row);
       if (!nextResetRowMap.has(key)) {
         nextResetRowMap.set(key, row);
       }
     }
+
     const nextResetSourceRows = Array.from(nextResetRowMap.values());
 
     const rows: FriendSnapshotRow[] =
