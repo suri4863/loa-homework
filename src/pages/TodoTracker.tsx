@@ -1496,12 +1496,27 @@ export default function TodoTracker() {
       return defaultRaids;
     }
 
-    const nextResetSourceRows =
-      Array.isArray(rawPlan?.data) && rawPlan.data.length > 0
-        ? rawPlan.data
-        : Array.isArray(rawSnap?.data)
-          ? rawSnap.data
-          : [];
+    const nextResetRowMap = new Map<string, any>();
+
+    const snapRows = Array.isArray(rawSnap?.data) ? rawSnap.data : [];
+    const planRows = Array.isArray(rawPlan?.data) ? rawPlan.data : [];
+
+    const makeFriendRowKey = (row: any) =>
+      `${String(row?.tableName ?? "").trim()}|${String(row?.charName ?? "").trim()}`;
+
+    // 1순위: 스냅샷(allRaids 신뢰)
+    for (const row of snapRows) {
+      nextResetRowMap.set(makeFriendRowKey(row), row);
+    }
+
+    // 2순위: 스냅샷에 없는 캐릭만 plan으로 보충
+    for (const row of planRows) {
+      const key = makeFriendRowKey(row);
+      if (!nextResetRowMap.has(key)) {
+        nextResetRowMap.set(key, row);
+      }
+    }
+    const nextResetSourceRows = Array.from(nextResetRowMap.values());
 
     const rows: FriendSnapshotRow[] =
       schedulePlanningMode === "NEXT_RESET"
