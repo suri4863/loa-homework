@@ -772,7 +772,7 @@ export function exportRaidLeftSnapshot(
       const remainingRaids = remaining.map((r) => withDiff(r, ilvl));
 
 
-      if (remainingRaids.length === 0) continue;
+      //if (remainingRaids.length === 0) continue;
 
       rows.push({
         charName: ch.name,
