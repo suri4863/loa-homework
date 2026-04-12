@@ -1420,6 +1420,25 @@ export default function TodoTracker() {
       totalCount: number;
     };
 
+    const normalizeRaidName = (name: string) =>
+      String(name ?? "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .replace(/\s*(노말|하드|나이트메어|1단계|2단계|3단계)\s*$/g, "");
+
+    function getFriendNextResetDefaultRaids(ilvl: number, fallbackRaids: string[]): string[] {
+      const pick =
+        Number.isFinite(ilvl) && ilvl > 0
+          ? getDefaultWeeklyRaidPick(ilvl)
+          : { raids: [] as string[] };
+
+      const defaultRaids = Array.isArray(pick.raids)
+        ? pick.raids.map((raid: string) => normalizeRaidName(raid)).filter(Boolean)
+        : [];
+
+      return defaultRaids.length > 0 ? defaultRaids : fallbackRaids;
+    }
+
     const rows: FriendSnapshotRow[] = (Array.isArray(snap.data) ? snap.data : [])
       .map((row: any): FriendSnapshotRow => {
         const rowIlvl =
@@ -1489,25 +1508,6 @@ export default function TodoTracker() {
     };
 
     const avgTarget = Number(String(kkanbuAvgPowerTarget ?? "").replace(/[^\d.]/g, "")) || 0;
-
-    const normalizeRaidName = (name: string) =>
-      String(name ?? "")
-        .replace(/\s+/g, " ")
-        .trim()
-        .replace(/\s*(노말|하드|나이트메어|1단계|2단계|3단계)\s*$/g, "");
-
-    function getFriendNextResetDefaultRaids(ilvl: number, fallbackRaids: string[]): string[] {
-      const pick =
-        Number.isFinite(ilvl) && ilvl > 0
-          ? getDefaultWeeklyRaidPick(ilvl)
-          : { raids: [] as string[] };
-
-      const defaultRaids = Array.isArray(pick.raids)
-        ? pick.raids.map((raid: string) => normalizeRaidName(raid)).filter(Boolean)
-        : [];
-
-      return defaultRaids.length > 0 ? defaultRaids : fallbackRaids;
-    }
 
     const weeklyRaidTasks = state.tasks.filter(
       (t) =>
@@ -1646,7 +1646,7 @@ export default function TodoTracker() {
         allScheduled,
       };
     }
-    
+
     const friendCandidates = rows
       .filter((row: any) => {
         const tableName = String(row.tableName ?? "").trim();
