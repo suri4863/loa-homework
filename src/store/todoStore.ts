@@ -210,6 +210,63 @@ function parseIlvl(v: any): number {
   return Number.isFinite(n) ? n : NaN;
 }
 
+const WEEKLY_RAID_MIN_ILVL: Record<string, number> = {
+  "1막": 1660,
+  "2막": 1670,
+  "3막": 1680,
+  "4막": 1700,
+  "종막": 1710,
+  "세르카": 1710,
+  "지평의 성당": 1700,
+};
+
+function normalizeWeeklyRaidTitle(s: string) {
+  return String(s ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/\s*(노말|하드|나이트메어|1단계|2단계|3단계)\s*$/g, "");
+}
+
+function getEligibleWeeklyRaidTitles(
+  weeklyRaidTasks: TaskRow[],
+  ilvl: number
+): string[] {
+  return weeklyRaidTasks
+    .map((task) => normalizeWeeklyRaidTitle(String(task.title ?? "")))
+    .filter(Boolean)
+    .filter((raid, index, arr) => arr.indexOf(raid) === index)
+    .filter((raid) => {
+      const minIlvl = WEEKLY_RAID_MIN_ILVL[raid];
+      if (!Number.isFinite(minIlvl)) return true;
+      return ilvl >= minIlvl;
+    });
+}
+
+function getSelectedWeeklyRaidTitles(
+  weeklyRaidTasks: TaskRow[],
+  tableId: string,
+  charId: string,
+  ilvl: number,
+  weeklyRaidPickByChar?: Record<
+    string,
+    { raids: string[]; goldRaids?: string[]; diffs?: Record<string, string> }
+  >
+): string[] {
+  const charKey = `${tableId}:${charId}`;
+  const pick = weeklyRaidPickByChar?.[charKey];
+
+  const pickedRaids =
+    Array.isArray(pick?.raids) && pick.raids.length > 0
+      ? pick.raids.map((x) => normalizeWeeklyRaidTitle(x)).filter(Boolean)
+      : [];
+
+  if (pickedRaids.length > 0) {
+    return pickedRaids.filter((raid, index, arr) => arr.indexOf(raid) === index);
+  }
+
+  return getEligibleWeeklyRaidTitles(weeklyRaidTasks, ilvl);
+}
+
 function withDiff(raid: string, ilvl: number): string {
   const name = String(raid ?? "").trim();
 
@@ -305,21 +362,16 @@ export function createTask(input: {
 export function exportFriendRaidPlan(
   state: TodoState,
   tableId?: string | "ALL",
-  weeklyRaidPickByChar?: Record<string, { raids: string[]; goldRaids?: string[]; diffs?: Record<string, string> }>
+  weeklyRaidPickByChar?: Record<
+    string,
+    { raids: string[]; goldRaids?: string[]; diffs?: Record<string, string> }
+  >
 ): string {
   if (state.profile?.shareMode === "PRIVATE") throw new Error("PRIVATE_MODE");
 
   const weeklyRaidTasks = state.tasks.filter(
     (t) => t.period === "WEEKLY" && t.section === "주간 레이드" && t.cellType === "CHECK"
   );
-
-  const weeklyCharKey = (tableId: string, charId: string) => `${tableId}:${charId}`;
-
-  const normalizeRaidName = (s: string) =>
-    String(s ?? "")
-      .trim()
-      .replace(/\s+/g, " ")
-      .replace(/\s*(노말|하드|나이트메어)\s*$/g, "");
 
   const isAll = !tableId || tableId === "ALL";
   const tables = isAll ? state.tables : [getTableById(state, tableId)];
@@ -329,17 +381,13 @@ export function exportFriendRaidPlan(
     for (const ch of table.characters) {
       const ilvl = parseIlvl(ch.itemLevel);
 
-      const charKey = weeklyCharKey(table.id, ch.id);
-      const pick = weeklyRaidPickByChar?.[charKey];
-
-      const fallbackRaidTitles = weeklyRaidTasks
-        .map((task) => normalizeRaidName(String(task.title ?? "")))
-        .filter(Boolean);
-
-      const selectedRaidTitles =
-        Array.isArray(pick?.raids) && pick.raids.length > 0
-          ? pick.raids.map((x) => normalizeRaidName(x)).filter(Boolean)
-          : fallbackRaidTitles;
+      const selectedRaidTitles = getSelectedWeeklyRaidTitles(
+        weeklyRaidTasks,
+        table.id,
+        ch.id,
+        ilvl,
+        weeklyRaidPickByChar
+      );
 
       if (!selectedRaidTitles.length) continue;
 
@@ -350,7 +398,7 @@ export function exportFriendRaidPlan(
         charRole: ch.role || "DEALER",
         tableName: table.name,
         ilvl,
-        allRaids: selectedRaidTitles.map((r) => withDiff(r, ilvl)),
+        allRaids: selectedRaidTitles.map((raid) => withDiff(raid, ilvl)),
       });
     }
   }
@@ -826,7 +874,10 @@ export function exportStateToJson(state: TodoState): string {
 export function exportRaidLeftSnapshot(
   state: TodoState,
   tableId?: string | "ALL",
-  weeklyRaidPickByChar?: Record<string, { raids: string[]; goldRaids?: string[]; diffs?: Record<string, string> }>
+  weeklyRaidPickByChar?: Record<
+    string,
+    { raids: string[]; goldRaids?: string[]; diffs?: Record<string, string> }
+  >
 ): string {
   if (state.profile?.shareMode === "PRIVATE") throw new Error("PRIVATE_MODE");
 
@@ -836,38 +887,24 @@ export function exportRaidLeftSnapshot(
 
   const weeklyRaidTitleToId = new Map<string, string>();
   for (const task of weeklyRaidTasks) {
-    weeklyRaidTitleToId.set(String(task.title ?? "").trim(), task.id);
+    weeklyRaidTitleToId.set(normalizeWeeklyRaidTitle(String(task.title ?? "")), task.id);
   }
-
-  const weeklyCharKey = (tableId: string, charId: string) => `${tableId}:${charId}`;
-
-  const normalizeRaidName = (s: string) =>
-    String(s ?? "")
-      .trim()
-      .replace(/\s+/g, " ")
-      .replace(/\s*(노말|하드|나이트메어)\s*$/g, "");
 
   const isAll = !tableId || tableId === "ALL";
   const tables = isAll ? state.tables : [getTableById(state, tableId)];
-  const rows = [];
-
+  const rows: RaidLeftSnapshotPayload["data"] = [];
 
   for (const table of tables) {
     for (const ch of table.characters) {
       const ilvl = parseIlvl(ch.itemLevel);
 
-      const charKey = weeklyCharKey(table.id, ch.id);
-      const pick = weeklyRaidPickByChar?.[charKey];
-
-      // 업로드 시점에 weeklyRaidPick이 아직 없으면,
-      // 현재 주간 레이드 task 제목들을 기본 후보로 사용
-      const fallbackRaidTitles = weeklyRaidTasks
-        .map((task) => normalizeRaidName(String(task.title ?? "")))
-        .filter(Boolean);
-
-      const selectedRaidTitles = Array.isArray(pick?.raids) && pick.raids.length > 0
-        ? pick.raids.map((x) => normalizeRaidName(x)).filter(Boolean)
-        : fallbackRaidTitles;
+      const selectedRaidTitles = getSelectedWeeklyRaidTitles(
+        weeklyRaidTasks,
+        table.id,
+        ch.id,
+        ilvl,
+        weeklyRaidPickByChar
+      );
 
       if (!selectedRaidTitles.length) continue;
 
@@ -875,7 +912,7 @@ export function exportRaidLeftSnapshot(
       let clearedCount = 0;
 
       for (const raidTitle of selectedRaidTitles) {
-        const taskId = weeklyRaidTitleToId.get(raidTitle);
+        const taskId = weeklyRaidTitleToId.get(normalizeWeeklyRaidTitle(raidTitle));
         if (!taskId) continue;
 
         const v = table.values?.[taskId]?.[ch.id];
@@ -888,11 +925,6 @@ export function exportRaidLeftSnapshot(
         }
       }
 
-      const remainingRaids = remaining.map((r) => withDiff(r, ilvl));
-
-
-      //if (remainingRaids.length === 0) continue;
-
       rows.push({
         charName: ch.name,
         charItemLevel: ch.itemLevel || "",
@@ -900,8 +932,8 @@ export function exportRaidLeftSnapshot(
         charRole: ch.role || "DEALER",
         tableName: table.name,
         ilvl,
-        allRaids: selectedRaidTitles.map((r) => withDiff(r, ilvl)),
-        remainingRaids,
+        allRaids: selectedRaidTitles.map((raid) => withDiff(raid, ilvl)),
+        remainingRaids: remaining.map((raid) => withDiff(raid, ilvl)),
         clearedCount,
         totalCount: selectedRaidTitles.length,
       });

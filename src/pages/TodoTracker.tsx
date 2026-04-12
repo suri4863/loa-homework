@@ -1173,14 +1173,9 @@ export default function TodoTracker() {
     try {
       const s = state;
 
-      const hasWeeklyPick =
-        weeklyRaidPickRef.current &&
-        Object.keys(weeklyRaidPickRef.current).length > 0;
-
-      if (source === "auto" && !hasWeeklyPick) {
-        setRaidSnapUploadState("idle");
-        return;
-      }
+      // 자동 업로드라도 weeklyRaidPick이 없다고 건너뛰지 않음.
+      // todoStore 쪽에서 weeklyRaidPick이 없으면 캐릭터 ilvl 기준 전체 주간 레이드 후보로 fallback 하므로
+      // 다음 주 계획용 데이터가 항상 서버에 올라가게 한다.
 
       const snapshotJson = exportRaidLeftSnapshot(s, "ALL", weeklyRaidPickRef.current);
 
@@ -1483,16 +1478,21 @@ export default function TodoTracker() {
         return normalizedFallbackRaids;
       }
 
-      const pick =
-        Number.isFinite(ilvl) && ilvl > 0
-          ? getDefaultWeeklyRaidPick(ilvl)
-          : { raids: [] as string[] };
+      const WEEKLY_RAID_MIN_ILVL: Record<string, number> = {
+        "1막": 1660,
+        "2막": 1670,
+        "3막": 1680,
+        "4막": 1700,
+        "종막": 1710,
+        "세르카": 1710,
+        "지평의 성당": 1700,
+      };
 
-      const defaultRaids = Array.isArray(pick.raids)
-        ? pick.raids.map((raid: string) => normalizeRaidName(raid)).filter(Boolean)
-        : [];
+      const fullEligibleRaids = Object.entries(WEEKLY_RAID_MIN_ILVL)
+        .filter(([, minIlvl]) => Number.isFinite(ilvl) && ilvl >= minIlvl)
+        .map(([raidName]) => normalizeRaidName(raidName));
 
-      return defaultRaids;
+      return fullEligibleRaids;
     }
 
     const nextResetRowMap = new Map<string, any>();
