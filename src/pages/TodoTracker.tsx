@@ -1446,7 +1446,7 @@ export default function TodoTracker() {
       schedulePlanningMode === "NEXT_RESET" && rawPlan?.shareMode === "PRIVATE";
 
     const snap =
-      schedulePlanningMode === "CURRENT"
+      rawSnap?.data
         ? (normalizeFriendRaidSnapshotAfterWeeklyReset(
           rawSnap,
           state.reset?.weeklyResetWeekday ?? 3,
@@ -1479,7 +1479,6 @@ export default function TodoTracker() {
         ? fallbackRaids.map((raid: string) => normalizeRaidName(raid)).filter(Boolean)
         : [];
 
-      // 친구 스냅샷에 allRaids가 있으면 그게 "다음 주 다시 살아날 레이드" 기준이어야 함
       if (normalizedFallbackRaids.length > 0) {
         return normalizedFallbackRaids;
       }
@@ -1498,20 +1497,21 @@ export default function TodoTracker() {
 
     const nextResetRowMap = new Map<string, any>();
 
-    const snapRows = Array.isArray(rawSnap?.data) ? rawSnap.data : [];
+    const normalizedSnapRows =
+      Array.isArray(snap?.data) ? snap.data : Array.isArray(rawSnap?.data) ? rawSnap.data : [];
+
     const planRows = Array.isArray(rawPlan?.data) ? rawPlan.data : [];
 
     const makeFriendRowKey = (row: any) =>
       `${String(row?.tableName ?? "").trim()}|${String(row?.charName ?? "").trim()}`;
 
-    // 다음 주 기준은 "계획(plan)"이 더 신뢰도 높음
-    // 1순위: 친구가 올린 다음 주 레이드 계획
+    // 1순위: 다음 주 계획(plan)
     for (const row of planRows) {
       nextResetRowMap.set(makeFriendRowKey(row), row);
     }
 
-    // 2순위: plan에 없는 캐릭만 스냅샷으로 보충
-    for (const row of snapRows) {
+    // 2순위: 정규화된 스냅샷
+    for (const row of normalizedSnapRows) {
       const key = makeFriendRowKey(row);
       if (!nextResetRowMap.has(key)) {
         nextResetRowMap.set(key, row);
@@ -1533,9 +1533,13 @@ export default function TodoTracker() {
               ? row.allRaids.map((raid: string) => normalizeRaidName(raid)).filter(Boolean)
               : [];
 
+            const normalizedRemainingRaids = Array.isArray(row?.remainingRaids)
+              ? row.remainingRaids.map((raid: string) => normalizeRaidName(raid)).filter(Boolean)
+              : [];
+
             const fallbackRaids = getFriendNextResetDefaultRaids(
               rowIlvl,
-              normalizedAllRaids
+              normalizedAllRaids.length > 0 ? normalizedAllRaids : normalizedRemainingRaids
             );
 
             return {
