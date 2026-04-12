@@ -1688,9 +1688,7 @@ export default function TodoTracker() {
         const remainingRaids =
           schedulePlanningMode === "NEXT_RESET"
             ? computedNextResetRaids
-            : normalizedRemainingRaids.length > 0
-              ? normalizedRemainingRaids
-              : normalizedAllRaids;
+            : normalizedRemainingRaids;
 
         const activeRaids =
           schedulePlanningMode === "NEXT_RESET" ? allRaids : remainingRaids;
