@@ -7105,13 +7105,14 @@ body.pip-dark .pip-select option{
                           setRaidLeftView("FRIEND");
 
                           try {
-                            await Promise.all([
-                              refreshFriendSnapshot(f.code),
-                              refreshFriendRaidPlan(f.code),
-                            ]);
+                            await refreshFriendSnapshot(f.code);
                           } catch (e) {
-                            console.error("친구 데이터 동기화 실패", e);
+                            console.error("친구 스냅샷 동기화 실패", e);
                           }
+
+                          refreshFriendRaidPlan(f.code).catch((e) => {
+                            console.error("친구 레이드 계획 동기화 실패", e);
+                          });
                         }}
                         role="button"
                         tabIndex={0}
@@ -7127,21 +7128,23 @@ body.pip-dark .pip-select option{
                               className="mini"
                               onClick={async (e) => {
                                 e.stopPropagation();
+
                                 try {
-                                  await Promise.all([
-                                    refreshFriendSnapshot(f.code),
-                                    refreshFriendRaidPlan(f.code),
-                                  ]);
+                                  await refreshFriendSnapshot(f.code);
+
+                                  refreshFriendRaidPlan(f.code).catch((e) => {
+                                    console.error("친구 레이드 계획 불러오기 실패", e);
+                                  });
 
                                   setSelectedFriendCode(f.code);
                                   setRaidLeftView("FRIEND");
-                                  alert("친구 남은 레이드 / 레이드 계획 불러오기 완료!");
+                                  alert("친구 남은 레이드 불러오기 완료!");
                                 } catch (e) {
-                                  console.error("불러오기 실패", e);
-                                  alert("불러오기 실패(비공개이거나 친구가 아직 업로드 안 했을 수 있어)");
+                                  console.error("친구 스냅샷 불러오기 실패", e);
+                                  alert("불러오기 실패(비공개이거나 친구가 아직 스냅샷 업로드를 안 했을 수 있어)");
                                 }
                               }}
-                              title="서버에서 최신 남은 레이드 스냅샷 / 다음 주 레이드 계획 불러오기"
+                              title="서버에서 최신 남은 레이드 스냅샷 불러오기"
                             >
                               불러오기
                             </button>
