@@ -55,6 +55,15 @@ export async function ensureSchema() {
   `;
 
   await sql`
+    create table if not exists friend_raid_plans (
+      friend_code text primary key references users(friend_code),
+      nickname text,
+      plan_json text not null,
+      updated_at timestamptz not null default now()
+    );
+  `;
+
+  await sql`
     create table if not exists shared_weekly_schedules (
       id bigserial primary key,
       owner_user_id bigint not null references users(id),
