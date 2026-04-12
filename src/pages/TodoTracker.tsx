@@ -41,6 +41,8 @@ import {
   exportRaidLeftSnapshot,
   importRaidLeftSnapshot,
   normalizeFriendRaidSnapshotAfterWeeklyReset,
+  exportFriendRaidPlan,
+  importFriendRaidPlan,
 } from "../store/todoStore";
 
 // ✅ 계정 요일별 콘텐츠 (06:00 리셋 기준)
@@ -235,13 +237,14 @@ export default function TodoTracker() {
 
 
   // =========================
-  // ✅ 친구/공유 (컴포넌트 스코프)
+  //  친구/공유 (컴포넌트 스코프)
   // =========================
   const [raidLeftView, setRaidLeftView] = useState<"ME" | "FRIEND">("ME");
   const [selectedFriendCode, setSelectedFriendCode] = useState<string>("");
   const [friendSnapshots, setFriendSnapshots] = useState<Record<string, any>>({});
+  const [friendRaidPlans, setFriendRaidPlans] = useState<Record<string, any>>({});
 
-  // ✅ 수동 깐부 조합 플래너
+  //  수동 깐부 조합 플래너
   const [kkanbuLevelMin, setKkanbuLevelMin] = useState<string>("1700");
   const [kkanbuLevelMax, setKkanbuLevelMax] = useState<string>("1800");
   const [kkanbuAvgPowerTarget, setKkanbuAvgPowerTarget] = useState<string>("3000");
@@ -1132,6 +1135,21 @@ export default function TodoTracker() {
     }));
   }
 
+  async function uploadFriendRaidPlan() {
+    if (!SERVER_MODE) return;
+
+    const s = state;
+    const planJson = exportFriendRaidPlan(s, "ALL", weeklyRaidPickRef.current);
+
+    await apiFetch2("/api/me/raid-plan", {
+      method: "PUT",
+      body: JSON.stringify({
+        nickname: s.profile.nickname,
+        planJson,
+      }),
+    });
+  }
+
   async function uploadRaidLeftSnapshot(source: "manual" | "auto") {
     if (!SERVER_MODE) return;
     if (raidSnapUploadingRef.current) return;
@@ -1146,7 +1164,6 @@ export default function TodoTracker() {
         weeklyRaidPickRef.current &&
         Object.keys(weeklyRaidPickRef.current).length > 0;
 
-      // 자동 업로드인데 weekly pick이 아직 준비 안 됐으면 스킵
       if (source === "auto" && !hasWeeklyPick) {
         setRaidSnapUploadState("idle");
         return;
@@ -1162,6 +1179,9 @@ export default function TodoTracker() {
           source,
         }),
       });
+
+      // 다음 주 계획용 레이드 plan도 같이 업로드
+      await uploadFriendRaidPlan();
 
       setLastRaidSnapUploadedAt(Date.now());
       setRaidSnapUploadState("ok");
@@ -1393,18 +1413,34 @@ export default function TodoTracker() {
     if (!f) return <div className="todo-hint">친구를 찾을 수 없어.</div>;
 
     const rawSnap: any = friendSnapshots[selectedFriendCode];
-    if (!rawSnap?.data) {
-      return <div className="todo-hint">친구 스냅샷이 없어. (서버에서 불러오기 또는 스냅샷 붙여넣기)</div>;
-    }
-    if (rawSnap.shareMode === "PRIVATE") {
-      return <div className="todo-hint">친구가 비공개야.</div>;
+    const rawPlan: any = friendRaidPlans[selectedFriendCode];
+
+    if (schedulePlanningMode === "CURRENT") {
+      if (!rawSnap?.data) {
+        return <div className="todo-hint">친구 스냅샷이 없어. (서버에서 불러오기 또는 스냅샷 붙여넣기)</div>;
+      }
+      if (rawSnap.shareMode === "PRIVATE") {
+        return <div className="todo-hint">친구가 비공개야.</div>;
+      }
     }
 
-    const snap = normalizeFriendRaidSnapshotAfterWeeklyReset(
-      rawSnap,
-      state.reset?.weeklyResetWeekday ?? 3,
-      state.reset?.dailyResetHour ?? 6
-    ) as typeof rawSnap & { isStaleAfterWeeklyReset?: boolean };
+    if (schedulePlanningMode === "NEXT_RESET") {
+      if (!rawPlan?.data) {
+        return <div className="todo-hint">친구 레이드 계획 정보가 없어.</div>;
+      }
+      if (rawPlan.shareMode === "PRIVATE") {
+        return <div className="todo-hint">친구가 비공개야.</div>;
+      }
+    }
+
+    const snap =
+      schedulePlanningMode === "CURRENT"
+        ? (normalizeFriendRaidSnapshotAfterWeeklyReset(
+          rawSnap,
+          state.reset?.weeklyResetWeekday ?? 3,
+          state.reset?.dailyResetHour ?? 6
+        ) as typeof rawSnap & { isStaleAfterWeeklyReset?: boolean })
+        : null;
 
     const isStaleFriendSnapshot = Boolean(snap.isStaleAfterWeeklyReset);
 
@@ -1448,60 +1484,61 @@ export default function TodoTracker() {
       return defaultRaids;
     }
 
-    const rows: FriendSnapshotRow[] = (Array.isArray(snap.data) ? snap.data : [])
-      .map((row: any): FriendSnapshotRow => {
-        const rowIlvl =
-          typeof row?.ilvl === "number"
-            ? row.ilvl
-            : Number(row?.charItemLevel ?? 0);
+    const rows: FriendSnapshotRow[] =
+      schedulePlanningMode === "NEXT_RESET"
+        ? (Array.isArray(rawPlan?.data) ? rawPlan.data : [])
+          .map((row: any): FriendSnapshotRow => {
+            const rowIlvl =
+              typeof row?.ilvl === "number"
+                ? row.ilvl
+                : Number(row?.charItemLevel ?? 0);
 
-        const normalizedAllRaids = Array.isArray(row?.allRaids)
-          ? row.allRaids.map((raid: string) => normalizeRaidName(raid)).filter(Boolean)
-          : [];
+            const normalizedAllRaids = Array.isArray(row?.allRaids)
+              ? row.allRaids.map((raid: string) => normalizeRaidName(raid)).filter(Boolean)
+              : [];
 
-        const normalizedRemainingRaids = Array.isArray(row?.remainingRaids)
-          ? row.remainingRaids.map((raid: string) => normalizeRaidName(raid)).filter(Boolean)
-          : [];
+            return {
+              charName: String(row?.charName ?? ""),
+              charItemLevel: row?.charItemLevel ? String(row.charItemLevel) : undefined,
+              charPower: row?.charPower ? String(row.charPower) : undefined,
+              tableName: row?.tableName ? String(row.tableName) : "",
+              ilvl: rowIlvl,
+              allRaids: normalizedAllRaids,
+              remainingRaids: [...normalizedAllRaids],
+              clearedCount: 0,
+              totalCount: normalizedAllRaids.length,
+            };
+          })
+          .filter((r: FriendSnapshotRow) => Boolean(r && r.charName))
+        : (Array.isArray(snap?.data) ? snap.data : [])
+          .map((row: any): FriendSnapshotRow => {
+            const rowIlvl =
+              typeof row?.ilvl === "number"
+                ? row.ilvl
+                : Number(row?.charItemLevel ?? 0);
 
-        const baseFallbackRaids =
-          normalizedAllRaids.length > 0 ? normalizedAllRaids : normalizedRemainingRaids;
+            const normalizedAllRaids = Array.isArray(row?.allRaids)
+              ? row.allRaids.map((raid: string) => normalizeRaidName(raid)).filter(Boolean)
+              : [];
 
-        const nextResetRaids = getFriendNextResetDefaultRaids(rowIlvl, baseFallbackRaids);
+            const normalizedRemainingRaids = Array.isArray(row?.remainingRaids)
+              ? row.remainingRaids.map((raid: string) => normalizeRaidName(raid)).filter(Boolean)
+              : [];
 
-        const finalAllRaids =
-          schedulePlanningMode === "NEXT_RESET"
-            ? nextResetRaids
-            : baseFallbackRaids;
-
-        const finalRemainingRaids =
-          schedulePlanningMode === "NEXT_RESET"
-            ? [...nextResetRaids]
-            : [...normalizedRemainingRaids];
-
-        const nextClearedCount =
-          schedulePlanningMode === "NEXT_RESET"
-            ? 0
-            : Number(row?.clearedCount ?? 0);
-
-        const nextTotalCount =
-          schedulePlanningMode === "NEXT_RESET"
-            ? finalAllRaids.length
-            : Number(row?.totalCount ?? finalRemainingRaids.length);
-
-        return {
-          ...row,
-          charName: String(row?.charName ?? ""),
-          charItemLevel: row?.charItemLevel ? String(row.charItemLevel) : undefined,
-          charPower: row?.charPower ? String(row.charPower) : undefined,
-          tableName: row?.tableName ? String(row.tableName) : "",
-          ilvl: rowIlvl,
-          allRaids: finalAllRaids,
-          remainingRaids: finalRemainingRaids,
-          clearedCount: nextClearedCount,
-          totalCount: nextTotalCount,
-        };
-      })
-      .filter((r: FriendSnapshotRow) => Boolean(r && r.charName));
+            return {
+              ...row,
+              charName: String(row?.charName ?? ""),
+              charItemLevel: row?.charItemLevel ? String(row.charItemLevel) : undefined,
+              charPower: row?.charPower ? String(row.charPower) : undefined,
+              tableName: row?.tableName ? String(row.tableName) : "",
+              ilvl: rowIlvl,
+              allRaids: normalizedAllRaids,
+              remainingRaids: normalizedRemainingRaids,
+              clearedCount: Number(row?.clearedCount ?? 0),
+              totalCount: Number(row?.totalCount ?? normalizedRemainingRaids.length),
+            };
+          })
+          .filter((r: FriendSnapshotRow) => Boolean(r && r.charName));
 
     const friendTableNames: string[] = Array.from(
       new Set<string>(
@@ -3267,12 +3304,32 @@ export default function TodoTracker() {
     }
   }
 
+  async function refreshFriendRaidPlan(friendCode: string) {
+    if (!SERVER_MODE) return;
+
+    const code = String(friendCode ?? "").trim();
+    if (!code) return;
+
+    const data = await apiFetch2(`/api/raid-plan?friendCode=${encodeURIComponent(code)}`);
+
+    const parsed =
+      typeof data?.plan_json === "string"
+        ? importFriendRaidPlan(data.plan_json)
+        : importFriendRaidPlan(data);
+
+    setFriendRaidPlans((prev) => ({
+      ...prev,
+      [code]: parsed,
+    }));
+  }
+
   useEffect(() => {
     if (!SERVER_MODE) return;
-    refreshFriends().catch(() => { });
-    refreshWeeklySchedules().catch(() => { });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (!selectedFriendCode) return;
+    if (schedulePlanningMode !== "NEXT_RESET") return;
+
+    refreshFriendRaidPlan(selectedFriendCode).catch(() => { });
+  }, [SERVER_MODE, selectedFriendCode, schedulePlanningMode]);
 
   async function setShareMode(mode: "PUBLIC" | "PRIVATE") {
     setState((prev) => ({ ...prev, profile: { ...prev.profile, shareMode: mode } }));

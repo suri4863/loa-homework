@@ -122,6 +122,27 @@ export type RaidLeftSnapshotPayload = {
   }>;
 };
 
+export type FriendRaidPlanPayload = {
+  version: 1;
+  friendCode: string;
+  nickname?: string;
+  shareMode: ShareMode;
+  exportedAt: number;
+
+  scope?: "ALL_TABLES" | "ONE_TABLE";
+
+  data: Array<{
+    charName: string;
+    charItemLevel?: string;
+    charPower?: string;
+    charRole?: CharacterRole;
+    tableName?: string;
+    ilvl?: number;
+
+    allRaids: string[];
+  }>;
+};
+
 export type WeeklyScheduleDay = "수" | "목" | "금" | "토" | "일" | "월" | "화";
 
 export type SharedWeeklyScheduleItemMode = "MATCHED" | "OPEN_SLOT";
@@ -278,6 +299,104 @@ export function createTask(input: {
     section: input.section ?? "숙제",
     order: input.order ?? Date.now(), // ✅ 변경
   };
+}
+
+/* 현재 체크 상태와 상관없이 친구 표의 전체 레이드 계획만 내보내는 함수 */
+export function exportFriendRaidPlan(
+  state: TodoState,
+  tableId?: string | "ALL",
+  weeklyRaidPickByChar?: Record<string, { raids: string[]; goldRaids?: string[]; diffs?: Record<string, string> }>
+): string {
+  if (state.profile?.shareMode === "PRIVATE") throw new Error("PRIVATE_MODE");
+
+  const weeklyRaidTasks = state.tasks.filter(
+    (t) => t.period === "WEEKLY" && t.section === "주간 레이드" && t.cellType === "CHECK"
+  );
+
+  const weeklyCharKey = (tableId: string, charId: string) => `${tableId}:${charId}`;
+
+  const normalizeRaidName = (s: string) =>
+    String(s ?? "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .replace(/\s*(노말|하드|나이트메어)\s*$/g, "");
+
+  const isAll = !tableId || tableId === "ALL";
+  const tables = isAll ? state.tables : [getTableById(state, tableId)];
+  const rows: FriendRaidPlanPayload["data"] = [];
+
+  for (const table of tables) {
+    for (const ch of table.characters) {
+      const ilvl = parseIlvl(ch.itemLevel);
+
+      const charKey = weeklyCharKey(table.id, ch.id);
+      const pick = weeklyRaidPickByChar?.[charKey];
+
+      const fallbackRaidTitles = weeklyRaidTasks
+        .map((task) => normalizeRaidName(String(task.title ?? "")))
+        .filter(Boolean);
+
+      const selectedRaidTitles =
+        Array.isArray(pick?.raids) && pick.raids.length > 0
+          ? pick.raids.map((x) => normalizeRaidName(x)).filter(Boolean)
+          : fallbackRaidTitles;
+
+      if (!selectedRaidTitles.length) continue;
+
+      rows.push({
+        charName: ch.name,
+        charItemLevel: ch.itemLevel || "",
+        charPower: ch.power || "",
+        charRole: ch.role || "DEALER",
+        tableName: table.name,
+        ilvl,
+        allRaids: selectedRaidTitles.map((r) => withDiff(r, ilvl)),
+      });
+    }
+  }
+
+  return JSON.stringify({
+    version: 1,
+    friendCode: state.profile.friendCode,
+    nickname: state.profile.nickname || undefined,
+    shareMode: state.profile.shareMode,
+    exportedAt: Date.now(),
+    scope: isAll ? "ALL_TABLES" : "ONE_TABLE",
+    data: rows,
+  });
+}
+
+export function importFriendRaidPlan(raw: any): FriendRaidPlanPayload {
+  let parsed: any = raw;
+
+  if (typeof parsed === "string") {
+    const s = parsed.trim();
+    if (!s) throw new Error("INVALID_RAID_PLAN");
+    parsed = JSON.parse(s);
+    if (typeof parsed === "string") {
+      parsed = JSON.parse(parsed);
+    }
+  }
+
+  const v = Number(parsed?.version ?? 1);
+  if (v !== 1) throw new Error("INVALID_RAID_PLAN");
+
+  parsed.friendCode = String(parsed.friendCode ?? "").trim();
+  parsed.shareMode = parsed.shareMode === "PRIVATE" ? "PRIVATE" : "PUBLIC";
+  parsed.exportedAt = typeof parsed.exportedAt === "number" ? parsed.exportedAt : Date.now();
+  parsed.data = Array.isArray(parsed.data) ? parsed.data : [];
+
+  parsed.data = parsed.data.map((r: any) => ({
+    charName: String(r?.charName ?? ""),
+    charItemLevel: r?.charItemLevel ? String(r.charItemLevel) : undefined,
+    charPower: r?.charPower ? String(r.charPower) : undefined,
+    charRole: r?.charRole === "SUPPORT" ? "SUPPORT" : "DEALER",
+    tableName: r?.tableName ? String(r.tableName) : undefined,
+    ilvl: typeof r?.ilvl === "number" ? r.ilvl : undefined,
+    allRaids: Array.isArray(r?.allRaids) ? r.allRaids.filter(Boolean) : [],
+  }));
+
+  return parsed as FriendRaidPlanPayload;
 }
 
 function makeDefaultState(): TodoState {
