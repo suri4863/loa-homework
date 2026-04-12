@@ -1424,14 +1424,11 @@ export default function TodoTracker() {
       }
     }
 
-    if (schedulePlanningMode === "NEXT_RESET") {
-      if (!rawPlan?.data) {
-        return <div className="todo-hint">친구 레이드 계획 정보가 없어.</div>;
-      }
-      if (rawPlan.shareMode === "PRIVATE") {
-        return <div className="todo-hint">친구가 비공개야.</div>;
-      }
-    }
+    const nextResetPlanMissing =
+      schedulePlanningMode === "NEXT_RESET" && !rawPlan?.data;
+
+    const nextResetPlanPrivate =
+      schedulePlanningMode === "NEXT_RESET" && rawPlan?.shareMode === "PRIVATE";
 
     const snap =
       schedulePlanningMode === "CURRENT"
@@ -1442,7 +1439,7 @@ export default function TodoTracker() {
         ) as typeof rawSnap & { isStaleAfterWeeklyReset?: boolean })
         : null;
 
-    const isStaleFriendSnapshot = Boolean(snap.isStaleAfterWeeklyReset);
+    const isStaleFriendSnapshot = Boolean(snap?.isStaleAfterWeeklyReset);
 
     type FriendSnapshotRow = {
       charName: string;
@@ -2330,6 +2327,17 @@ export default function TodoTracker() {
         <div className="weeklyScheduleSection">
           <div className="weeklyScheduleHeader">
             <div className="weeklyScheduleHeaderLeft">
+              {nextResetPlanMissing ? (
+                <div className="todo-hint" style={{ marginBottom: 12 }}>
+                  친구 레이드 계획 정보가 없어. 새로고침하거나 친구가 서버 업로드했는지 확인해줘.
+                </div>
+              ) : null}
+
+              {nextResetPlanPrivate ? (
+                <div className="todo-hint" style={{ marginBottom: 12 }}>
+                  친구가 비공개야.
+                </div>
+              ) : null}
               <div className="weeklyScheduleTitle">공유 일정표</div>
 
               <select
@@ -3323,12 +3331,29 @@ export default function TodoTracker() {
     }));
   }
 
+  async function refreshFriendSnapshot(friendCode: string) {
+    if (!SERVER_MODE) return;
+
+    const code = String(friendCode ?? "").trim();
+    if (!code) return;
+
+    const data = await apiFetch2(
+      `/api/raid-left-snapshot?friendCode=${encodeURIComponent(code)}`
+    );
+
+    const snapAny = (data as any).snapshotJson;
+    const snapStr = typeof snapAny === "string" ? snapAny : JSON.stringify(snapAny);
+    attachSnapshotToFriend(snapStr, code);
+  }
+
   useEffect(() => {
     if (!SERVER_MODE) return;
     if (!selectedFriendCode) return;
     if (schedulePlanningMode !== "NEXT_RESET") return;
 
-    refreshFriendRaidPlan(selectedFriendCode).catch(() => { });
+    refreshFriendRaidPlan(selectedFriendCode).catch((e) => {
+      console.error("친구 레이드 계획 불러오기 실패", e);
+    });
   }, [SERVER_MODE, selectedFriendCode, schedulePlanningMode]);
 
   async function setShareMode(mode: "PUBLIC" | "PRIVATE") {
@@ -7075,9 +7100,18 @@ body.pip-dark .pip-select option{
                       <div
                         key={f.code}
                         className={["friendItem", active ? "active" : ""].join(" ")}
-                        onClick={() => {
+                        onClick={async () => {
                           setSelectedFriendCode(f.code);
                           setRaidLeftView("FRIEND");
+
+                          try {
+                            await Promise.all([
+                              refreshFriendSnapshot(f.code),
+                              refreshFriendRaidPlan(f.code),
+                            ]);
+                          } catch (e) {
+                            console.error("친구 데이터 동기화 실패", e);
+                          }
                         }}
                         role="button"
                         tabIndex={0}
@@ -7094,20 +7128,20 @@ body.pip-dark .pip-select option{
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 try {
-                                  const data = await apiFetch2(
-                                    `/api/raid-left-snapshot?friendCode=${encodeURIComponent(f.code)}`
-                                  );
-                                  const snapAny = (data as any).snapshotJson;
-                                  const snapStr = typeof snapAny === "string" ? snapAny : JSON.stringify(snapAny);
-                                  attachSnapshotToFriend(snapStr, f.code);
+                                  await Promise.all([
+                                    refreshFriendSnapshot(f.code),
+                                    refreshFriendRaidPlan(f.code),
+                                  ]);
+
                                   setSelectedFriendCode(f.code);
                                   setRaidLeftView("FRIEND");
-                                  alert("친구 남은 레이드 불러오기 완료!");
-                                } catch {
-                                  alert("불러오기 실패(비공개이거나 친구가 아닐 수 있어)");
+                                  alert("친구 남은 레이드 / 레이드 계획 불러오기 완료!");
+                                } catch (e) {
+                                  console.error("불러오기 실패", e);
+                                  alert("불러오기 실패(비공개이거나 친구가 아직 업로드 안 했을 수 있어)");
                                 }
                               }}
-                              title="서버에서 최신 남은 레이드 스냅샷 불러오기"
+                              title="서버에서 최신 남은 레이드 스냅샷 / 다음 주 레이드 계획 불러오기"
                             >
                               불러오기
                             </button>
