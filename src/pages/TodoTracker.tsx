@@ -721,6 +721,19 @@ export default function TodoTracker() {
     }
   }
 
+  useEffect(() => {
+    if (!SERVER_MODE) return;
+
+    refreshFriends().catch((e) => {
+      console.error("친구 목록 불러오기 실패", e);
+    });
+
+    refreshWeeklySchedules().catch((e) => {
+      console.error("일정표 불러오기 실패", e);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function createWeeklyScheduleFromRecommendation(
     pairResults: Array<{
       my: any;
@@ -1425,7 +1438,9 @@ export default function TodoTracker() {
     }
 
     const nextResetPlanMissing =
-      schedulePlanningMode === "NEXT_RESET" && !rawPlan?.data;
+      schedulePlanningMode === "NEXT_RESET" &&
+      !(Array.isArray(rawPlan?.data) && rawPlan.data.length > 0) &&
+      !(Array.isArray(rawSnap?.data) && rawSnap.data.length > 0);
 
     const nextResetPlanPrivate =
       schedulePlanningMode === "NEXT_RESET" && rawPlan?.shareMode === "PRIVATE";
@@ -1481,9 +1496,16 @@ export default function TodoTracker() {
       return defaultRaids;
     }
 
+    const nextResetSourceRows =
+      Array.isArray(rawPlan?.data) && rawPlan.data.length > 0
+        ? rawPlan.data
+        : Array.isArray(rawSnap?.data)
+          ? rawSnap.data
+          : [];
+
     const rows: FriendSnapshotRow[] =
       schedulePlanningMode === "NEXT_RESET"
-        ? (Array.isArray(rawPlan?.data) ? rawPlan.data : [])
+        ? nextResetSourceRows
           .map((row: any): FriendSnapshotRow => {
             const rowIlvl =
               typeof row?.ilvl === "number"
@@ -1494,19 +1516,24 @@ export default function TodoTracker() {
               ? row.allRaids.map((raid: string) => normalizeRaidName(raid)).filter(Boolean)
               : [];
 
+            const fallbackRaids = getFriendNextResetDefaultRaids(
+              rowIlvl,
+              normalizedAllRaids
+            );
+
             return {
               charName: String(row?.charName ?? ""),
               charItemLevel: row?.charItemLevel ? String(row.charItemLevel) : undefined,
               charPower: row?.charPower ? String(row.charPower) : undefined,
               tableName: row?.tableName ? String(row.tableName) : "",
               ilvl: rowIlvl,
-              allRaids: normalizedAllRaids,
-              remainingRaids: [...normalizedAllRaids],
+              allRaids: fallbackRaids,
+              remainingRaids: [...fallbackRaids],
               clearedCount: 0,
-              totalCount: normalizedAllRaids.length,
+              totalCount: fallbackRaids.length,
             };
           })
-          .filter((r: FriendSnapshotRow) => Boolean(r && r.charName))
+          .filter((r: FriendSnapshotRow) => Boolean(r && r.charName && r.remainingRaids.length > 0))
         : (Array.isArray(snap?.data) ? snap.data : [])
           .map((row: any): FriendSnapshotRow => {
             const rowIlvl =
@@ -7113,6 +7140,10 @@ body.pip-dark .pip-select option{
                           refreshFriendRaidPlan(f.code).catch((e) => {
                             console.error("친구 레이드 계획 동기화 실패", e);
                           });
+
+                          refreshWeeklySchedules().catch((e) => {
+                            console.error("일정표 동기화 실패", e);
+                          });
                         }}
                         role="button"
                         tabIndex={0}
@@ -7134,6 +7165,10 @@ body.pip-dark .pip-select option{
 
                                   refreshFriendRaidPlan(f.code).catch((e) => {
                                     console.error("친구 레이드 계획 불러오기 실패", e);
+                                  });
+
+                                  refreshWeeklySchedules().catch((e) => {
+                                    console.error("일정표 불러오기 실패", e);
                                   });
 
                                   setSelectedFriendCode(f.code);
