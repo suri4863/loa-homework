@@ -1427,6 +1427,15 @@ export default function TodoTracker() {
         .replace(/\s*(노말|하드|나이트메어|1단계|2단계|3단계)\s*$/g, "");
 
     function getFriendNextResetDefaultRaids(ilvl: number, fallbackRaids: string[]): string[] {
+      const normalizedFallbackRaids = Array.isArray(fallbackRaids)
+        ? fallbackRaids.map((raid: string) => normalizeRaidName(raid)).filter(Boolean)
+        : [];
+
+      // 친구 스냅샷에 allRaids가 있으면 그게 "다음 주 다시 살아날 레이드" 기준이어야 함
+      if (normalizedFallbackRaids.length > 0) {
+        return normalizedFallbackRaids;
+      }
+
       const pick =
         Number.isFinite(ilvl) && ilvl > 0
           ? getDefaultWeeklyRaidPick(ilvl)
@@ -1436,7 +1445,7 @@ export default function TodoTracker() {
         ? pick.raids.map((raid: string) => normalizeRaidName(raid)).filter(Boolean)
         : [];
 
-      return defaultRaids.length > 0 ? defaultRaids : fallbackRaids;
+      return defaultRaids;
     }
 
     const rows: FriendSnapshotRow[] = (Array.isArray(snap.data) ? snap.data : [])
