@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { sql } from "@vercel/postgres";
-import { getMe } from "../../lib/_db";
+import { getMe } from "../../lib/_db.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -31,7 +31,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(405).send("Method Not Allowed");
   } catch (error) {
-    console.error("raid-plan API error:", error);
+    console.error("raid-plan ERROR:", error);
     return res.status(500).json({
       ok: false,
       error: String(error),
