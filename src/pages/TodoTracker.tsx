@@ -5736,7 +5736,9 @@ body.pip-dark .pip-select option{
   }
 
   function isWeeklyRaidTaskTitle(title: string) {
-    return Boolean(RAID_REWARD_INFO[title]);
+    return RAID_CATALOG.some(
+      (raid) => normalizeRaidName(raid.name) === normalizeRaidName(title)
+    );
   }
 
   function calcWeeklySelectedGold(ilvl: number, pick: WeeklyRaidPick | undefined) {
@@ -6072,13 +6074,22 @@ body.pip-dark .pip-select option{
                         if (section === "주간 레이드" && isWeeklyRaidTaskTitle(task.title)) {
                           const ilvl = getCharIlvl(ch);
                           const charKey = weeklyCharKey(tableId, ch.id);
-                          const pick = weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(ilvl);
-                          const selectedSet = new Set(pick.raids.map((name) => normalizeRaidName(name)));
 
+                          const pick = sanitizeWeeklyRaidPick(
+                            ilvl,
+                            weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(ilvl)
+                          );
+
+                          const selectedSet = new Set(
+                            pick.raids.map((name) => normalizeRaidName(name))
+                          );
+
+                          // 팝업 위 레이드 버튼에서 꺼진 레이드는 표 체크칸도 숨김
                           if (!selectedSet.has(normalizeRaidName(task.title))) {
-                            return <td key={ch.id} className="cell" />;
+                            return <td key={`${tableId}:${ch.id}`} className="cell" />;
                           }
 
+                          // 1700 미만 레이드는 표 대신 팝업 완료 체크로만 관리
                           if (shouldUsePopupWeeklyRaidCheckByRaid(task.title)) {
                             return <td key={`${tableId}:${ch.id}`} className="cell" />;
                           }
@@ -6625,16 +6636,24 @@ body.pip-dark .pip-select option{
                                     if (section === "주간 레이드" && isWeeklyRaidTaskTitle(task.title)) {
                                       const ilvl = getCharIlvl(ch);
                                       const charKey = weeklyCharKey(tableId, ch.id);
-                                      const pick = weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(ilvl);
-                                      const selectedSet = new Set(pick.raids.map((x) => normalizeRaidName(x)));
 
+                                      const pick = sanitizeWeeklyRaidPick(
+                                        ilvl,
+                                        weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(ilvl)
+                                      );
+
+                                      const selectedSet = new Set(
+                                        pick.raids.map((x) => normalizeRaidName(x))
+                                      );
+
+                                      // ✅ 팝업 위 레이드 버튼에서 꺼진 레이드는 표에서도 안 보임
                                       if (!selectedSet.has(normalizeRaidName(task.title))) {
-                                        return <td key={ch.id} className="cell" />;
+                                        return <td key={`${tableId}:${ch.id}`} className="cell" />;
                                       }
 
-                                      // 1700 미만 레이드는 표에서 체크 안 보이고 팝업 완료 체크로만 관리
+                                      // ✅ 1700 미만 레이드는 표 대신 팝업 완료 체크로만 관리
                                       if (shouldUsePopupWeeklyRaidCheckByRaid(task.title)) {
-                                        return <td key={ch.id} className="cell" />;
+                                        return <td key={`${tableId}:${ch.id}`} className="cell" />;
                                       }
                                     }
 
