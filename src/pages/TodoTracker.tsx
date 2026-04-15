@@ -4793,6 +4793,7 @@ export default function TodoTracker() {
     "4막": { normal: 33000, hard: 42000 },
     "종막": { normal: 40000, hard: 52000 },
     "세르카": { normal: 35000, hard: 44000, nightmare: 54000 },
+    "지평의 성당": { stage1: 30000, stage2: 40000, stage3: 50000 },
   };
 
   type DiffName = "노말" | "하드" | "나이트메어" | "1단계" | "2단계" | "3단계";
