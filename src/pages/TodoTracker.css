@@ -2019,6 +2019,32 @@ body,
   font-weight: 800;
 }
 
+.weekly-top3-gold-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.weekly-top3-gold {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.weekly-top3-task-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.weekly-top3-task-check input[type="checkbox"] {
+  flex: 0 0 auto;
+}
+
 /* ✅ friendBox를 상단 우측으로 띄우기 (주간 골드 오른쪽 위 느낌) */
 .todo-topbar {
   position: relative;
@@ -2870,7 +2896,30 @@ body.pip-dark .pip-cube.is-pressed {
 .raid-pick-btn.active {
   border-color: rgba(59, 130, 246, 0.55);
   background: rgba(59, 130, 246, 0.18);
+  color: #dbeafe;
   font-weight: 800;
+}
+
+.raid-pick-btn.auto:not(.hidden) {
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
+.raid-pick-btn.manual.active {
+  border-color: rgba(59, 130, 246, 0.55);
+  background: rgba(59, 130, 246, 0.18);
+  color: #dbeafe;
+}
+
+.raid-pick-btn.hidden {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+
+.weekly-top3-help {
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
 }
 
 .weekly-top3-pick-list {

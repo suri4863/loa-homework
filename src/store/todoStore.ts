@@ -211,13 +211,23 @@ function parseIlvl(v: any): number {
 }
 
 const WEEKLY_RAID_MIN_ILVL: Record<string, number> = {
+  "발탄": 1415,
+  "비아키스": 1430,
+  "쿠크세이튼": 1475,
+  "아브렐슈드": 1490,
+  "카양겔": 1540,
+  "일리아칸": 1580,
+  "상아탑": 1600,
+  "카멘": 1610,
+  "에키드나": 1620,
+  "베히모스": 1640,
   "1막": 1660,
   "2막": 1670,
   "3막": 1680,
   "4막": 1700,
+  "지평의 성당": 1700,
   "종막": 1710,
   "세르카": 1710,
-  "지평의 성당": 1700,
 };
 
 function normalizeWeeklyRaidTitle(s: string) {
@@ -276,29 +286,62 @@ function withDiff(raid: string, ilvl: number): string {
     return name;
   }
 
-  if (name === "세르카") {
-    if (ilvl >= 1750) return "세르카 나이트메어";
-    if (ilvl >= 1730) return "세르카 하드";
-    return "세르카 노말";
+  if (name === "발탄") {
+    if (ilvl >= 1445) return "발탄 하드";
+    if (ilvl >= 1415) return "발탄 노말";
+    return "발탄";
   }
 
-  if (name === "종막") {
-    if (ilvl >= 1730) return "종막 하드";
-    if (ilvl >= 1710) return "종막 노말";
-    return "종막";
+  if (name === "비아키스") {
+    if (ilvl >= 1460) return "비아키스 하드";
+    if (ilvl >= 1430) return "비아키스 노말";
+    return "비아키스";
   }
 
-  if (name === "4막") {
-    if (ilvl >= 1720) return "4막 하드";
-    if (ilvl >= 1700) return "4막 노말";
-    return "4막";
+  if (name === "쿠크세이튼") {
+    if (ilvl >= 1475) return "쿠크세이튼 노말";
+    return "쿠크세이튼";
   }
 
-  if (name === "지평의 성당") {
-    if (ilvl >= 1750) return "지평의 성당 3단계";
-    if (ilvl >= 1720) return "지평의 성당 2단계";
-    if (ilvl >= 1700) return "지평의 성당 1단계";
-    return "지평의 성당";
+  if (name === "아브렐슈드") {
+    if (ilvl >= 1540) return "아브렐슈드 하드";
+    if (ilvl >= 1490) return "아브렐슈드 노말";
+    return "아브렐슈드";
+  }
+
+  if (name === "카양겔") {
+    if (ilvl >= 1580) return "카양겔 하드";
+    if (ilvl >= 1540) return "카양겔 노말";
+    return "카양겔";
+  }
+
+  if (name === "일리아칸") {
+    if (ilvl >= 1600) return "일리아칸 하드";
+    if (ilvl >= 1580) return "일리아칸 노말";
+    return "일리아칸";
+  }
+
+  if (name === "상아탑") {
+    if (ilvl >= 1620) return "상아탑 하드";
+    if (ilvl >= 1600) return "상아탑 노말";
+    return "상아탑";
+  }
+
+  if (name === "카멘") {
+    if (ilvl >= 1630) return "카멘 하드";
+    if (ilvl >= 1610) return "카멘 노말";
+    return "카멘";
+  }
+
+  if (name === "에키드나") {
+    if (ilvl >= 1630) return "에키드나 하드";
+    if (ilvl >= 1620) return "에키드나 노말";
+    return "에키드나";
+  }
+
+  if (name === "베히모스") {
+    if (ilvl >= 1640) return "베히모스 노말";
+    return "베히모스";
   }
 
   if (name === "1막") {
@@ -317,6 +360,26 @@ function withDiff(raid: string, ilvl: number): string {
     if (ilvl >= 1700) return "3막 하드";
     if (ilvl >= 1680) return "3막 노말";
     return "3막";
+  }
+
+  if (name === "세르카") {
+    if (ilvl >= 1640) return "세르카 나이트메어";
+    if (ilvl >= 1630) return "세르카 하드";
+    if (ilvl >= 1610) return "세르카 노말";
+    return "세르카";
+  }
+
+  if (name === "종막") {
+    if (ilvl >= 1730) return "종막 하드";
+    if (ilvl >= 1710) return "종막 노말";
+    return "종막";
+  }
+
+  if (name === "지평의 성당") {
+    if (ilvl >= 1750) return "지평의 성당 3단계";
+    if (ilvl >= 1720) return "지평의 성당 2단계";
+    if (ilvl >= 1700) return "지평의 성당 1단계";
+    return "지평의 성당";
   }
 
   return name;
@@ -507,13 +570,23 @@ function makeDefaultState(): TodoState {
     createTask({ title: "메모", period: "WEEKLY", cellType: "TEXT", section: "주간 교환", order: baseOrder + 104 }),
 
     // 주간 레이드
-    //createTask({ title: "1막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
-    //createTask({ title: "2막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
-    //createTask({ title: "3막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
-    createTask({ title: "4막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
-    createTask({ title: "종막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
-    createTask({ title: "세르카", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
-    createTask({ title: "지평의 성당", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+    createTask({ title: "발탄", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 401 }),
+    createTask({ title: "비아키스", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 402 }),
+    createTask({ title: "쿠크세이튼", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 403 }),
+    createTask({ title: "아브렐슈드", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 404 }),
+    createTask({ title: "카양겔", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 405 }),
+    createTask({ title: "일리아칸", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 406 }),
+    createTask({ title: "상아탑", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 407 }),
+    createTask({ title: "카멘", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 408 }),
+    createTask({ title: "에키드나", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 409 }),
+    createTask({ title: "베히모스", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 410 }),
+    createTask({ title: "1막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 411 }),
+    createTask({ title: "2막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 412 }),
+    createTask({ title: "3막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 413 }),
+    createTask({ title: "4막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 414 }),
+    createTask({ title: "종막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 415 }),
+    createTask({ title: "세르카", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 416 }),
+
 
     // 기타 (원하는 순서: 4해금 → 3해금 → 2해금 → 1해금 → 낙원트리)
     createTask({ title: "4해금", period: "NONE", cellType: "TEXT", section: "기타", order: baseOrder + 200 }),
@@ -652,23 +725,45 @@ function normalizeState(parsed: any): TodoState {
     ensureTask({ title: "큐브", period: "NONE", cellType: "TEXT", section: "기타" });
 
 
-    // ✅ 주간 레이드 보강: 매칭/스냅샷에 필요한 최신 레이드만
-    //ensureTask({ title: "3막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
+    // 주간 레이드 보강: 매칭/스냅샷에 필요한 최신 레이드만
+    ensureTask({ title: "발탄", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
+    ensureTask({ title: "비아키스", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
+    ensureTask({ title: "쿠크세이튼", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
+    ensureTask({ title: "아브렐슈드", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
+    ensureTask({ title: "카양겔", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
+    ensureTask({ title: "일리아칸", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
+    ensureTask({ title: "상아탑", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
+    ensureTask({ title: "카멘", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
+    ensureTask({ title: "에키드나", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
+    ensureTask({ title: "베히모스", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
+    ensureTask({ title: "1막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
+    ensureTask({ title: "2막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
+    ensureTask({ title: "3막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
     ensureTask({ title: "4막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
     ensureTask({ title: "종막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
     ensureTask({ title: "세르카", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
-    ensureTask({ title: "지평의 성당", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
+
 
     // ✅ 3) order 강제 세팅 (여기 숫자만 보면 됨: 작을수록 위)
     const base = 10_000; // 다른 task order와 겹치지 않게 큰 값 사용
 
     // 주간 레이드(기본): 1막 → 2막 → 3막 → 4막 → 종막 → 세르카
-    setOrder("1막", "WEEKLY", "주간 레이드", base + 41);
-    setOrder("2막", "WEEKLY", "주간 레이드", base + 42);
-    setOrder("3막", "WEEKLY", "주간 레이드", base + 43);
-    setOrder("4막", "WEEKLY", "주간 레이드", base + 44);
-    setOrder("종막", "WEEKLY", "주간 레이드", base + 45);
-    setOrder("세르카", "WEEKLY", "주간 레이드", base + 46);
+    setOrder("발탄", "WEEKLY", "주간 레이드", 401);
+    setOrder("비아키스", "WEEKLY", "주간 레이드", 402);
+    setOrder("쿠크세이튼", "WEEKLY", "주간 레이드", 403);
+    setOrder("아브렐슈드", "WEEKLY", "주간 레이드", 404);
+    setOrder("카양겔", "WEEKLY", "주간 레이드", 405);
+    setOrder("일리아칸", "WEEKLY", "주간 레이드", 406);
+    setOrder("상아탑", "WEEKLY", "주간 레이드", 407);
+    setOrder("카멘", "WEEKLY", "주간 레이드", 408);
+    setOrder("에키드나", "WEEKLY", "주간 레이드", 409);
+    setOrder("베히모스", "WEEKLY", "주간 레이드", 410);
+    setOrder("1막", "WEEKLY", "주간 레이드", 411);
+    setOrder("2막", "WEEKLY", "주간 레이드", 412);
+    setOrder("3막", "WEEKLY", "주간 레이드", 413);
+    setOrder("4막", "WEEKLY", "주간 레이드", 414);
+    setOrder("종막", "WEEKLY", "주간 레이드", 415);
+    setOrder("세르카", "WEEKLY", "주간 레이드", 416);
 
     // 주간 교환: 천상 → 혈석 → 클리어 → 해적 → 메모
     setOrder("천상", "WEEKLY", "주간 교환", base + 1);

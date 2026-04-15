@@ -995,7 +995,7 @@ export default function TodoTracker() {
         : { raids: [], diffs: {} };
 
     const selectedRaids: string[] = Array.isArray(pick?.raids)
-      ? pick.raids.map((raid: string) => normalizeRaidName(raid))
+      ? uniqueCanonicalRaidNames(pick.raids)
       : [];
 
     return selectedRaids.filter(Boolean);
@@ -4655,6 +4655,50 @@ export default function TodoTracker() {
     });
   }
 
+  function toggleWeeklyRaidTaskCheckByRaidName(tableId: string, charId: string, raidName: string) {
+    setState((prev) => {
+      const normalizedRaid = normalizeRaidName(raidName ?? "");
+
+      let task = prev.tasks.find(
+        (t) =>
+          t.period === "WEEKLY" &&
+          (t.section ?? "").trim() === "주간 레이드" &&
+          t.cellType === "CHECK" &&
+          normalizeRaidName(t.title ?? "") === normalizedRaid
+      );
+
+      let nextState = prev;
+
+      // ✅ task가 없으면 자동 생성
+      if (!task) {
+        task = createTask({
+          title: canonicalRaidName(raidName),
+          period: "WEEKLY",
+          cellType: "CHECK",
+          section: "주간 레이드",
+        } as any);
+
+        nextState = {
+          ...prev,
+          tasks: [...prev.tasks, task],
+        };
+      }
+
+      const table = getTableById(nextState, tableId);
+      const ch = table.characters.find((c) => c.id === charId);
+      if (!ch || !task) return nextState;
+
+      const cell = getCellByTableId(nextState, tableId, task.id, charId);
+      const nextChecked = !(cell?.type === "CHECK" ? cell.checked : false);
+
+      return setCellByTableId(nextState, tableId, task, ch, {
+        type: "CHECK",
+        checked: nextChecked,
+        updatedAt: Date.now(),
+      });
+    });
+  }
+
   function onTextChange(tableId: string, task: TaskRow, ch: Character, text: string) {
     setState((prev) => setCellByTableId(prev, tableId, task, ch, { type: "TEXT", text, updatedAt: Date.now() }));
   }
@@ -4732,18 +4776,23 @@ export default function TodoTracker() {
   };
 
   const RAID_REWARD_INFO: Record<string, RaidRewardInfo> = {
-    // 클리어메달 지급 레이드
-    "베히모스": { medal: 950, normal: 7200 },
-    "서막": { medal: 950, normal: 6100, hard: 7200 },
-    "1막": { medal: 1900, normal: 15500, hard: 24500 },
-    "2막": { medal: 2300, normal: 21500, hard: 30500 },
-    "3막": { medal: 2700, normal: 28000, hard: 38000 },
+    "발탄": { medal: 120, normal: 1200, hard: 1800 },
+    "비아키스": { medal: 160, normal: 1600, hard: 2400 },
+    "쿠크세이튼": { medal: 300, normal: 3000 },
+    "아브렐슈드": { medal: 700, normal: 4600, hard: 5600 },
+    "카양겔": { medal: 450, normal: 3600, hard: 4800 },
+    "일리아칸": { medal: 750, normal: 5400, hard: 7500 },
+    "상아탑": { medal: 900, normal: 6500, hard: 9000 },
+    "카멘": { medal: 1050, normal: 8000, hard: 15500 },
+    "에키드나": { medal: 950, normal: 9500, hard: 11000 },
+    "베히모스": { medal: 1400, normal: 11000 },
+    "1막": { medal: 1900, normal: 11500, hard: 18000 },
+    "2막": { medal: 2300, normal: 16500, hard: 23000 },
+    "3막": { medal: 2700, normal: 21000, hard: 27000 },
 
-    // 현재는 클리어메달 없는 것으로 반영
     "4막": { normal: 33000, hard: 42000 },
     "종막": { normal: 40000, hard: 52000 },
     "세르카": { normal: 35000, hard: 44000, nightmare: 54000 },
-    "지평의 성당": { stage1: 30000, stage2: 40000, stage3: 50000 },
   };
 
   type DiffName = "노말" | "하드" | "나이트메어" | "1단계" | "2단계" | "3단계";
@@ -4775,21 +4824,87 @@ export default function TodoTracker() {
     weeklyRaidPickRef.current = weeklyRaidPickByChar;
   }, [weeklyRaidPickByChar]);
 
+  const POPUP_WEEKLY_CHECK_MAX_ILVL = 1700;
+
   function weeklyCharKey(tableId: string, charId: string) {
     return `${tableId}:${charId}`;
   }
 
-  function getDefaultWeeklyRaidPick(ilvl: number): WeeklyRaidPick {
+  function canonicalRaidName(name: string) {
+    const normalized = normalizeRaidName(String(name ?? ""));
+    const found = RAID_CATALOG.find((raid) => normalizeRaidName(raid.name) === normalized);
+    return found?.name ?? String(name ?? "").trim();
+  }
+
+  function uniqueCanonicalRaidNames(names: string[]): string[] {
+    const seen = new Set<string>();
+    const result: string[] = [];
+
+    for (const name of names) {
+      const canonical = canonicalRaidName(name);
+      const normalized = normalizeRaidName(canonical);
+      if (!normalized || seen.has(normalized)) continue;
+      seen.add(normalized);
+      result.push(canonical);
+    }
+
+    return result;
+  }
+
+  function getWeeklyRaidMinIlvl(raidName: string) {
+    const def = RAID_CATALOG.find((raid) => normalizeRaidName(raid.name) === normalizeRaidName(raidName));
+    if (!def || !Array.isArray(def.diffs) || def.diffs.length === 0) {
+      return Number.MAX_SAFE_INTEGER;
+    }
+
+    return Math.min(...def.diffs.map((diff) => diff.minIlvl));
+  }
+
+  function shouldUsePopupWeeklyRaidCheckByRaid(raidName: string) {
+    return getWeeklyRaidMinIlvl(raidName) < POPUP_WEEKLY_CHECK_MAX_ILVL;
+  }
+
+  function sanitizeWeeklyRaidPick(ilvl: number, source?: Partial<WeeklyRaidPick> | null): WeeklyRaidPick {
     const auto = calcWeeklyTop3Gold(ilvl);
-    const autoRaids = auto.top3.map((x) => x.raid);
+    const autoRaids = uniqueCanonicalRaidNames(auto.top3.map((x) => x.raid));
+
+    const raids = uniqueCanonicalRaidNames(Array.isArray(source?.raids) ? source!.raids! : autoRaids)
+      .filter((raidName) => availableDiffNames(ilvl, raidName).length > 0);
+
+    const finalRaids = raids.length > 0 ? raids : autoRaids;
+
+    const goldRaids = uniqueCanonicalRaidNames(Array.isArray(source?.goldRaids) ? source!.goldRaids! : autoRaids)
+      .filter((raidName) => finalRaids.some((name) => normalizeRaidName(name) === normalizeRaidName(raidName)))
+      .filter((raidName) => availableDiffNames(ilvl, raidName).length > 0)
+      .slice(0, 3);
+
+    const diffsSource = source?.diffs && typeof source.diffs === "object" ? source.diffs : {};
+    const diffs = Object.fromEntries(
+      Object.entries(diffsSource).flatMap(([raidName, diff]) => {
+        const canonical = canonicalRaidName(raidName);
+        const avail = availableDiffNames(ilvl, canonical);
+        if (!finalRaids.some((name) => normalizeRaidName(name) === normalizeRaidName(canonical))) return [];
+        if (!avail.includes(diff as DiffName)) return [];
+        return [[canonical, diff as DiffName]];
+      })
+    ) as Record<string, DiffName>;
 
     return {
-      raids: autoRaids,          // 기본 시작은 top3만 넣어도 됨
-      goldRaids: autoRaids,      // 기본 골드도 top3
+      raids: finalRaids,
+      goldRaids: goldRaids.length > 0 ? goldRaids : finalRaids.slice(0, 3),
+      diffs,
+    };
+  }
+
+  function getDefaultWeeklyRaidPick(ilvl: number): WeeklyRaidPick {
+    const auto = calcWeeklyTop3Gold(ilvl);
+    return sanitizeWeeklyRaidPick(ilvl, {
+      raids: auto.top3.map((x) => x.raid),
+      goldRaids: auto.top3.map((x) => x.raid),
       diffs: Object.fromEntries(
         auto.top3.map((x) => [x.raid, x.diff as DiffName])
       ) as Record<string, DiffName>,
-    };
+    });
   }
 
   function loadWeeklyRaidPick(tableId: string, charId: string, ilvl: number): WeeklyRaidPick {
@@ -4802,27 +4917,7 @@ export default function TodoTracker() {
         return getDefaultWeeklyRaidPick(ilvl);
       }
 
-      const raids: string[] = (Array.isArray(parsed.raids) ? parsed.raids : []).filter(Boolean);
-
-      const goldRaids: string[] = (
-        Array.isArray((parsed as any).goldRaids) ? (parsed as any).goldRaids : []
-      )
-        .filter(Boolean)
-        .filter((raid: string) => raids.includes(raid))
-        .slice(0, 3);
-
-      const diffs: Record<string, DiffName> =
-        parsed.diffs && typeof parsed.diffs === "object"
-          ? (parsed.diffs as Record<string, DiffName>)
-          : {};
-
-      if (!raids.length) return getDefaultWeeklyRaidPick(ilvl);
-
-      return {
-        raids,
-        goldRaids,
-        diffs,
-      };
+      return sanitizeWeeklyRaidPick(ilvl, parsed);
     } catch {
       return getDefaultWeeklyRaidPick(ilvl);
     }
@@ -4851,16 +4946,46 @@ export default function TodoTracker() {
     setWeeklyRaidPickByChar(next);
   }, [state.tables]);
 
+
+  const DEFAULT_HIDDEN_WEEKLY_RAID_TITLES = new Set([
+    "발탄",
+    "비아키스",
+    "쿠크세이튼",
+    "아브렐슈드",
+    "카양겔",
+    "일리아칸",
+    "상아탑",
+    "카멘",
+    "에키드나",
+    "베히모스",
+    "1막",
+    "2막",
+    "3막",
+  ]);
+
+  function isDefaultHiddenWeeklyRaidTask(task: TaskRow) {
+    if (task.period !== "WEEKLY") return false;
+    if ((task.section ?? "").trim() !== "주간 레이드") return false;
+
+    const title = (task.title ?? "").trim();
+    if (!DEFAULT_HIDDEN_WEEKLY_RAID_TITLES.has(title)) return false;
+
+    // 기본으로 깔린 task만 숨김
+    // 사용자가 나중에 직접 추가한 같은 이름 task는 order가 401~413이 아니므로 보임
+    return typeof task.order === "number" && task.order >= 401 && task.order <= 413;
+  }
+
   const tasks = useMemo(() => {
-    // ✅ 남은 레이드: 주간 레이드 섹션만 출력
+    const visibleTasks = state.tasks.filter((t) => !isDefaultHiddenWeeklyRaidTask(t));
+
     if (periodTab === "RAID_LEFT") {
-      return state.tasks.filter(
+      return visibleTasks.filter(
         (t) => t.period === "WEEKLY" && t.section === "주간 레이드"
       );
     }
 
-    if (periodTab === "ALL") return state.tasks;
-    return state.tasks.filter((t) => t.period === periodTab);
+    if (periodTab === "ALL") return visibleTasks;
+    return visibleTasks.filter((t) => t.period === periodTab);
   }, [periodTab, state.tasks]);
 
   const SECTION_ORDER: Record<string, number> = {
@@ -4870,13 +4995,22 @@ export default function TodoTracker() {
   };
 
   const WEEKLY_RAID_ORDER: Record<string, number> = {
-    "1막": 1,
-    "2막": 2,
-    "3막": 3,
-    "4막": 4,
-    "종막": 5,
-    "세르카": 6,
-    "지평의 성당": 7,
+    "발탄": 1,
+    "비아키스": 2,
+    "쿠크세이튼": 3,
+    "아브렐슈드": 4,
+    "카양겔": 5,
+    "일리아칸": 6,
+    "상아탑": 7,
+    "카멘": 8,
+    "에키드나": 9,
+    "베히모스": 10,
+    "1막": 11,
+    "2막": 12,
+    "3막": 13,
+    "4막": 14,
+    "종막": 15,
+    "세르카": 16,
   };
 
 
@@ -5614,33 +5748,31 @@ body.pip-dark .pip-select option{
 
     const goldSet = new Set((selected.goldRaids ?? []).slice(0, 3));
 
-    const rows = selected.raids.map((raidName) => {
-      const def = RAID_CATALOG.find((r) => r.name === raidName);
-      const avail = availableDiffNames(ilvl, raidName);
+    const rows = selected.raids
+      .filter((raidName) => availableDiffNames(ilvl, raidName).length > 0)
+      .map((raidName) => {
+        const def = RAID_CATALOG.find((r) => normalizeRaidName(r.name) === normalizeRaidName(raidName));
+        const avail = availableDiffNames(ilvl, raidName);
 
-      if (!def || !avail.length) {
-        return {
-          raid: raidName,
-          diff: "노말" as DiffName,
-          gold: 0,
-          checked: false,
-          avail: [] as DiffName[],
-        };
-      }
+        if (!def || !avail.length) {
+          return null;
+        }
 
-      const autoBest = pickBestDiff(ilvl, def);
-      const want = selected.diffs?.[raidName];
+        const canonical = def.name;
+        const autoBest = pickBestDiff(ilvl, def);
+        const want = selected.diffs?.[canonical] ?? selected.diffs?.[raidName];
 
-      const diff: DiffName =
-        want && avail.includes(want)
-          ? want
-          : ((autoBest?.name ?? avail[avail.length - 1]) as DiffName);
+        const diff: DiffName =
+          want && avail.includes(want)
+            ? want
+            : ((autoBest?.name ?? avail[avail.length - 1]) as DiffName);
 
-      const checked = goldSet.has(raidName);
-      const gold = checked ? getGoldByDiffName(raidName, diff) : 0;
+        const checked = Array.from(goldSet).some((name) => normalizeRaidName(name) === normalizeRaidName(canonical));
+        const gold = checked ? getGoldByDiffName(canonical, diff) : 0;
 
-      return { raid: raidName, diff, gold, checked, avail };
-    });
+        return { raid: canonical, diff, gold, checked, avail };
+      })
+      .filter(Boolean) as { raid: string; diff: DiffName; gold: number; checked: boolean; avail: DiffName[] }[];
 
     const sum = rows.reduce((acc, cur) => acc + cur.gold, 0);
     return { sum, rows };
@@ -5665,7 +5797,7 @@ body.pip-dark .pip-select option{
       if (t.period !== "WEEKLY") continue;
       if ((t.section ?? "").trim() !== "주간 레이드") continue;
       if (t.cellType !== "CHECK") continue;
-      map.set((t.title ?? "").trim(), t.id);
+      map.set(normalizeRaidName(t.title ?? ""), t.id);
     }
     return map;
   }, [state.tasks]);
@@ -5683,7 +5815,7 @@ body.pip-dark .pip-select option{
         total += r.sum;
 
         for (const x of r.top3) {
-          const taskId = weeklyRaidTaskIdByTitle.get((x.raid ?? "").trim());
+          const taskId = weeklyRaidTaskIdByTitle.get(normalizeRaidName(x.raid ?? ""));
           if (!taskId) continue;
           const cell = getCellByTableId(state, tbl.id, taskId, ch.id);
           if (cell && cell.type === "CHECK" && cell.checked) done += x.gold;
@@ -5941,10 +6073,14 @@ body.pip-dark .pip-select option{
                           const ilvl = getCharIlvl(ch);
                           const charKey = weeklyCharKey(tableId, ch.id);
                           const pick = weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(ilvl);
-                          const selectedSet = new Set(pick.raids);
+                          const selectedSet = new Set(pick.raids.map((name) => normalizeRaidName(name)));
 
-                          if (!selectedSet.has(task.title)) {
+                          if (!selectedSet.has(normalizeRaidName(task.title))) {
                             return <td key={ch.id} className="cell" />;
+                          }
+
+                          if (shouldUsePopupWeeklyRaidCheckByRaid(task.title)) {
+                            return <td key={`${tableId}:${ch.id}`} className="cell" />;
                           }
                         }
 
@@ -5992,8 +6128,10 @@ body.pip-dark .pip-select option{
                         const pickedResult = calcWeeklySelectedGold(ilvl, pick);
 
                         const detail = pickedResult.rows
-                          .map((x) => `${x.raid} ${x.diff}(${x.gold.toLocaleString()})`)
-                          .join(" + ");
+                          .filter((x) => x.checked)
+                          .slice(0, 3)
+                          .map((x) => x.raid)
+                          .join(" / ");
 
                         return (
                           <td key={ch.id} className="cell">
@@ -6013,7 +6151,7 @@ body.pip-dark .pip-select option{
                               }}
                             >
                               <div className="gold-sum">{pickedResult.sum.toLocaleString()} G</div>
-                              <div className="gold-detail">{pickedResult.rows.map((x) => x.raid).join(" / ")}</div>
+                              <div className="gold-detail">{pickedResult.rows.filter((x) => x.checked).slice(0, 3).map((x) => x.raid).join(" / ") || "-"}</div>
                             </button>
                           </td>
                         );
@@ -6483,7 +6621,7 @@ body.pip-dark .pip-select option{
                                       );
                                     }
 
-                                    // ✅ 주간 레이드: 캐릭터별 Top3 레이드만 체크 버튼 렌더링
+                                    // 주간 레이드: 캐릭터별 Top3 레이드만 체크 버튼 렌더링
                                     if (section === "주간 레이드" && isWeeklyRaidTaskTitle(task.title)) {
                                       const ilvl = getCharIlvl(ch);
                                       const charKey = weeklyCharKey(tableId, ch.id);
@@ -6491,6 +6629,11 @@ body.pip-dark .pip-select option{
                                       const selectedSet = new Set(pick.raids.map((x) => normalizeRaidName(x)));
 
                                       if (!selectedSet.has(normalizeRaidName(task.title))) {
+                                        return <td key={ch.id} className="cell" />;
+                                      }
+
+                                      // 1700 미만 레이드는 표에서 체크 안 보이고 팝업 완료 체크로만 관리
+                                      if (shouldUsePopupWeeklyRaidCheckByRaid(task.title)) {
                                         return <td key={ch.id} className="cell" />;
                                       }
                                     }
@@ -6537,8 +6680,10 @@ body.pip-dark .pip-select option{
                                   const pickedResult = calcWeeklySelectedGold(ilvl, picked);
 
                                   const detail = pickedResult.rows
-                                    .map((x) => `${x.raid} ${x.diff}(${x.gold.toLocaleString()})`)
-                                    .join(" + ");
+                                    .filter((x) => x.checked)
+                                    .slice(0, 3)
+                                    .map((x) => x.raid)
+                                    .join(" / ");
 
                                   return (
                                     <td key={ch.id} className="cell">
@@ -6559,7 +6704,7 @@ body.pip-dark .pip-select option{
                                       >
                                         <div className="gold-sum">{pickedResult.sum.toLocaleString()} G</div>
                                         <div className="gold-detail">
-                                          {pickedResult.rows.map((x) => x.raid).join(" / ")}
+                                          {pickedResult.rows.filter((x) => x.checked).slice(0, 3).map((x) => x.raid).join(" / ") || "-"}
                                         </div>
                                       </button>
                                     </td>
@@ -7564,29 +7709,31 @@ body.pip-dark .pip-select option{
         const popupCharName = popup.charName;
 
         const charKey = weeklyCharKey(tableId, charId);
-        const picked = weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(popupIlvl);
+        const picked = sanitizeWeeklyRaidPick(
+          popupIlvl,
+          weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(popupIlvl)
+        );
         const pickedResult = calcWeeklySelectedGold(popupIlvl, picked);
 
         function toggleRaid(raidName: string) {
+          if (availableDiffNames(popupIlvl, raidName).length === 0) return;
+
           setWeeklyRaidPickByChar((prev) => {
-            const cur = prev[charKey] ?? getDefaultWeeklyRaidPick(popupIlvl);
-            const exists = cur.raids.includes(raidName);
+            const cur = sanitizeWeeklyRaidPick(
+              popupIlvl,
+              prev[charKey] ?? getDefaultWeeklyRaidPick(popupIlvl)
+            );
+            const exists = cur.raids.some((name) => normalizeRaidName(name) === normalizeRaidName(raidName));
 
-            let nextRaids: string[];
-            if (exists) {
-              nextRaids = cur.raids.filter((name) => name !== raidName);
-            } else {
-              nextRaids = [...cur.raids, raidName];
-            }
+            const nextRaids = exists
+              ? cur.raids.filter((name) => normalizeRaidName(name) !== normalizeRaidName(raidName))
+              : [...cur.raids, canonicalRaidName(raidName)];
 
-            // 레이드 목록에서 빠지면 goldRaids에서도 제거
-            const nextGoldRaids = (cur.goldRaids ?? []).filter((name) => nextRaids.includes(name));
-
-            const nextChar: WeeklyRaidPick = {
+            const nextChar = sanitizeWeeklyRaidPick(popupIlvl, {
               raids: nextRaids,
-              goldRaids: nextGoldRaids,
+              goldRaids: cur.goldRaids ?? [],
               diffs: cur.diffs ?? {},
-            };
+            });
 
             saveWeeklyRaidPick(tableId, charId, nextChar);
             return { ...prev, [charKey]: nextChar };
@@ -7594,9 +7741,12 @@ body.pip-dark .pip-select option{
         }
 
         function toggleGoldRaid(raidName: string) {
-          const cur = weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(popupIlvl);
+          const cur = sanitizeWeeklyRaidPick(
+            popupIlvl,
+            weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(popupIlvl)
+          );
           const currentGoldRaids = (cur.goldRaids ?? []).filter((name) => cur.raids.includes(name));
-          const exists = currentGoldRaids.includes(raidName);
+          const exists = currentGoldRaids.some((name) => normalizeRaidName(name) === normalizeRaidName(raidName));
 
           if (!exists && currentGoldRaids.length >= 3) {
             alert("골드 체크는 최대 3개까지 가능해요!");
@@ -7604,19 +7754,22 @@ body.pip-dark .pip-select option{
           }
 
           setWeeklyRaidPickByChar((prev) => {
-            const latest = prev[charKey] ?? getDefaultWeeklyRaidPick(popupIlvl);
+            const latest = sanitizeWeeklyRaidPick(
+              popupIlvl,
+              prev[charKey] ?? getDefaultWeeklyRaidPick(popupIlvl)
+            );
             const latestGoldRaids = (latest.goldRaids ?? []).filter((name) => latest.raids.includes(name));
-            const latestExists = latestGoldRaids.includes(raidName);
+            const latestExists = latestGoldRaids.some((name) => normalizeRaidName(name) === normalizeRaidName(raidName));
 
             const nextGoldRaids = latestExists
-              ? latestGoldRaids.filter((name) => name !== raidName)
-              : [...latestGoldRaids, raidName];
+              ? latestGoldRaids.filter((name) => normalizeRaidName(name) !== normalizeRaidName(raidName))
+              : [...latestGoldRaids, canonicalRaidName(raidName)];
 
-            const nextChar: WeeklyRaidPick = {
+            const nextChar = sanitizeWeeklyRaidPick(popupIlvl, {
               raids: latest.raids,
               goldRaids: nextGoldRaids,
               diffs: latest.diffs ?? {},
-            };
+            });
 
             saveWeeklyRaidPick(tableId, charId, nextChar);
             return { ...prev, [charKey]: nextChar };
@@ -7625,12 +7778,15 @@ body.pip-dark .pip-select option{
 
         function setPick(raidName: string, diff: DiffName) {
           setWeeklyRaidPickByChar((prev) => {
-            const cur = prev[charKey] ?? getDefaultWeeklyRaidPick(popupIlvl);
-            const nextChar: WeeklyRaidPick = {
+            const cur = sanitizeWeeklyRaidPick(
+              popupIlvl,
+              prev[charKey] ?? getDefaultWeeklyRaidPick(popupIlvl)
+            );
+            const nextChar = sanitizeWeeklyRaidPick(popupIlvl, {
               raids: cur.raids,
               goldRaids: cur.goldRaids ?? [],
-              diffs: { ...(cur.diffs ?? {}), [raidName]: diff },
-            };
+              diffs: { ...(cur.diffs ?? {}), [canonicalRaidName(raidName)]: diff },
+            });
 
             saveWeeklyRaidPick(tableId, charId, nextChar);
             return { ...prev, [charKey]: nextChar };
@@ -7652,7 +7808,7 @@ body.pip-dark .pip-select option{
               {RAID_CATALOG
                 .filter((raid) => availableDiffNames(popupIlvl, raid.name).length > 0)
                 .map((raid) => {
-                  const active = picked.raids.includes(raid.name);
+                  const active = picked.raids.some((name) => normalizeRaidName(name) === normalizeRaidName(raid.name));
 
                   return (
                     <button
@@ -7704,8 +7860,27 @@ body.pip-dark .pip-select option{
                     })}
                   </div>
 
-                  <div className="weekly-top3-gold">
-                    {row.gold.toLocaleString()} G
+                  <div className="weekly-top3-gold-actions">
+                    <div className="weekly-top3-gold">
+                      {row.gold.toLocaleString()} G
+                    </div>
+
+                    {shouldUsePopupWeeklyRaidCheckByRaid(row.raid) && (
+                      <label className="weekly-top3-task-check" title="주간 레이드 완료 체크">
+                        <input
+                          type="checkbox"
+                          checked={(() => {
+                            const taskId = weeklyRaidTaskIdByTitle.get(normalizeRaidName(row.raid ?? ""));
+                            if (!taskId) return false;
+
+                            const cell = getCellByTableId(state, tableId, taskId, charId);
+                            return cell?.type === "CHECK" ? cell.checked : false;
+                          })()}
+                          onChange={() => toggleWeeklyRaidTaskCheckByRaidName(tableId, charId, row.raid)}
+                        />
+                        <span>완료</span>
+                      </label>
+                    )}
                   </div>
                 </div>
               ))}
