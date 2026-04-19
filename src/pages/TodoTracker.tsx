@@ -222,16 +222,26 @@ export default function TodoTracker() {
   // =========================
   type Theme = "light" | "dark";
   const THEME_KEY = "todoTheme";
+  const INCLUDE_BOUND_GOLD_KEY = "loa-include-bound-gold:v1";
 
   const [theme, setTheme] = useState<Theme>(() => {
     const saved = localStorage.getItem(THEME_KEY);
     return saved === "dark" ? "dark" : "light";
   });
 
+  const [includeBoundGold, setIncludeBoundGold] = useState<boolean>(() => {
+    const saved = localStorage.getItem(INCLUDE_BOUND_GOLD_KEY);
+    return saved !== "0";
+  });
+
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem(THEME_KEY, theme);
   }, [theme]);
+
+  useEffect(() => {
+    localStorage.setItem(INCLUDE_BOUND_GOLD_KEY, includeBoundGold ? "1" : "0");
+  }, [includeBoundGold]);
 
   const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
 
@@ -4765,35 +4775,70 @@ export default function TodoTracker() {
   // =========================
   // 주간 레이드 골드 계산용 데이터 & 유틸
   // =========================
-  type RaidRewardInfo = {
-    medal?: number;
-    normal?: number;
-    hard?: number;
-    nightmare?: number;
-    stage1?: number;
-    stage2?: number;
-    stage3?: number;
+  type GoldSplit = {
+    tradable: number;
+    bound: number;
   };
 
-  const RAID_REWARD_INFO: Record<string, RaidRewardInfo> = {
-    "발탄": { medal: 120, normal: 1200, hard: 1800 },
-    "비아키스": { medal: 160, normal: 1600, hard: 2400 },
-    "쿠크세이튼": { medal: 300, normal: 3000 },
-    "아브렐슈드": { medal: 700, normal: 4600, hard: 5600 },
-    "카양겔": { medal: 450, normal: 3600, hard: 4800 },
-    "일리아칸": { medal: 750, normal: 5400, hard: 7500 },
-    "상아탑": { medal: 900, normal: 6500, hard: 9000 },
-    "카멘": { medal: 1050, normal: 8000, hard: 15500 },
-    "에키드나": { medal: 950, normal: 9500, hard: 11000 },
-    "베히모스": { medal: 1400, normal: 11000 },
-    "1막": { medal: 1900, normal: 11500, hard: 18000 },
-    "2막": { medal: 2300, normal: 16500, hard: 23000 },
-    "3막": { medal: 2700, normal: 21000, hard: 27000 },
+  type RaidRewardInfo = {
+    medal?: number;
+    normal?: GoldSplit;
+    hard?: GoldSplit;
+    nightmare?: GoldSplit;
+    stage1?: GoldSplit;
+    stage2?: GoldSplit;
+    stage3?: GoldSplit;
+  };
 
-    "4막": { normal: 33000, hard: 42000 },
-    "종막": { normal: 40000, hard: 52000 },
-    "세르카": { normal: 35000, hard: 44000, nightmare: 54000 },
-    "지평의 성당": { stage1: 30000, stage2: 40000, stage3: 50000 },
+  const splitGold = (tradable: number, bound: number): GoldSplit => ({ tradable, bound });
+  const halfGold = (total: number): GoldSplit => ({ tradable: Math.floor(total / 2), bound: total - Math.floor(total / 2) });
+  const tradableOnlyGold = (tradable: number): GoldSplit => ({ tradable, bound: 0 });
+  const boundOnlyGold = (bound: number): GoldSplit => ({ tradable: 0, bound });
+
+  function getSplitTotal(split?: GoldSplit) {
+    return (split?.tradable ?? 0) + (split?.bound ?? 0);
+  }
+
+  function getVisibleGold(split: GoldSplit | undefined, includeBound: boolean) {
+    if (!split) return 0;
+    return split.tradable + (includeBound ? split.bound : 0);
+  }
+
+  const EMPTY_GOLD_SPLIT: GoldSplit = { tradable: 0, bound: 0 };
+
+  const RAID_REWARD_INFO: Record<string, RaidRewardInfo> = {
+    "발탄": { medal: 120, normal: halfGold(1200), hard: halfGold(1800) },
+    "비아키스": { medal: 160, normal: halfGold(1600), hard: halfGold(2400) },
+    "쿠크세이튼": { medal: 300, normal: halfGold(3000) },
+    "아브렐슈드": { medal: 700, normal: halfGold(4600), hard: halfGold(5600) },
+    "카양겔": { medal: 450, normal: halfGold(3600), hard: halfGold(4800) },
+    "일리아칸": { medal: 750, normal: halfGold(5400), hard: halfGold(7500) },
+    "상아탑": { medal: 900, normal: halfGold(6500), hard: halfGold(9000) },
+    "카멘": { medal: 1050, normal: halfGold(8000), hard: boundOnlyGold(8000) },
+    "에키드나": { medal: 950, normal: halfGold(9500), hard: halfGold(11000) },
+    "베히모스": { medal: 1400, normal: splitGold(3600, 3600) },
+
+    "서막": {
+      medal: 1500,
+      normal: halfGold(6100),
+      hard: splitGold(3600, 3600),
+    },
+    "1막": { medal: 1900, normal: splitGold(5750, 5750), hard: splitGold(9000, 9000) },
+    "2막": { medal: 2300, normal: splitGold(8250, 8250), hard: splitGold(11500, 11500) },
+    "3막": { medal: 2700, normal: splitGold(10500, 10500), hard: splitGold(13500, 13500) },
+
+    "4막": { normal: splitGold(16500, 16500), hard: tradableOnlyGold(42000) },
+    "종막": { normal: splitGold(20000, 20000), hard: tradableOnlyGold(52000) },
+    "세르카": {
+      normal: splitGold(17500, 17500),
+      hard: tradableOnlyGold(44000),
+      nightmare: tradableOnlyGold(54000),
+    },
+    "지평의 성당": {
+      stage1: boundOnlyGold(30000),
+      stage2: boundOnlyGold(40000),
+      stage3: boundOnlyGold(50000),
+    },
   };
 
   type DiffName = "노말" | "하드" | "나이트메어" | "1단계" | "2단계" | "3단계";
@@ -5141,15 +5186,15 @@ export default function TodoTracker() {
   };
 
   const RAID_CATALOG: RaidDef[] = [
-    { key: "epic", name: "베히모스", diffs: [{ name: "노말", minIlvl: 1640, gold: 7200 }] },
-    { key: "ACT0", name: "서막", diffs: [{ name: "노말", minIlvl: 1620, gold: 6100 }, { name: "하드", minIlvl: 1640, gold: 7200 }] },
-    { key: "ACT1", name: "1막", diffs: [{ name: "노말", minIlvl: 1660, gold: 11500 }, { name: "하드", minIlvl: 1680, gold: 18000 }] },
-    { key: "ACT2", name: "2막", diffs: [{ name: "노말", minIlvl: 1670, gold: 16500 }, { name: "하드", minIlvl: 1690, gold: 23000 }] },
-    { key: "ACT3", name: "3막", diffs: [{ name: "노말", minIlvl: 1680, gold: 21000 }, { name: "하드", minIlvl: 1700, gold: 27000 }] },
-    { key: "ACT4", name: "4막", diffs: [{ name: "노말", minIlvl: 1700, gold: 33000 }, { name: "하드", minIlvl: 1720, gold: 42000 }] },
-    { key: "FINAL", name: "종막", diffs: [{ name: "노말", minIlvl: 1710, gold: 40000 }, { name: "하드", minIlvl: 1730, gold: 52000 }] },
-    { key: "SERKA", name: "세르카", diffs: [{ name: "노말", minIlvl: 1710, gold: 35000 }, { name: "하드", minIlvl: 1730, gold: 44000 }, { name: "나이트메어", minIlvl: 1750, gold: 54000 }] },
-    { key: "ABYSS1", name: "지평의 성당", diffs: [{ name: "1단계", minIlvl: 1700, gold: 30000 }, { name: "2단계", minIlvl: 1720, gold: 40000 }, { name: "3단계", minIlvl: 1750, gold: 50000 }] },
+    { key: "epic", name: "베히모스", diffs: [{ name: "노말", minIlvl: 1640, gold: getSplitTotal(RAID_REWARD_INFO["베히모스"].normal) }] },
+    { key: "ACT0", name: "서막", diffs: [{ name: "노말", minIlvl: 1620, gold: getSplitTotal(RAID_REWARD_INFO["서막"].normal) }, { name: "하드", minIlvl: 1640, gold: getSplitTotal(RAID_REWARD_INFO["서막"].hard) }] },
+    { key: "ACT1", name: "1막", diffs: [{ name: "노말", minIlvl: 1660, gold: getSplitTotal(RAID_REWARD_INFO["1막"].normal) }, { name: "하드", minIlvl: 1680, gold: getSplitTotal(RAID_REWARD_INFO["1막"].hard) }] },
+    { key: "ACT2", name: "2막", diffs: [{ name: "노말", minIlvl: 1670, gold: getSplitTotal(RAID_REWARD_INFO["2막"].normal) }, { name: "하드", minIlvl: 1690, gold: getSplitTotal(RAID_REWARD_INFO["2막"].hard) }] },
+    { key: "ACT3", name: "3막", diffs: [{ name: "노말", minIlvl: 1680, gold: getSplitTotal(RAID_REWARD_INFO["3막"].normal) }, { name: "하드", minIlvl: 1700, gold: getSplitTotal(RAID_REWARD_INFO["3막"].hard) }] },
+    { key: "ACT4", name: "4막", diffs: [{ name: "노말", minIlvl: 1700, gold: getSplitTotal(RAID_REWARD_INFO["4막"].normal) }, { name: "하드", minIlvl: 1720, gold: getSplitTotal(RAID_REWARD_INFO["4막"].hard) }] },
+    { key: "FINAL", name: "종막", diffs: [{ name: "노말", minIlvl: 1710, gold: getSplitTotal(RAID_REWARD_INFO["종막"].normal) }, { name: "하드", minIlvl: 1730, gold: getSplitTotal(RAID_REWARD_INFO["종막"].hard) }] },
+    { key: "SERKA", name: "세르카", diffs: [{ name: "노말", minIlvl: 1710, gold: getSplitTotal(RAID_REWARD_INFO["세르카"].normal) }, { name: "하드", minIlvl: 1730, gold: getSplitTotal(RAID_REWARD_INFO["세르카"].hard) }, { name: "나이트메어", minIlvl: 1750, gold: getSplitTotal(RAID_REWARD_INFO["세르카"].nightmare) }] },
+    { key: "ABYSS1", name: "지평의 성당", diffs: [{ name: "1단계", minIlvl: 1700, gold: getSplitTotal(RAID_REWARD_INFO["지평의 성당"].stage1) }, { name: "2단계", minIlvl: 1720, gold: getSplitTotal(RAID_REWARD_INFO["지평의 성당"].stage2) }, { name: "3단계", minIlvl: 1750, gold: getSplitTotal(RAID_REWARD_INFO["지평의 성당"].stage3) }] },
   ];
 
 
@@ -5699,8 +5744,8 @@ body.pip-dark .pip-select option{
   function calcWeeklyTop3Gold(ilvl: number) {
     const candidates = RAID_CATALOG.map((raid) => {
       const best = pickBestDiff(ilvl, raid);
-      return best ? { raid: raid.name, diff: best.name, gold: best.gold } : null;
-    }).filter(Boolean) as { raid: string; diff: string; gold: number }[];
+      return best ? { raid: raid.name, diff: best.name as DiffName, gold: best.gold } : null;
+    }).filter(Boolean) as { raid: string; diff: DiffName; gold: number }[];
 
     candidates.sort((a, b) => b.gold - a.gold);
     const top3 = candidates.slice(0, 3);
@@ -5722,18 +5767,22 @@ body.pip-dark .pip-select option{
    * ✅ Top3는 "레이드 3개는 그대로(top3)" 유지하되
    *   각 레이드 골드는 (선택 난이도 우선) → 없으면 자동 최고난이도
    */
-  function getGoldByDiffName(raidName: string, diff: DiffName) {
+  function getGoldSplitByDiffName(raidName: string, diff: DiffName): GoldSplit {
     const g = RAID_REWARD_INFO[raidName];
-    if (!g) return 0;
+    if (!g) return EMPTY_GOLD_SPLIT;
 
-    if (diff === "노말") return g.normal ?? 0;
-    if (diff === "하드") return g.hard ?? 0;
-    if (diff === "나이트메어") return g.nightmare ?? 0;
-    if (diff === "1단계") return g.stage1 ?? 0;
-    if (diff === "2단계") return g.stage2 ?? 0;
-    if (diff === "3단계") return g.stage3 ?? 0;
+    if (diff === "노말") return g.normal ?? EMPTY_GOLD_SPLIT;
+    if (diff === "하드") return g.hard ?? EMPTY_GOLD_SPLIT;
+    if (diff === "나이트메어") return g.nightmare ?? EMPTY_GOLD_SPLIT;
+    if (diff === "1단계") return g.stage1 ?? EMPTY_GOLD_SPLIT;
+    if (diff === "2단계") return g.stage2 ?? EMPTY_GOLD_SPLIT;
+    if (diff === "3단계") return g.stage3 ?? EMPTY_GOLD_SPLIT;
 
-    return 0;
+    return EMPTY_GOLD_SPLIT;
+  }
+
+  function getGoldByDiffName(raidName: string, diff: DiffName) {
+    return getVisibleGold(getGoldSplitByDiffName(raidName, diff), includeBoundGold);
   }
 
   function isWeeklyRaidTaskTitle(title: string) {
@@ -5770,12 +5819,34 @@ body.pip-dark .pip-select option{
             ? want
             : ((autoBest?.name ?? avail[avail.length - 1]) as DiffName);
 
-        const checked = Array.from(goldSet).some((name) => normalizeRaidName(name) === normalizeRaidName(canonical));
-        const gold = checked ? getGoldByDiffName(canonical, diff) : 0;
+        const checked = Array.from(goldSet).some(
+          (name) => normalizeRaidName(name) === normalizeRaidName(canonical)
+        );
 
-        return { raid: canonical, diff, gold, checked, avail };
+        const split = checked ? getGoldSplitByDiffName(canonical, diff) : EMPTY_GOLD_SPLIT;
+        const gold = getVisibleGold(split, includeBoundGold);
+
+        return {
+          raid: canonical,
+          diff,
+          gold,
+          tradable: split.tradable,
+          bound: split.bound,
+          total: split.tradable + split.bound,
+          checked,
+          avail,
+        };
       })
-      .filter(Boolean) as { raid: string; diff: DiffName; gold: number; checked: boolean; avail: DiffName[] }[];
+      .filter(Boolean) as {
+        raid: string;
+        diff: DiffName;
+        gold: number;
+        tradable: number;
+        bound: number;
+        total: number;
+        checked: boolean;
+        avail: DiffName[];
+      }[];
 
     const sum = rows.reduce((acc, cur) => acc + cur.gold, 0);
     return { sum, rows };
@@ -5815,20 +5886,27 @@ body.pip-dark .pip-select option{
         if (!Number.isFinite(ilvl) || ilvl <= 0) continue;
 
         const r = calcWeeklyTop3Gold(ilvl);
-        total += r.sum;
 
         for (const x of r.top3) {
+          const split = getGoldSplitByDiffName(x.raid, x.diff);
+          const visibleGold = getVisibleGold(split, includeBoundGold);
+
+          total += visibleGold;
+
           const taskId = weeklyRaidTaskIdByTitle.get(normalizeRaidName(x.raid ?? ""));
           if (!taskId) continue;
+
           const cell = getCellByTableId(state, tbl.id, taskId, ch.id);
-          if (cell && cell.type === "CHECK" && cell.checked) done += x.gold;
+          if (cell && cell.type === "CHECK" && cell.checked) {
+            done += visibleGold;
+          }
         }
       }
     }
 
-    const pct = total > 0 ? Math.floor((done / total) * 100) : 0;
-    return { done, total, pct };
-  }, [state, weeklyRaidTaskIdByTitle]);
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    return { total, done, pct };
+  }, [state, weeklyRaidTaskIdByTitle, includeBoundGold]);
 
 
   // =========================
@@ -6142,8 +6220,11 @@ body.pip-dark .pip-select option{
                         const detail = pickedResult.rows
                           .filter((x) => x.checked)
                           .slice(0, 3)
-                          .map((x) => x.raid)
-                          .join(" / ");
+                          .map(
+                            (x) =>
+                              `${x.raid} (${x.diff}) - 유통 ${x.tradable.toLocaleString()} / 귀속 ${x.bound.toLocaleString()} / 표시 ${x.gold.toLocaleString()}G`
+                          )
+                          .join("\n");
 
                         return (
                           <td key={ch.id} className="cell">
@@ -6939,7 +7020,18 @@ body.pip-dark .pip-select option{
                 <div className="weeklyGoldValue muted">아이템레벨 입력 필요</div>
               )}
 
-              <div className="weeklyGoldHint">Top3 기준 · 체크하면 자동 합산</div>
+              <label className="weeklyGoldIncludeToggle">
+                <input
+                  type="checkbox"
+                  checked={includeBoundGold}
+                  onChange={(e) => setIncludeBoundGold(e.target.checked)}
+                />
+                <span>귀속 골드 포함</span>
+              </label>
+
+              <div className="weeklyGoldHint">
+                {includeBoundGold ? "유통 + 귀속 기준 · 체크하면 자동 합산" : "유통 골드만 기준 · 체크하면 자동 합산"}
+              </div>
             </div>
             <div className="todo-actions actions-row">
               <button className="btn" onClick={() => manualReset("DAILY")}>
@@ -7693,23 +7785,35 @@ body.pip-dark .pip-select option{
             )}
 
             {RAID_REWARD_INFO[raidGoldPopup.title]?.normal !== undefined && (
-              <div>노말: {RAID_REWARD_INFO[raidGoldPopup.title].normal!.toLocaleString()} G</div>
+              <div>
+                노말: 유통 {RAID_REWARD_INFO[raidGoldPopup.title].normal!.tradable.toLocaleString()} / 귀속 {RAID_REWARD_INFO[raidGoldPopup.title].normal!.bound.toLocaleString()} / 합계 {getSplitTotal(RAID_REWARD_INFO[raidGoldPopup.title].normal).toLocaleString()} G
+              </div>
             )}
             {RAID_REWARD_INFO[raidGoldPopup.title]?.hard !== undefined && (
-              <div>하드: {RAID_REWARD_INFO[raidGoldPopup.title].hard!.toLocaleString()} G</div>
+              <div>
+                하드: 유통 {RAID_REWARD_INFO[raidGoldPopup.title].hard!.tradable.toLocaleString()} / 귀속 {RAID_REWARD_INFO[raidGoldPopup.title].hard!.bound.toLocaleString()} / 합계 {getSplitTotal(RAID_REWARD_INFO[raidGoldPopup.title].hard).toLocaleString()} G
+              </div>
             )}
             {RAID_REWARD_INFO[raidGoldPopup.title]?.nightmare !== undefined && (
-              <div>나이트메어: {RAID_REWARD_INFO[raidGoldPopup.title].nightmare!.toLocaleString()} G</div>
+              <div>
+                나이트메어: 유통 {RAID_REWARD_INFO[raidGoldPopup.title].nightmare!.tradable.toLocaleString()} / 귀속 {RAID_REWARD_INFO[raidGoldPopup.title].nightmare!.bound.toLocaleString()} / 합계 {getSplitTotal(RAID_REWARD_INFO[raidGoldPopup.title].nightmare).toLocaleString()} G
+              </div>
             )}
 
             {RAID_REWARD_INFO[raidGoldPopup.title]?.stage1 !== undefined && (
-              <div>1단계: {RAID_REWARD_INFO[raidGoldPopup.title].stage1!.toLocaleString()} G</div>
+              <div>
+                1단계: 유통 {RAID_REWARD_INFO[raidGoldPopup.title].stage1!.tradable.toLocaleString()} / 귀속 {RAID_REWARD_INFO[raidGoldPopup.title].stage1!.bound.toLocaleString()} / 합계 {getSplitTotal(RAID_REWARD_INFO[raidGoldPopup.title].stage1).toLocaleString()} G
+              </div>
             )}
             {RAID_REWARD_INFO[raidGoldPopup.title]?.stage2 !== undefined && (
-              <div>2단계: {RAID_REWARD_INFO[raidGoldPopup.title].stage2!.toLocaleString()} G</div>
+              <div>
+                2단계: 유통 {RAID_REWARD_INFO[raidGoldPopup.title].stage2!.tradable.toLocaleString()} / 귀속 {RAID_REWARD_INFO[raidGoldPopup.title].stage2!.bound.toLocaleString()} / 합계 {getSplitTotal(RAID_REWARD_INFO[raidGoldPopup.title].stage2).toLocaleString()} G
+              </div>
             )}
             {RAID_REWARD_INFO[raidGoldPopup.title]?.stage3 !== undefined && (
-              <div>3단계: {RAID_REWARD_INFO[raidGoldPopup.title].stage3!.toLocaleString()} G</div>
+              <div>
+                3단계: 유통 {RAID_REWARD_INFO[raidGoldPopup.title].stage3!.tradable.toLocaleString()} / 귀속 {RAID_REWARD_INFO[raidGoldPopup.title].stage3!.bound.toLocaleString()} / 합계 {getSplitTotal(RAID_REWARD_INFO[raidGoldPopup.title].stage3).toLocaleString()} G
+              </div>
             )}
           </div>
         </div>
@@ -7822,6 +7926,13 @@ body.pip-dark .pip-select option{
 
             <div className="weekly-top3-sum">
               합계: <b>{pickedResult.sum.toLocaleString()} G</b>
+              <div className="weekly-top3-sum-sub">
+                유통 {pickedResult.rows.filter((x) => x.checked).reduce((acc, cur) => acc + cur.tradable, 0).toLocaleString()}
+                {" / "}
+                귀속 {pickedResult.rows.filter((x) => x.checked).reduce((acc, cur) => acc + cur.bound, 0).toLocaleString()}
+                {" / "}
+                {includeBoundGold ? "현재 표시 = 유통+귀속" : "현재 표시 = 유통만"}
+              </div>
             </div>
 
             <div className="weekly-top3-pick-list">
@@ -7848,6 +7959,9 @@ body.pip-dark .pip-select option{
                 raid: string;
                 diff: DiffName;
                 gold: number;
+                tradable: number;
+                bound: number;
+                total: number;
                 checked: boolean;
                 avail: DiffName[];
               }) => (
@@ -7883,6 +7997,9 @@ body.pip-dark .pip-select option{
                   <div className="weekly-top3-gold-actions">
                     <div className="weekly-top3-gold">
                       {row.gold.toLocaleString()} G
+                    </div>
+                    <div className="weekly-top3-gold-sub">
+                      유통 {row.tradable.toLocaleString()} / 귀속 {row.bound.toLocaleString()}
                     </div>
 
                     {shouldUsePopupWeeklyRaidCheckByRaid(row.raid) && (
