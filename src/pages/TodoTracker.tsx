@@ -791,7 +791,11 @@ export default function TodoTracker() {
     });
 
     await refreshWeeklySchedules();
+
     if (created?.id) setSelectedScheduleId(String(created.id));
+
+    setManualKkanbuPairs([{ myKey: "", friendKey: "", selectedRaids: null }]);
+
     alert(`새 일정표 생성 완료! (${targetDay}요일)`);
   }
 
@@ -835,6 +839,9 @@ export default function TodoTracker() {
 
     await saveWeeklySchedule(nextSchedule);
     setSelectedScheduleId(schedule.id);
+
+    setManualKkanbuPairs([{ myKey: "", friendKey: "", selectedRaids: null }]);
+
     alert(`기존 일정표에 추가 완료! (${targetDay}요일)`);
   }
 
@@ -2119,14 +2126,20 @@ export default function TodoTracker() {
     }
 
     function getCommonRaidsBetween(
-      my: MyCandidate,
-      friend: FriendCandidate
+      my: MyCandidate & { remainingRaids?: string[] },
+      friend: FriendCandidate & { remainingRaids?: string[] }
     ): string[] {
-      return my.activeRaids
+      const mySource =
+        Array.isArray(my.remainingRaids) ? my.remainingRaids : my.activeRaids;
+
+      const friendSource =
+        Array.isArray(friend.remainingRaids) ? friend.remainingRaids : friend.activeRaids;
+
+      return mySource
         .map((raid: string) => normalizeRaidName(raid))
         .filter((raid: string, index: number, arr: string[]) => arr.indexOf(raid) === index)
         .filter((raid: string) =>
-          friend.activeRaids.some((fr: string) => normalizeRaidName(fr) === raid)
+          friendSource.some((fr: string) => normalizeRaidName(fr) === raid)
         );
     }
 
