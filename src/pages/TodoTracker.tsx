@@ -687,6 +687,7 @@ export default function TodoTracker() {
         myCharKey: result.my.key,
         myCharName: result.my.name,
         myCharPower: result.my.power ?? null,
+        myWeeklyRaidPickKey: weeklyCharKey(result.my.tableId, result.my.charId), // 4/22 일정표 레이드 난이도 표시용
 
         friendCharKey: result.friend.key,
         friendCharName: result.friend.name,
@@ -714,13 +715,20 @@ export default function TodoTracker() {
       const parsed: SharedWeeklySchedule[] = rows.map((row) => {
         const raw = JSON.parse(String(row.scheduleJson ?? "{}"));
 
+        const items = Array.isArray(raw.items) ? raw.items : [];
+
         return {
           id: String(row.id),
           ownerFriendCode: String(row.ownerFriendCode ?? ""),
           targetFriendCode: String(row.targetFriendCode ?? ""),
           title: String(row.title ?? "일정표"),
           weekStartDate: String(row.weekStartDate ?? ""),
-          items: Array.isArray(raw.items) ? raw.items : [],
+          items: items.map((item: SharedWeeklyScheduleItem) => ({
+            ...item,
+            myWeeklyRaidPickKey:
+              String(item.myWeeklyRaidPickKey ?? "").trim() ||
+              resolveScheduleWeeklyPickKey(item),
+          })),
           updatedAt: new Date(row.updatedAt).getTime(),
         };
       });
@@ -891,6 +899,22 @@ export default function TodoTracker() {
     return { tableId: tableId ?? "", charId: charId ?? "" };
   }
 
+  function resolveScheduleWeeklyPickKey(item: SharedWeeklyScheduleItem) {
+    const directPickKey = String(item.myWeeklyRaidPickKey ?? "").trim();
+    if (directPickKey) return directPickKey;
+
+    const rawMyCharKey = String(item.myCharKey ?? "").trim();
+    if (!rawMyCharKey) return "";
+
+    // 4/22 구버전 일정표 키 보정: tableId|charId -> tableId:charId
+    if (rawMyCharKey.includes("|")) {
+      const [tableId, charId] = rawMyCharKey.split("|");
+      if (tableId && charId) return weeklyCharKey(tableId, charId);
+    }
+
+    return rawMyCharKey;
+  }
+
   function isScheduleRaidCleared(
     schedule: SharedWeeklySchedule,
     item: SharedWeeklyScheduleItem,
@@ -915,6 +939,24 @@ export default function TodoTracker() {
 
     const cell = getCellByTableId(state, tableId, task.id, charId);
     return !!(cell && cell.type === "CHECK" && cell.checked);
+  }
+
+
+  function formatScheduleRaidNameWithDifficulty(
+    item: SharedWeeklyScheduleItem,
+    raidName: string
+  ) {
+    const canonical = canonicalRaidName(raidName);
+    const pickKey = resolveScheduleWeeklyPickKey(item);
+
+    if (!pickKey) return canonical;
+
+    const pick = weeklyRaidPickByChar[pickKey];
+    const diff =
+      pick?.diffs?.[canonical] ??
+      pick?.diffs?.[raidName];
+
+    return diff ? `${canonical} ${diff}` : canonical;
   }
 
   function getScheduleRaidCompletion(
@@ -1036,6 +1078,8 @@ export default function TodoTracker() {
     scheduleId: string,
     me: {
       key: string;
+      tableId: string;
+      charId: string;
       name: string;
       power: number;
       activeRaids: string[];
@@ -1074,6 +1118,7 @@ export default function TodoTracker() {
           myCharKey: me.key,
           myCharName: me.name,
           myCharPower: me.power ?? null,
+          myWeeklyRaidPickKey: weeklyCharKey(me.tableId, me.charId), // 4/22 일정표 레이드 난이도 표시용
 
           friendCharKey: null,
           friendCharName: null,
@@ -2763,7 +2808,7 @@ export default function TodoTracker() {
                                         <span
                                           className={`weeklyScheduleRaidText ${raidItem.cleared ? "is-cleared" : ""} ${completion.isPast ? "is-past" : ""}`}
                                         >
-                                          {raidItem.raid}
+                                          {formatScheduleRaidNameWithDifficulty(item, raidItem.raid)}
                                         </span>
                                         {raidIndex < completion.clearedMap.length - 1 ? ", " : ""}
                                       </React.Fragment>

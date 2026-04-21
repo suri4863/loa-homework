@@ -155,6 +155,9 @@ export type SharedWeeklyScheduleItem = {
   myCharName: string;
   myCharPower: number | null;
 
+  // 4/22 일정표 레이드 난이도 표시용 키 추가
+  myWeeklyRaidPickKey?: string | null;
+
   friendCharKey: string | null;
   friendCharName: string | null;
   friendCharPower: number | null;
