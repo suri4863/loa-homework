@@ -4204,7 +4204,7 @@ export default function TodoTracker() {
       <div className="accountDailyBox">
         <div className="accountDailyTitle">계정 콘텐츠</div>
 
-        {/* ✅ 생명의 기운(항상 표시) */}
+        {/* 생명의 기운(항상 표시) */}
         <div className="lifeBox">
           <div className="lifeTop">
             <b>생명의 기운 </b>
@@ -6339,20 +6339,21 @@ body.pip-dark .pip-select option{
         className="tablePane"
         style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}
       >
-        <div className="paneHeader" style={{ position: "relative", paddingRight: 70 }}>
-          <div className="paneTitle">
-            {paneLabel} · {table.name}
-          </div>
+        <div className="paneHeader paneHeaderInlineClose">
+          <div className="paneHeaderTitleRow">
+            <div className="paneTitle" style={{ marginBottom: 0 }}>
+              {paneLabel} · {table.name}
+            </div>
 
-          {!isActivePane && (
-            <button
-              className="btn"
-              onClick={() => setSecondaryTableId("")}
-              style={{ position: "absolute", left: 500, top: -50 }}
-            >
-              닫기
-            </button>
-          )}
+            {!isActivePane && (
+              <button
+                className="btn mini paneInlineCloseBtn"
+                onClick={() => setSecondaryTableId("")}
+              >
+                닫기
+              </button>
+            )}
+          </div>
         </div>
         <div style={{ flex: "1 1 auto", minHeight: 0, overflow: "auto" }}>
           <div
