@@ -2343,35 +2343,42 @@ export default function TodoTracker() {
       }
     }
 
-    const remainingMyCandidates = myCandidates
-      .map((me) => {
-        const used = usedRaidsByMyKey.get(me.key) ?? new Set<string>();
+    // 4/23 현재 주 기준에서도 아래 목록은 전체 후보를 보여주고,
+    // 일정표에 이미 전부 들어간 캐릭터는 흐리게만 표시되도록 분리
+    const displayMyCandidates = myCandidates.map((me) => {
+      const used = usedRaidsByMyKey.get(me.key) ?? new Set<string>();
 
-        const remainingRaids = me.activeRaids.filter(
-          (raid: string) => !used.has(normalizeRaidName(raid))
-        );
+      const unscheduledRaids = me.activeRaids.filter(
+        (raid: string) => !used.has(normalizeRaidName(raid))
+      );
 
-        return {
-          ...me,
-          remainingRaids,
-        };
-      })
-      .filter((me) => me.remainingRaids.length > 0);
+      return {
+        ...me,
+        unscheduledRaids,
+      };
+    });
 
-    const remainingFriendCandidates = friendCandidates
-      .map((fr) => {
-        const used = usedRaidsByFriendKey.get(fr.key) ?? new Set<string>();
+    const displayFriendCandidates = friendCandidates.map((fr) => {
+      const used = usedRaidsByFriendKey.get(fr.key) ?? new Set<string>();
 
-        const remainingRaids = fr.activeRaids.filter(
-          (raid: string) => !used.has(normalizeRaidName(raid))
-        );
+      const unscheduledRaids = fr.activeRaids.filter(
+        (raid: string) => !used.has(normalizeRaidName(raid))
+      );
 
-        return {
-          ...fr,
-          remainingRaids,
-        };
-      })
-      .filter((fr) => fr.remainingRaids.length > 0);
+      return {
+        ...fr,
+        unscheduledRaids,
+      };
+    });
+
+    // 4/23 조합 추가 버튼 / 새 매칭 생성에는 "진짜 아직 일정표에 안 들어간 캐릭터"만 사용
+    const remainingMyCandidates = displayMyCandidates.filter(
+      (me) => me.unscheduledRaids.length > 0
+    );
+
+    const remainingFriendCandidates = displayFriendCandidates.filter(
+      (fr) => fr.unscheduledRaids.length > 0
+    );
 
     const updateManualPair = (
       index: number,
@@ -3295,12 +3302,12 @@ export default function TodoTracker() {
           <div className="manualKkanbuRemainWrap manualKkanbuRemainTop">
             <div className="manualRemainCard">
               <div className="manualRemainTitle">남은 내 캐릭터</div>
-              {remainingMyCandidates.length ? (
+              {displayMyCandidates.length ? (
                 <div className="manualRemainList">
-                  {remainingMyCandidates.map((me) => {
+                  {displayMyCandidates.map((me) => {
                     const scheduleState = getRemainScheduleState(
                       me.key,
-                      me.remainingRaids,
+                      me.activeRaids,
                       scheduledMyRaidSetByChar
                     );
 
@@ -3319,7 +3326,7 @@ export default function TodoTracker() {
                         </div>
 
                         <div className="manualRemainRaids">
-                          {me.remainingRaids.map((raid) => {
+                          {me.activeRaids.map((raid) => {
                             const isScheduled = scheduleState.scheduledSet.has(normalizeRaidName(raid));
 
                             return (
@@ -3344,12 +3351,12 @@ export default function TodoTracker() {
 
             <div className="manualRemainCard">
               <div className="manualRemainTitle">남은 친구 캐릭터</div>
-              {remainingFriendCandidates.length ? (
+              {displayFriendCandidates.length ? (
                 <div className="manualRemainList">
-                  {remainingFriendCandidates.map((fr: FriendCandidate) => {
+                  {displayFriendCandidates.map((fr: FriendCandidate) => {
                     const scheduleState = getRemainScheduleState(
                       fr.key,
-                      fr.remainingRaids,
+                      fr.activeRaids,
                       scheduledFriendRaidSetByChar
                     );
 
@@ -3368,7 +3375,7 @@ export default function TodoTracker() {
                         </div>
 
                         <div className="manualRemainRaids">
-                          {fr.remainingRaids.map((raid: string) => {
+                          {fr.activeRaids.map((raid: string) => {
                             const isScheduled = scheduleState.scheduledSet.has(normalizeRaidName(raid));
 
                             return (
