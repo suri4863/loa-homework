@@ -1010,9 +1010,6 @@ html[data-theme="dark"] .rest-input {
   text-align: left;
 }
 
-.raid-gold-head button:hover {
-  background: var(--soft-2);
-}
 
 
 .todo-col-head[draggable="true"] {
@@ -1113,12 +1110,6 @@ html[data-theme="dark"] .rest-input {
   color-scheme: light dark;
 }
 
-.bid-popover-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
 
 .bid-popover-title {
   font-size: 14px;
@@ -1138,20 +1129,8 @@ html[data-theme="dark"] .rest-input {
   background: var(--soft-2);
 }
 
-.bid-popover-body {
-  display: grid;
-  gap: 10px;
-}
 
-.bid-field {
-  display: grid;
-  gap: 6px;
-}
 
-.bid-label {
-  font-size: 12px;
-  color: var(--muted);
-}
 
 /* ✅ 핵심: input 흰색 방지 */
 .bid-input {
@@ -1947,11 +1926,6 @@ body,
   background: var(--bg) !important;
 }
 
-html,
-body,
-#root {
-  background: var(--bg) !important;
-}
 
 /* ----------탑3 Weekly Top3 difficulty popup ---------- */
 .weekly-top3-pop {
@@ -3353,13 +3327,6 @@ html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
   min-width: 0;
 }
 
-.weeklyScheduleGrid {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(180px, 1fr));
-  gap: 10px;
-  overflow-x: auto;
-  min-width: 0;
-}
 
 .weeklyDayTitle {
   font-size: 14px;
@@ -3450,25 +3417,8 @@ html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
   }
 }
 
-.manualKkanbuRemainTop {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  margin-bottom: 14px;
-}
 
-.manualKkanbuScheduleInput {
-  min-width: 180px;
-}
 
-.weeklyScheduleHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
 
 .weeklyScheduleItemTop {
   display: flex;
@@ -3479,24 +3429,8 @@ html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
   min-width: 0;
 }
 
-.weeklySchedulePair {
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--text);
-  line-height: 1.4;
-}
 
-.weeklyScheduleRaids {
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.5;
-}
 
-@media (max-width: 1100px) {
-  .manualKkanbuRemainTop {
-    grid-template-columns: 1fr;
-  }
-}
 
 .weeklyScheduleItem {
   border: 1px solid var(--border);
@@ -3670,10 +3604,6 @@ html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
   flex: 0 0 auto;
 }
 
-.friendSelect {
-  background: var(--card);
-  color: var(--text);
-}
 
 .weeklyScheduleAddRow {
   display: flex;
@@ -3753,4 +3683,366 @@ html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
 .weeklyScheduleItem.is-future .weeklySchedulePower.is-cleared {
   text-decoration: none;
   opacity: 1;
+}
+
+/* =========================================================
+   4/23 모바일 대응 정리
+   - 기존 UI 유지
+   - 데스크톱 레이아웃은 유지하고 모바일에서만 겹침/넘침 방지
+   - 절대 위치/고정 폭은 모바일에서만 해제
+   ========================================================= */
+
+@media (max-width: 768px) {
+  .todo-topbar {
+    padding: 12px;
+    row-gap: 12px;
+  }
+
+  .topbar-left,
+  .topbar-center,
+  .topbar-right,
+  .topbar-cards,
+  .friendBoxTop,
+  .serverBackupPanel,
+  .weeklyGoldSummary {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .topbar-center {
+    gap: 12px;
+    margin-top: 0;
+  }
+
+  .topbar-center .todo-actions,
+  .actions-row,
+  .todo-tabs,
+  .weeklyScheduleAddRow,
+  .manualKkanbuTopBar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+    padding-bottom: 2px;
+  }
+
+  .topbar-center .todo-actions::-webkit-scrollbar,
+  .actions-row::-webkit-scrollbar,
+  .todo-tabs::-webkit-scrollbar,
+  .weeklyScheduleAddRow::-webkit-scrollbar,
+  .manualKkanbuTopBar::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  .topbar-center .todo-actions > *,
+  .actions-row > *,
+  .todo-tabs > *,
+  .weeklyScheduleAddRow > *,
+  .manualKkanbuTopBar > * {
+    flex: 0 0 auto;
+  }
+
+  .weeklyGoldSummary {
+    min-width: 0;
+    padding: 10px 12px;
+  }
+
+  .serverBackupPanel {
+    min-width: 0;
+    padding: 10px !important;
+  }
+
+  .serverBackupPanel .friendInput {
+    max-width: none;
+  }
+
+  .friendBox {
+    width: 100%;
+  }
+
+  .friendRow {
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .friendLabel {
+    width: auto;
+    min-width: 52px;
+    text-align: left;
+  }
+
+  .friendCode,
+  .friendInput,
+  .friendSelect,
+  .friendAutoInterval {
+    max-width: 100%;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .friendAutoLast {
+    white-space: normal;
+    margin-left: 0;
+  }
+
+  .backupDock {
+    position: static;
+    right: auto;
+    bottom: auto;
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    margin-top: 12px;
+  }
+
+  .backupDockRow {
+    flex-wrap: wrap;
+  }
+
+  .backupDockRow .friendInput {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .tt-grid.two,
+  .manualKkanbuPairGrid,
+  .manualKkanbuRemainWrap,
+  .manualKkanbuRemainTop,
+  .todayMustDoList {
+    grid-template-columns: 1fr;
+  }
+
+  .todo-table-scroll {
+    padding: 0 10px 10px;
+  }
+
+  .todo-table-area {
+    width: 100%;
+    margin: 0;
+  }
+
+  .todo-table-grid,
+  .todo-two-table-grid {
+    min-width: 0;
+  }
+
+  .head-left,
+  .task-left {
+    min-width: 240px;
+    width: 240px;
+  }
+
+  .todo-col-head {
+    min-width: 170px;
+    width: 170px;
+  }
+
+  .task-left .task-left-inner {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .task-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
+  .accountDailyBox {
+    width: 100%;
+    margin-left: 0;
+    padding: 12px;
+    box-sizing: border-box;
+  }
+
+  .todo-table-area .accountDailyBox {
+    margin-left: 0;
+  }
+
+  .todo-table-area .accountDailyGrid > .accountDailyBox:nth-child(2) {
+    justify-self: stretch;
+    margin-left: 0;
+    transform: none;
+  }
+
+  .lifeInputRow,
+  .ticket-grid,
+  .ticket-left-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .ticket-right {
+    grid-template-rows: auto;
+  }
+
+  .lifeInput,
+  .ticket-input,
+  .cell-text,
+  .cell-select,
+  .weeklyScheduleMemo,
+  .manualKkanbuSelect,
+  .weeklyScheduleFriendSelect {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  .raid-left-hscroll {
+    padding-bottom: 8px;
+  }
+
+  .raidLeftColCard {
+    flex-basis: 240px;
+  }
+
+  .raidLeftCols {
+    gap: 10px;
+    padding: 6px 2px;
+  }
+
+  .weekly-top3-pop,
+  .raid-gold-pop,
+  .memoModal,
+  .kkanbuShareModal {
+    width: min(calc(100vw - 20px), 520px);
+    max-width: calc(100vw - 20px);
+  }
+
+  .weekly-top3-row {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .weekly-top3-gold-actions {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .todayMustDoItem {
+    width: 100%;
+    min-height: 0;
+  }
+
+  .weeklyScheduleSection,
+  .todayMustDoPanel,
+  .manualKkanbuPairCard,
+  .manualRemainCard {
+    padding: 12px;
+  }
+
+  .weeklyScheduleGrid {
+    grid-template-columns: repeat(7, 160px);
+    gap: 8px;
+  }
+
+  .weeklyDayCard {
+    min-height: 180px;
+    padding: 8px;
+  }
+
+  .weeklyScheduleItemTop,
+  .weeklyScheduleMyCharRow,
+  .friendRaidHead,
+  .raidLeftColHeader,
+  .todayMustDoHeader,
+  .weeklyScheduleHeader,
+  .manualKkanbuPairHeader,
+  .friendListHeader {
+    flex-wrap: wrap;
+  }
+
+  .manualKkanbuDaySelect {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .weeklyScheduleAddRow .btn {
+    margin-left: 0;
+  }
+
+  .paneHeaderTitleRow {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 560px) {
+  .todo-topbar,
+  .weeklyScheduleSection,
+  .todayMustDoPanel,
+  .memoModal,
+  .kkanbuShareModal,
+  .friendBox,
+  .serverBackupPanel {
+    border-radius: 12px;
+  }
+
+  .todo-table-scroll {
+    padding: 0 8px 10px;
+  }
+
+  .head-left,
+  .task-left {
+    min-width: 220px;
+    width: 220px;
+  }
+
+  .todo-col-head {
+    min-width: 150px;
+    width: 150px;
+  }
+
+  .char-head,
+  .todo-table td.cell,
+  .task-left,
+  .section-left {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+
+  .task-title,
+  .char-name,
+  .weeklyScheduleMyChar,
+  .friendItemName,
+  .raidLeftColName {
+    word-break: keep-all;
+  }
+
+  .weeklyScheduleGrid {
+    grid-template-columns: repeat(7, 148px);
+  }
+
+  .weeklyDayTitle,
+  .weeklyScheduleTitle,
+  .todayMustDoTitle {
+    font-size: 15px;
+  }
+
+  .accountDailyItems {
+    gap: 10px;
+    margin-left: 0;
+  }
+
+  .accountDailyItem {
+    font-size: 14px;
+  }
+
+  .todayMustDoSettings {
+    gap: 8px 10px;
+    padding: 10px;
+  }
+
+  .todayMustDoCheck {
+    white-space: normal;
+    align-items: flex-start;
+  }
+
+  .manualRaidChipBtn,
+  .manualRaidChip,
+  .raid-pick-btn,
+  .diff-btn,
+  .btn,
+  .mini {
+    white-space: nowrap;
+  }
 }
