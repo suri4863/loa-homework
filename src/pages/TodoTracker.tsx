@@ -3307,7 +3307,7 @@ export default function TodoTracker() {
                   {displayMyCandidates.map((me) => {
                     const scheduleState = getRemainScheduleState(
                       me.key,
-                      me.activeRaids,
+                      me.allRaids,
                       scheduledMyRaidSetByChar
                     );
 
@@ -3326,14 +3326,17 @@ export default function TodoTracker() {
                         </div>
 
                         <div className="manualRemainRaids">
-                          {me.activeRaids.map((raid) => {
+                          {me.allRaids.map((raid) => {
                             const isScheduled = scheduleState.scheduledSet.has(normalizeRaidName(raid));
+                            const isRemaining = me.remainingRaids.some(
+                              (x) => normalizeRaidName(x) === normalizeRaidName(raid)
+                            );
 
                             return (
                               <span
                                 key={raid}
-                                className={`manualRaidChip ${isScheduled ? "is-scheduled" : ""} ${scheduleState.allScheduled ? "is-schedule-full" : ""
-                                  }`}
+                                className={`manualRaidChip ${!isRemaining || isScheduled ? "is-scheduled" : ""
+                                  } ${scheduleState.allScheduled ? "is-schedule-full" : ""}`}
                               >
                                 {raid}
                               </span>
@@ -3356,7 +3359,7 @@ export default function TodoTracker() {
                   {displayFriendCandidates.map((fr: FriendCandidate) => {
                     const scheduleState = getRemainScheduleState(
                       fr.key,
-                      fr.activeRaids,
+                      fr.allRaids,
                       scheduledFriendRaidSetByChar
                     );
 
@@ -3375,14 +3378,17 @@ export default function TodoTracker() {
                         </div>
 
                         <div className="manualRemainRaids">
-                          {fr.activeRaids.map((raid: string) => {
+                          {fr.allRaids.map((raid: string) => {
                             const isScheduled = scheduleState.scheduledSet.has(normalizeRaidName(raid));
+                            const isRemaining = fr.remainingRaids.some(
+                              (x) => normalizeRaidName(x) === normalizeRaidName(raid)
+                            );
 
                             return (
                               <span
                                 key={raid}
-                                className={`manualRaidChip ${isScheduled ? "is-scheduled" : ""} ${scheduleState.allScheduled ? "is-schedule-full" : ""
-                                  }`}
+                                className={`manualRaidChip ${!isRemaining || isScheduled ? "is-scheduled" : ""
+                                  } ${scheduleState.allScheduled ? "is-schedule-full" : ""}`}
                               >
                                 {raid}
                               </span>
