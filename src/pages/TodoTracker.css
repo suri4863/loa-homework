@@ -1275,7 +1275,7 @@ html[data-theme="dark"] .rest-input {
   margin-bottom: 12px;
 }
 
-.tablePane > .paneAccountDailyBox .accountDailyBox {
+.tablePane>.paneAccountDailyBox .accountDailyBox {
   width: 100%;
   max-width: 450px;
   margin-left: 0;
@@ -2012,10 +2012,17 @@ body,
   background: var(--card);
   color: var(--text);
   border-radius: 10px;
-  height: 28px;
-  padding: 0 10px;
+  min-height: 28px;
+  height: auto;
+  padding: 4px 10px;
   cursor: pointer;
   font-size: 12px;
+
+  white-space: nowrap;
+  /* 4/24 나이트메어 줄바꿈 방지 */
+  word-break: keep-all;
+  line-height: 1.2;
+  flex: 0 0 auto;
 }
 
 .diff-btn:hover {
@@ -3728,11 +3735,11 @@ html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
     height: 6px;
   }
 
-  .topbar-center .todo-actions > *,
-  .actions-row > *,
-  .todo-tabs > *,
-  .weeklyScheduleAddRow > *,
-  .manualKkanbuTopBar > * {
+  .topbar-center .todo-actions>*,
+  .actions-row>*,
+  .todo-tabs>*,
+  .weeklyScheduleAddRow>*,
+  .manualKkanbuTopBar>* {
     flex: 0 0 auto;
   }
 
@@ -3851,7 +3858,7 @@ html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
     margin-left: 0;
   }
 
-  .todo-table-area .accountDailyGrid > .accountDailyBox:nth-child(2) {
+  .todo-table-area .accountDailyGrid>.accountDailyBox:nth-child(2) {
     justify-self: stretch;
     margin-left: 0;
     transform: none;
@@ -3960,6 +3967,7 @@ html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
 }
 
 @media (max-width: 560px) {
+
   .todo-topbar,
   .weeklyScheduleSection,
   .todayMustDoPanel,

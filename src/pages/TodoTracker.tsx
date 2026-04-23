@@ -1822,17 +1822,17 @@ export default function TodoTracker() {
 
     function getRemainScheduleState(
       charKey: string,
-      remainingRaids: string[],
+      targetRaids: string[],
       raidSetMap: Map<string, Set<string>>
     ) {
       const scheduledSet = raidSetMap.get(charKey) ?? new Set<string>();
 
-      const scheduledRaids = remainingRaids.filter((raid) =>
+      const scheduledRaids = targetRaids.filter((raid) =>
         scheduledSet.has(normalizeRaidName(raid))
       );
 
       const allScheduled =
-        remainingRaids.length > 0 && scheduledRaids.length === remainingRaids.length;
+        targetRaids.length > 0 && scheduledRaids.length === targetRaids.length;
 
       return {
         scheduledSet,
@@ -3311,13 +3311,26 @@ export default function TodoTracker() {
                       scheduledMyRaidSetByChar
                     );
 
+                    // 4/23 현재 화면에 보이는 레이드칩이 전부 회색 조건이면 이름도 같이 회색
+                    const allVisibleRaidsMuted =
+                      me.allRaids.length > 0 &&
+                      me.allRaids.every((raid) => {
+                        const normalized = normalizeRaidName(raid);
+                        const isScheduled = scheduleState.scheduledSet.has(normalized);
+                        const isRemaining = me.remainingRaids.some(
+                          (x) => normalizeRaidName(x) === normalized
+                        );
+
+                        return !isRemaining || isScheduled;
+                      });
+
                     return (
                       <div
                         key={me.key}
-                        className={`manualRemainItem ${scheduleState.allScheduled ? "is-schedule-full" : ""}`}
+                        className={`manualRemainItem ${allVisibleRaidsMuted ? "is-schedule-full" : ""}`}
                       >
                         <div
-                          className={`manualRemainName ${scheduleState.allScheduled ? "is-schedule-full" : ""}`}
+                          className={`manualRemainName ${allVisibleRaidsMuted ? "is-schedule-full" : ""}`}
                         >
                           {me.name}{" "}
                           <span className="manualRemainMeta">
@@ -3327,16 +3340,17 @@ export default function TodoTracker() {
 
                         <div className="manualRemainRaids">
                           {me.allRaids.map((raid) => {
-                            const isScheduled = scheduleState.scheduledSet.has(normalizeRaidName(raid));
+                            const normalized = normalizeRaidName(raid);
+                            const isScheduled = scheduleState.scheduledSet.has(normalized);
                             const isRemaining = me.remainingRaids.some(
-                              (x) => normalizeRaidName(x) === normalizeRaidName(raid)
+                              (x) => normalizeRaidName(x) === normalized
                             );
 
                             return (
                               <span
                                 key={raid}
                                 className={`manualRaidChip ${!isRemaining || isScheduled ? "is-scheduled" : ""
-                                  } ${scheduleState.allScheduled ? "is-schedule-full" : ""}`}
+                                  } ${allVisibleRaidsMuted ? "is-schedule-full" : ""}`}
                               >
                                 {raid}
                               </span>
@@ -3363,13 +3377,26 @@ export default function TodoTracker() {
                       scheduledFriendRaidSetByChar
                     );
 
+                    // 4/23 현재 화면에 보이는 레이드칩이 전부 회색 조건이면 이름도 같이 회색
+                    const allVisibleRaidsMuted =
+                      fr.allRaids.length > 0 &&
+                      fr.allRaids.every((raid: string) => {
+                        const normalized = normalizeRaidName(raid);
+                        const isScheduled = scheduleState.scheduledSet.has(normalized);
+                        const isRemaining = fr.remainingRaids.some(
+                          (x) => normalizeRaidName(x) === normalized
+                        );
+
+                        return !isRemaining || isScheduled;
+                      });
+
                     return (
                       <div
                         key={fr.key}
-                        className={`manualRemainItem ${scheduleState.allScheduled ? "is-schedule-full" : ""}`}
+                        className={`manualRemainItem ${allVisibleRaidsMuted ? "is-schedule-full" : ""}`}
                       >
                         <div
-                          className={`manualRemainName ${scheduleState.allScheduled ? "is-schedule-full" : ""}`}
+                          className={`manualRemainName ${allVisibleRaidsMuted ? "is-schedule-full" : ""}`}
                         >
                           {fr.name}{" "}
                           <span className="manualRemainMeta">
@@ -3379,16 +3406,17 @@ export default function TodoTracker() {
 
                         <div className="manualRemainRaids">
                           {fr.allRaids.map((raid: string) => {
-                            const isScheduled = scheduleState.scheduledSet.has(normalizeRaidName(raid));
+                            const normalized = normalizeRaidName(raid);
+                            const isScheduled = scheduleState.scheduledSet.has(normalized);
                             const isRemaining = fr.remainingRaids.some(
-                              (x) => normalizeRaidName(x) === normalizeRaidName(raid)
+                              (x) => normalizeRaidName(x) === normalized
                             );
 
                             return (
                               <span
                                 key={raid}
                                 className={`manualRaidChip ${!isRemaining || isScheduled ? "is-scheduled" : ""
-                                  } ${scheduleState.allScheduled ? "is-schedule-full" : ""}`}
+                                  } ${allVisibleRaidsMuted ? "is-schedule-full" : ""}`}
                               >
                                 {raid}
                               </span>
@@ -4964,6 +4992,17 @@ export default function TodoTracker() {
       stage2: boundOnlyGold(40000),
       stage3: boundOnlyGold(50000),
     },
+
+    "1막 익스트림": {
+      normal: tradableOnlyGold(20000), // 4/24 익스트림 추가
+      hard: tradableOnlyGold(45000),
+      nightmare: tradableOnlyGold(45000),
+    },
+    "2막 익스트림": {
+      normal: tradableOnlyGold(20000), // 4/24 익스트림 추가
+      hard: tradableOnlyGold(45000),
+      nightmare: tradableOnlyGold(45000),
+    },
   };
 
   type DiffName = "노말" | "하드" | "나이트메어" | "1단계" | "2단계" | "3단계";
@@ -5039,15 +5078,28 @@ export default function TodoTracker() {
     const auto = calcWeeklyTop3Gold(ilvl);
     const autoRaids = uniqueCanonicalRaidNames(auto.top3.map((x) => x.raid));
 
-    const raids = uniqueCanonicalRaidNames(Array.isArray(source?.raids) ? source!.raids! : autoRaids)
+    const hasExplicitRaids = Array.isArray(source?.raids);
+    const hasExplicitGoldRaids = Array.isArray(source?.goldRaids);
+
+    const raids = uniqueCanonicalRaidNames(hasExplicitRaids ? source!.raids! : autoRaids)
       .filter((raidName) => availableDiffNames(ilvl, raidName).length > 0);
 
-    const finalRaids = raids.length > 0 ? raids : autoRaids;
+    // 4/24 사용자가 전부 해제한 상태([])는 유지
+    const finalRaids = hasExplicitRaids ? raids : (raids.length > 0 ? raids : autoRaids);
 
-    const goldRaids = uniqueCanonicalRaidNames(Array.isArray(source?.goldRaids) ? source!.goldRaids! : autoRaids)
+    const rawGoldRaids = uniqueCanonicalRaidNames(hasExplicitGoldRaids ? source!.goldRaids! : autoRaids)
       .filter((raidName) => finalRaids.some((name) => normalizeRaidName(name) === normalizeRaidName(raidName)))
-      .filter((raidName) => availableDiffNames(ilvl, raidName).length > 0)
-      .slice(0, 3);
+      .filter((raidName) => availableDiffNames(ilvl, raidName).length > 0);
+
+    const normalGoldRaids = rawGoldRaids.filter(
+      (raidName) => !DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(canonicalRaidName(raidName))
+    );
+
+    const extremeGoldRaids = rawGoldRaids.filter(
+      (raidName) => DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(canonicalRaidName(raidName))
+    );
+
+    const goldRaids = [...normalGoldRaids.slice(0, 3), ...extremeGoldRaids];
 
     const diffsSource = source?.diffs && typeof source.diffs === "object" ? source.diffs : {};
     const diffs = Object.fromEntries(
@@ -5060,9 +5112,21 @@ export default function TodoTracker() {
       })
     ) as Record<string, DiffName>;
 
+    const fallbackNormalGoldRaids = finalRaids
+      .filter((raidName) => !DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(canonicalRaidName(raidName)))
+      .slice(0, 3);
+
+    const fallbackExtremeGoldRaids = finalRaids.filter((raidName) =>
+      DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(canonicalRaidName(raidName))
+    );
+
     return {
       raids: finalRaids,
-      goldRaids: goldRaids.length > 0 ? goldRaids : finalRaids.slice(0, 3),
+      goldRaids: hasExplicitGoldRaids
+        ? goldRaids
+        : (goldRaids.length > 0
+          ? goldRaids
+          : [...fallbackNormalGoldRaids, ...fallbackExtremeGoldRaids]),
       diffs,
     };
   }
@@ -5134,6 +5198,11 @@ export default function TodoTracker() {
     "3막",
   ]);
 
+  const DEFAULT_EXTREME_WEEKLY_RAID_TITLES = new Set([
+    "1막 익스트림",
+    "2막 익스트림",
+  ]);
+
   function isDefaultHiddenWeeklyRaidTask(task: TaskRow) {
     if (task.period !== "WEEKLY") return false;
     if ((task.section ?? "").trim() !== "주간 레이드") return false;
@@ -5182,8 +5251,9 @@ export default function TodoTracker() {
     "4막": 14,
     "종막": 15,
     "세르카": 16,
+    "1막 익스트림": 17, // 4/24 익스트림 추가
+    "2막 익스트림": 18, // 4/24 익스트림 추가
   };
-
 
   const groupedTasks = useMemo(() => {
     const map = new Map<string, TaskRow[]>();
@@ -5320,9 +5390,22 @@ export default function TodoTracker() {
     { key: "FINAL", name: "종막", diffs: [{ name: "노말", minIlvl: 1710, gold: getSplitTotal(RAID_REWARD_INFO["종막"].normal) }, { name: "하드", minIlvl: 1730, gold: getSplitTotal(RAID_REWARD_INFO["종막"].hard) }] },
     { key: "SERKA", name: "세르카", diffs: [{ name: "노말", minIlvl: 1710, gold: getSplitTotal(RAID_REWARD_INFO["세르카"].normal) }, { name: "하드", minIlvl: 1730, gold: getSplitTotal(RAID_REWARD_INFO["세르카"].hard) }, { name: "나이트메어", minIlvl: 1750, gold: getSplitTotal(RAID_REWARD_INFO["세르카"].nightmare) }] },
     { key: "ABYSS1", name: "지평의 성당", diffs: [{ name: "1단계", minIlvl: 1700, gold: getSplitTotal(RAID_REWARD_INFO["지평의 성당"].stage1) }, { name: "2단계", minIlvl: 1720, gold: getSplitTotal(RAID_REWARD_INFO["지평의 성당"].stage2) }, { name: "3단계", minIlvl: 1750, gold: getSplitTotal(RAID_REWARD_INFO["지평의 성당"].stage3) }] },
+
+    {
+      key: "EXT_ACT1", name: "1막 익스트림", diffs: [ // 4/24 익스트림 추가
+        { name: "노말", minIlvl: 1720, gold: getSplitTotal(RAID_REWARD_INFO["1막 익스트림"].normal) },
+        { name: "하드", minIlvl: 1750, gold: getSplitTotal(RAID_REWARD_INFO["1막 익스트림"].hard) },
+        { name: "나이트메어", minIlvl: 1770, gold: getSplitTotal(RAID_REWARD_INFO["1막 익스트림"].nightmare) },
+      ]
+    },
+    {
+      key: "EXT_ACT2", name: "2막 익스트림", diffs: [ // 4/24 익스트림 추가
+        { name: "노말", minIlvl: 1720, gold: getSplitTotal(RAID_REWARD_INFO["2막 익스트림"].normal) },
+        { name: "하드", minIlvl: 1750, gold: getSplitTotal(RAID_REWARD_INFO["2막 익스트림"].hard) },
+        { name: "나이트메어", minIlvl: 1770, gold: getSplitTotal(RAID_REWARD_INFO["2막 익스트림"].nightmare) },
+      ]
+    },
   ];
-
-
 
   // =========================
   // ✅ 쿠르잔 전선 → 큐브 해금 티켓 +1
@@ -5867,10 +5950,13 @@ body.pip-dark .pip-select option{
   }
 
   function calcWeeklyTop3Gold(ilvl: number) {
-    const candidates = RAID_CATALOG.map((raid) => {
-      const best = pickBestDiff(ilvl, raid);
-      return best ? { raid: raid.name, diff: best.name as DiffName, gold: best.gold } : null;
-    }).filter(Boolean) as { raid: string; diff: DiffName; gold: number }[];
+    const candidates = RAID_CATALOG
+      .filter((raid) => !DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(raid.name)) // 4/24 익스트림은 Top3 자동 계산 제외
+      .map((raid) => {
+        const best = pickBestDiff(ilvl, raid);
+        return best ? { raid: raid.name, diff: best.name as DiffName, gold: best.gold } : null;
+      })
+      .filter(Boolean) as { raid: string; diff: DiffName; gold: number }[];
 
     candidates.sort((a, b) => b.gold - a.gold);
     const top3 = candidates.slice(0, 3);
@@ -5923,7 +6009,20 @@ body.pip-dark .pip-select option{
         ? pick
         : fallback;
 
-    const goldSet = new Set((selected.goldRaids ?? []).slice(0, 3));
+    const allGoldRaids = selected.goldRaids ?? [];
+
+    const normalGoldRaids = allGoldRaids.filter(
+      (name) => !DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(canonicalRaidName(name))
+    );
+
+    const extremeGoldRaids = allGoldRaids.filter(
+      (name) => DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(canonicalRaidName(name))
+    );
+
+    const goldSet = new Set([
+      ...normalGoldRaids.slice(0, 3),
+      ...extremeGoldRaids,
+    ]);
 
     const rows = selected.raids
       .filter((raidName) => availableDiffNames(ilvl, raidName).length > 0)
@@ -6344,12 +6443,11 @@ body.pip-dark .pip-select option{
 
                         const detail = pickedResult.rows
                           .filter((x) => x.checked)
-                          .slice(0, 3)
                           .map(
                             (x) =>
                               `${x.raid} (${x.diff}) - 유통 ${x.tradable.toLocaleString()} / 귀속 ${x.bound.toLocaleString()} / 표시 ${x.gold.toLocaleString()}G`
                           )
-                          .join("\n");
+                          .join("\n");;
 
                         return (
                           <td key={ch.id} className="cell">
@@ -7980,10 +8078,20 @@ body.pip-dark .pip-select option{
             popupIlvl,
             weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(popupIlvl)
           );
-          const currentGoldRaids = (cur.goldRaids ?? []).filter((name) => cur.raids.includes(name));
-          const exists = currentGoldRaids.some((name) => normalizeRaidName(name) === normalizeRaidName(raidName));
 
-          if (!exists && currentGoldRaids.length >= 3) {
+          const normalizedRaidName = canonicalRaidName(raidName);
+          const isExtremeRaid = DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(normalizedRaidName); // 4/24 익스트림은 Top3 제한 제외
+
+          const currentGoldRaids = (cur.goldRaids ?? []).filter((name) => cur.raids.includes(name));
+          const currentNormalGoldRaids = currentGoldRaids.filter(
+            (name) => !DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(canonicalRaidName(name))
+          );
+
+          const exists = currentGoldRaids.some(
+            (name) => normalizeRaidName(name) === normalizeRaidName(raidName)
+          );
+
+          if (!exists && !isExtremeRaid && currentNormalGoldRaids.length >= 3) {
             alert("골드 체크는 최대 3개까지 가능해요!");
             return;
           }
@@ -7993,12 +8101,15 @@ body.pip-dark .pip-select option{
               popupIlvl,
               prev[charKey] ?? getDefaultWeeklyRaidPick(popupIlvl)
             );
+
             const latestGoldRaids = (latest.goldRaids ?? []).filter((name) => latest.raids.includes(name));
-            const latestExists = latestGoldRaids.some((name) => normalizeRaidName(name) === normalizeRaidName(raidName));
+            const latestExists = latestGoldRaids.some(
+              (name) => normalizeRaidName(name) === normalizeRaidName(raidName)
+            );
 
             const nextGoldRaids = latestExists
               ? latestGoldRaids.filter((name) => normalizeRaidName(name) !== normalizeRaidName(raidName))
-              : [...latestGoldRaids, canonicalRaidName(raidName)];
+              : [...latestGoldRaids, normalizedRaidName];
 
             const nextChar = sanitizeWeeklyRaidPick(popupIlvl, {
               raids: latest.raids,

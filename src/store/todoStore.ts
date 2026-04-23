@@ -231,6 +231,8 @@ const WEEKLY_RAID_MIN_ILVL: Record<string, number> = {
   "지평의 성당": 1700,
   "종막": 1710,
   "세르카": 1710,
+  "1막 익스트림": 1720, // 4/24 카제로스 익스트림 추가
+  "2막 익스트림": 1720, // 4/24 카제로스 익스트림 추가
 };
 
 function normalizeWeeklyRaidTitle(s: string) {
@@ -357,6 +359,20 @@ function withDiff(raid: string, ilvl: number): string {
     if (ilvl >= 1690) return "2막 하드";
     if (ilvl >= 1670) return "2막 노말";
     return "2막";
+  }
+
+  if (name === "1막 익스트림") {
+    if (ilvl >= 1770) return "1막 익스트림 나이트메어"; // 4/24 카제로스 익스트림 추가
+    if (ilvl >= 1750) return "1막 익스트림 하드";
+    if (ilvl >= 1720) return "1막 익스트림 노말";
+    return "1막 익스트림";
+  }
+
+  if (name === "2막 익스트림") {
+    if (ilvl >= 1770) return "2막 익스트림 나이트메어"; // 4/24 카제로스 익스트림 추가
+    if (ilvl >= 1750) return "2막 익스트림 하드";
+    if (ilvl >= 1720) return "2막 익스트림 노말";
+    return "2막 익스트림";
   }
 
   if (name === "3막") {
@@ -589,6 +605,8 @@ function makeDefaultState(): TodoState {
     createTask({ title: "4막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 414 }),
     createTask({ title: "종막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 415 }),
     createTask({ title: "세르카", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 416 }),
+    createTask({ title: "1막 익스트림", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 417 }), // 4/24 카제로스 익스트림 추가
+    createTask({ title: "2막 익스트림", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 418 }), // 4/24 카제로스 익스트림 추가
 
 
     // 기타 (원하는 순서: 4해금 → 3해금 → 2해금 → 1해금 → 낙원트리)
@@ -745,6 +763,8 @@ function normalizeState(parsed: any): TodoState {
     ensureTask({ title: "4막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
     ensureTask({ title: "종막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
     ensureTask({ title: "세르카", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
+    ensureTask({ title: "1막 익스트림", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }); // 4/24 카제로스 익스트림 추가
+    ensureTask({ title: "2막 익스트림", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }); // 4/24 카제로스 익스트림 추가
 
 
     // ✅ 3) order 강제 세팅 (여기 숫자만 보면 됨: 작을수록 위)
@@ -767,6 +787,8 @@ function normalizeState(parsed: any): TodoState {
     setOrder("4막", "WEEKLY", "주간 레이드", 414);
     setOrder("종막", "WEEKLY", "주간 레이드", 415);
     setOrder("세르카", "WEEKLY", "주간 레이드", 416);
+    setOrder("1막 익스트림", "WEEKLY", "주간 레이드", 417); // 4/24 카제로스 익스트림 추가
+    setOrder("2막 익스트림", "WEEKLY", "주간 레이드", 418); // 4/24 카제로스 익스트림 추가
 
     // 주간 교환: 천상 → 혈석 → 클리어 → 해적 → 메모
     setOrder("천상", "WEEKLY", "주간 교환", base + 1);
