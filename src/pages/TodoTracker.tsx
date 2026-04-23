@@ -632,6 +632,33 @@ export default function TodoTracker() {
     return getWeeklyScheduleTimeState(schedule) === "CURRENT";
   }
 
+  // 4/23 일정표 제목 상태 보정
+  function stripNextResetSuffix(title: string) {
+    return String(title ?? "").replace(/\s*\(다음 주\)\s*$/, "").trim();
+  }
+
+  // 4/23 현재 시점 기준으로 일정표 제목 자동 표시
+  function getDisplayWeeklyScheduleTitle(schedule: SharedWeeklySchedule) {
+    const baseTitle = stripNextResetSuffix(schedule.title || "일정표");
+    const timeState = getWeeklyScheduleTimeState(schedule);
+
+    return timeState === "FUTURE" ? `${baseTitle} (다음 주)` : baseTitle;
+  }
+
+  // 4/23 현재/다음 주 기준에 따라 일정표 목록 필터
+  function matchesSchedulePlanningMode(
+    schedule: SharedWeeklySchedule,
+    mode: "CURRENT" | "NEXT_RESET"
+  ) {
+    const timeState = getWeeklyScheduleTimeState(schedule);
+
+    if (mode === "CURRENT") {
+      return timeState === "CURRENT";
+    }
+
+    return timeState === "FUTURE";
+  }
+
   function buildScheduleItemsFromMySlots(
     myList: Array<{
       key: string;
@@ -738,6 +765,20 @@ export default function TodoTracker() {
       setScheduleLoading(false);
     }
   }
+
+  // 4/23 미래 일정표가 실제 현재 주가 되면 자동으로 현재 주 기준으로 전환
+  useEffect(() => {
+    if (!selectedScheduleId) return;
+
+    const selectedSchedule = weeklySchedules.find((s) => s.id === selectedScheduleId);
+    if (!selectedSchedule) return;
+
+    const timeState = getWeeklyScheduleTimeState(selectedSchedule);
+
+    if (schedulePlanningMode === "NEXT_RESET" && timeState === "CURRENT") {
+      setSchedulePlanningMode("CURRENT");
+    }
+  }, [selectedScheduleId, weeklySchedules, schedulePlanningMode]);
 
   useEffect(() => {
     if (!SERVER_MODE) return;
@@ -2463,10 +2504,15 @@ export default function TodoTracker() {
               >
                 <option value="">일정표 선택</option>
                 {weeklySchedules
-                  .filter((s) => s.targetFriendCode === selectedFriendCode || s.ownerFriendCode === selectedFriendCode)
+                  .filter(
+                    (s) =>
+                      (s.targetFriendCode === selectedFriendCode ||
+                        s.ownerFriendCode === selectedFriendCode) &&
+                      matchesSchedulePlanningMode(s, schedulePlanningMode)
+                  )
                   .map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.title}
+                      {getDisplayWeeklyScheduleTitle(s)}
                     </option>
                   ))}
               </select>
@@ -2479,7 +2525,10 @@ export default function TodoTracker() {
                       const schedule = weeklySchedules.find((s) => s.id === selectedScheduleId);
                       if (!schedule) return;
 
-                      const nextTitle = prompt("일정표 이름 변경", schedule.title)?.trim();
+                      const nextTitle = prompt(
+                        "일정표 이름 변경",
+                        getDisplayWeeklyScheduleTitle(schedule)
+                      )?.trim();
                       if (!nextTitle) return;
 
                       renameWeeklySchedule(schedule.id, nextTitle).catch((e) => {
@@ -2991,10 +3040,15 @@ export default function TodoTracker() {
               >
                 <option value="">추가할 일정표 선택</option>
                 {weeklySchedules
-                  .filter((s) => s.targetFriendCode === selectedFriendCode || s.ownerFriendCode === selectedFriendCode)
+                  .filter(
+                    (s) =>
+                      (s.targetFriendCode === selectedFriendCode ||
+                        s.ownerFriendCode === selectedFriendCode) &&
+                      matchesSchedulePlanningMode(s, schedulePlanningMode)
+                  )
                   .map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.title}
+                      {getDisplayWeeklyScheduleTitle(s)}
                     </option>
                   ))}
               </select>
