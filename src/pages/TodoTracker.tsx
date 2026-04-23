@@ -6339,6 +6339,12 @@ body.pip-dark .pip-select option{
         className="tablePane"
         style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}
       >
+        {(periodTab === "ALL" || periodTab === "DAILY") && (
+          <div className="paneAccountDailyBox">
+            <AccountDailyPanel tableId={tableId} />
+          </div>
+        )}
+
         <div className="paneHeader paneHeaderInlineClose">
           <div className="paneHeaderTitleRow">
             <div className="paneTitle" style={{ marginBottom: 0 }}>
@@ -7764,32 +7770,11 @@ body.pip-dark .pip-select option{
       )}
 
       <div className="todo-table-area">
-        {/* ✅ 요일별 콘텐츠(계정 공용) - 전체/일일 탭에서 */}
-        {(periodTab === "ALL" || periodTab === "DAILY") && (
-          secondaryTableId ? (
-            <div
-              className="accountDailyGrid"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 12,
-                alignItems: "start",
-                marginBottom: 8,
-              }}
-            >
-              <AccountDailyPanel tableId={state.activeTableId} />
-              <AccountDailyPanel tableId={secondaryTableId} />
-            </div>
-          ) : (
-            <AccountDailyPanel tableId={state.activeTableId} />
-          )
-        )}
-
-        {/* ✅ 두 표 동시 렌더 */}
+        {/* 두 표 동시 렌더 */}
         {periodTab === "RAID_LEFT" ? (
           raidLeftView === "FRIEND" ? (
             <div className="tablePane" style={{ height: "100%", minHeight: 0 }}>
-              <div style={{ padding: 12 }}>{renderFriendRaidLeftColumns()}</div> {/* ✅ 교체 */}
+              <div style={{ padding: 12 }}>{renderFriendRaidLeftColumns()}</div>
             </div>
           ) : (
             <div className="raid-left-hscroll">
