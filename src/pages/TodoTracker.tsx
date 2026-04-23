@@ -1775,7 +1775,7 @@ export default function TodoTracker() {
             (x: MyCandidate) =>
               x.ilvl >= levelRange.min &&
               x.ilvl <= levelRange.max &&
-              x.activeRaids.length > 0
+              x.allRaids.length > 0
           )
       );
 
@@ -1893,7 +1893,7 @@ export default function TodoTracker() {
         (x: FriendCandidate) =>
           x.ilvl >= levelRange.min &&
           x.ilvl <= levelRange.max &&
-          x.activeRaids.length > 0
+          x.allRaids.length > 0
       );
 
     const hasNoFriendCandidates = friendCandidates.length === 0;
