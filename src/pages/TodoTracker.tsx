@@ -5208,11 +5208,9 @@ export default function TodoTracker() {
     if ((task.section ?? "").trim() !== "주간 레이드") return false;
 
     const title = (task.title ?? "").trim();
-    if (!DEFAULT_HIDDEN_WEEKLY_RAID_TITLES.has(title)) return false;
 
-    // 기본으로 깔린 task만 숨김
-    // 사용자가 나중에 직접 추가한 같은 이름 task는 order가 401~413이 아니므로 보임
-    return typeof task.order === "number" && task.order >= 401 && task.order <= 413;
+    // 4/24 기본 레이드 숨김은 order가 아니라 title 기준으로 처리
+    return DEFAULT_HIDDEN_WEEKLY_RAID_TITLES.has(title);
   }
 
   const tasks = useMemo(() => {
@@ -5251,8 +5249,9 @@ export default function TodoTracker() {
     "4막": 14,
     "종막": 15,
     "세르카": 16,
-    "1막 익스트림": 17, // 4/24 익스트림 추가
-    "2막 익스트림": 18, // 4/24 익스트림 추가
+    "지평의 성당": 17,
+    "1막 익스트림": 18, // 4/24 익스트림 추가
+    "2막 익스트림": 19, // 4/24 익스트림 추가
   };
 
   const groupedTasks = useMemo(() => {
@@ -5271,10 +5270,16 @@ export default function TodoTracker() {
         if (section === "주간 레이드") {
           const at = (a.title ?? "").trim();
           const bt = (b.title ?? "").trim();
+
           const ai = WEEKLY_RAID_ORDER[at] ?? 999;
           const bi = WEEKLY_RAID_ORDER[bt] ?? 999;
           if (ai !== bi) return ai - bi;
-          return at.localeCompare(bt);
+
+          const ao = a.order ?? Number.MAX_SAFE_INTEGER;
+          const bo = b.order ?? Number.MAX_SAFE_INTEGER;
+          if (ao !== bo) return ao - bo;
+
+          return at.localeCompare(bt, "ko");
         }
 
         const ao = a.order ?? Number.MAX_SAFE_INTEGER;
@@ -5319,9 +5324,31 @@ export default function TodoTracker() {
       const toSec = to.section ?? "숙제";
       if (fromSec !== toSec) return prev;
 
-      const secTasks = prev.tasks
-        .filter((t) => (t.section ?? "숙제") === fromSec)
-        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      // 4/24 주간 레이드 드래그 시 숨겨진 레이드까지 다시 출력되는 문제 방지
+      const reorderTargets =
+        fromSec === "주간 레이드"
+          ? prev.tasks.filter((t) => {
+            const title = (t.title ?? "").trim();
+            return (
+              (t.section ?? "숙제") === fromSec &&
+              [
+                "4막",
+                "종막",
+                "세르카",
+                "지평의 성당",
+                "1막 익스트림",
+                "2막 익스트림",
+              ].includes(title)
+            );
+          })
+          : prev.tasks.filter((t) => (t.section ?? "숙제") === fromSec);
+
+      const secTasks = reorderTargets.sort((a, b) => {
+        const ao = a.order ?? Number.MAX_SAFE_INTEGER;
+        const bo = b.order ?? Number.MAX_SAFE_INTEGER;
+        if (ao !== bo) return ao - bo;
+        return (a.title ?? "").localeCompare(b.title ?? "", "ko");
+      });
 
       const fromIdx = secTasks.findIndex((t) => t.id === fromTaskId);
       const toIdx = secTasks.findIndex((t) => t.id === toTaskId);
@@ -5331,13 +5358,19 @@ export default function TodoTracker() {
       const [moved] = nextSecTasks.splice(fromIdx, 1);
       nextSecTasks.splice(toIdx, 0, moved);
 
-      const base = Date.now();
+      const base =
+        fromSec === "주간 레이드"
+          ? 400
+          : Date.now();
+
       const orderMap = new Map<string, number>();
       nextSecTasks.forEach((t, i) => orderMap.set(t.id, base + i));
 
       return {
         ...prev,
-        tasks: prev.tasks.map((t) => (orderMap.has(t.id) ? { ...t, order: orderMap.get(t.id)! } : t)),
+        tasks: prev.tasks.map((t) =>
+          orderMap.has(t.id) ? { ...t, order: orderMap.get(t.id)! } : t
+        ),
       };
     });
   }
@@ -6717,7 +6750,65 @@ body.pip-dark .pip-select option{
                               </td>
                             </tr>
 
+                            {section === "주간 레이드" && (
+                              <tr className="task-row gold-sum-row">
+                                <td className="todo-sticky-left task-left">
+                                  <div className="task-left-inner">
+                                    <div className="task-title">주간 클리어 골드(추천 Top3)</div>
+                                    <div className="task-sub">아이템레벨 기준 · 레이드별 난이도 선택 반영</div>
+                                  </div>
+                                </td>
 
+                                {visibleCharacters.map((ch) => {
+                                  // ✅ parseIlvl 대신 getCharIlvl 사용(“Lv. 1710” 같은 포맷도 안전)
+                                  const ilvl = getCharIlvl(ch);
+
+                                  if (!Number.isFinite(ilvl) || ilvl <= 0) {
+                                    return (
+                                      <td key={ch.id} className="cell">
+                                        <div className="goldbox muted">Lv 입력 필요</div>
+                                      </td>
+                                    );
+                                  }
+
+                                  // ✅ 현재 순회 중인 캐릭터 기준으로 계산
+                                  const charKey = weeklyCharKey(tableId, ch.id);
+                                  const picked = weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(ilvl);
+                                  const pickedResult = calcWeeklySelectedGold(ilvl, picked);
+
+                                  const detail = pickedResult.rows
+                                    .filter((x) => x.checked)
+                                    .slice(0, 3)
+                                    .map((x) => x.raid)
+                                    .join(" / ");
+
+                                  return (
+                                    <td key={ch.id} className="cell">
+                                      <button
+                                        type="button"
+                                        className="goldbox goldbox-btn"
+                                        title={detail}
+                                        onClick={(e) => {
+                                          setWeeklyTop3Popup({
+                                            tableId,
+                                            charId: ch.id,
+                                            charName: ch.name,
+                                            ilvl,
+                                            x: e.clientX,
+                                            y: e.clientY,
+                                          });
+                                        }}
+                                      >
+                                        <div className="gold-sum">{pickedResult.sum.toLocaleString()} G</div>
+                                        <div className="gold-detail">
+                                          {pickedResult.rows.filter((x) => x.checked).slice(0, 3).map((x) => x.raid).join(" / ") || "-"}
+                                        </div>
+                                      </button>
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            )}
 
                             {rows.map((task) => {
                               if (task.title === "큐브") return null;
@@ -6983,66 +7074,6 @@ body.pip-dark .pip-select option{
                                 </tr>
                               );
                             })}
-
-                            {section === "주간 레이드" && (
-                              <tr className="task-row gold-sum-row">
-                                <td className="todo-sticky-left task-left">
-                                  <div className="task-left-inner">
-                                    <div className="task-title">주간 클리어 골드(추천 Top3)</div>
-                                    <div className="task-sub">아이템레벨 기준 · 레이드별 난이도 선택 반영</div>
-                                  </div>
-                                </td>
-
-                                {visibleCharacters.map((ch) => {
-                                  // ✅ parseIlvl 대신 getCharIlvl 사용(“Lv. 1710” 같은 포맷도 안전)
-                                  const ilvl = getCharIlvl(ch);
-
-                                  if (!Number.isFinite(ilvl) || ilvl <= 0) {
-                                    return (
-                                      <td key={ch.id} className="cell">
-                                        <div className="goldbox muted">Lv 입력 필요</div>
-                                      </td>
-                                    );
-                                  }
-
-                                  // ✅ 현재 순회 중인 캐릭터 기준으로 계산
-                                  const charKey = weeklyCharKey(tableId, ch.id);
-                                  const picked = weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(ilvl);
-                                  const pickedResult = calcWeeklySelectedGold(ilvl, picked);
-
-                                  const detail = pickedResult.rows
-                                    .filter((x) => x.checked)
-                                    .slice(0, 3)
-                                    .map((x) => x.raid)
-                                    .join(" / ");
-
-                                  return (
-                                    <td key={ch.id} className="cell">
-                                      <button
-                                        type="button"
-                                        className="goldbox goldbox-btn"
-                                        title={detail}
-                                        onClick={(e) => {
-                                          setWeeklyTop3Popup({
-                                            tableId,
-                                            charId: ch.id,
-                                            charName: ch.name,
-                                            ilvl,
-                                            x: e.clientX,
-                                            y: e.clientY,
-                                          });
-                                        }}
-                                      >
-                                        <div className="gold-sum">{pickedResult.sum.toLocaleString()} G</div>
-                                        <div className="gold-detail">
-                                          {pickedResult.rows.filter((x) => x.checked).slice(0, 3).map((x) => x.raid).join(" / ") || "-"}
-                                        </div>
-                                      </button>
-                                    </td>
-                                  );
-                                })}
-                              </tr>
-                            )}
                           </React.Fragment>
                         );
                       })}
