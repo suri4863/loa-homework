@@ -436,6 +436,7 @@ export default function TodoTracker() {
     remainingRaids: string[];
     allRaids: string[];
     activeRaids: string[];
+    clearedRaids: string[];
   };
 
   // 깐부 매칭(친구 남은 레이드에서)
@@ -1561,7 +1562,9 @@ export default function TodoTracker() {
       tableName?: string;
       ilvl?: number;
       allRaids: string[];
+      activeRaids?: string[];
       remainingRaids: string[];
+      clearedRaids?: string[];
       clearedCount: number;
       totalCount: number;
     };
@@ -1875,8 +1878,12 @@ export default function TodoTracker() {
             ? computedNextResetRaids
             : normalizedRemainingRaids;
 
+        const clearedRaids = Array.isArray(row.clearedRaids)
+          ? row.clearedRaids.map((raid: string) => normalizeRaidName(raid))
+          : [];
+
         const activeRaids =
-          schedulePlanningMode === "NEXT_RESET" ? allRaids : remainingRaids;
+          schedulePlanningMode === "NEXT_RESET" ? allRaids : allRaids;
 
         return {
           key: `${row.tableName ?? ""}|${row.charName ?? ""}`,
@@ -1887,6 +1894,7 @@ export default function TodoTracker() {
           remainingRaids,
           allRaids,
           activeRaids,
+          clearedRaids,
         };
       })
       .filter(
@@ -1994,6 +2002,7 @@ export default function TodoTracker() {
       remainingRaids: me.remainingRaids,
       allRaids: me.allRaids,
       activeRaids: me.activeRaids,
+      clearedRaids: [],
     }));
 
     const myFriendCode = String(state.profile.friendCode ?? "").trim();
@@ -3372,11 +3381,15 @@ export default function TodoTracker() {
                 <div className="manualRemainList">
                   {displayFriendCandidates.map((fr: FriendCandidate) => {
                     const visibleFriendRaids =
-                      fr.remainingRaids.length > 0
-                        ? fr.remainingRaids
-                        : fr.activeRaids.length > 0
-                          ? fr.activeRaids
-                          : fr.allRaids;
+                      fr.activeRaids.length > 0
+                        ? fr.activeRaids
+                        : fr.allRaids.length > 0
+                          ? fr.allRaids
+                          : fr.remainingRaids;
+
+                    const clearedRaidSet = new Set(
+                      (fr.clearedRaids ?? []).map((raid: string) => normalizeRaidName(raid))
+                    );
 
                     const scheduleState = getRemainScheduleState(
                       fr.key,
@@ -3390,11 +3403,9 @@ export default function TodoTracker() {
                       visibleFriendRaids.every((raid: string) => {
                         const normalized = normalizeRaidName(raid);
                         const isScheduled = scheduleState.scheduledSet.has(normalized);
-                        const isRemaining = fr.remainingRaids.some(
-                          (x) => normalizeRaidName(x) === normalized
-                        );
+                        const isCleared = clearedRaidSet.has(normalized);
 
-                        return !isRemaining || isScheduled;
+                        return isScheduled || isCleared;
                       });
 
                     return (
@@ -3415,14 +3426,12 @@ export default function TodoTracker() {
                           {visibleFriendRaids.map((raid: string) => {
                             const normalized = normalizeRaidName(raid);
                             const isScheduled = scheduleState.scheduledSet.has(normalized);
-                            const isRemaining = fr.remainingRaids.some(
-                              (x) => normalizeRaidName(x) === normalized
-                            );
+                            const isCleared = clearedRaidSet.has(normalized);
 
                             return (
                               <span
                                 key={raid}
-                                className={`manualRaidChip ${!isRemaining || isScheduled ? "is-scheduled" : ""
+                                className={`manualRaidChip ${isScheduled || isCleared ? "is-scheduled" : ""
                                   } ${allVisibleRaidsMuted ? "is-schedule-full" : ""}`}
                               >
                                 {raid}

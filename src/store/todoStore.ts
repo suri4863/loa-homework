@@ -116,7 +116,9 @@ export type RaidLeftSnapshotPayload = {
     ilvl?: number;
 
     allRaids: string[];
+    activeRaids?: string[];
     remainingRaids: string[];
+    clearedRaids?: string[];
     clearedCount: number;
     totalCount: number;
   }>;
@@ -1028,10 +1030,15 @@ export function exportRaidLeftSnapshot(
 
       if (!selectedRaidTitles.length) continue;
 
+      const activeRaids: string[] = [];
       const remaining: string[] = [];
+      const clearedRaids: string[] = [];
       let clearedCount = 0;
 
       for (const raidTitle of selectedRaidTitles) {
+        const raidLabel = withDiff(raidTitle, ilvl);
+        activeRaids.push(raidLabel);
+
         const taskId = weeklyRaidTitleToId.get(normalizeWeeklyRaidTitle(raidTitle));
         if (!taskId) continue;
 
@@ -1040,8 +1047,9 @@ export function exportRaidLeftSnapshot(
 
         if (cleared) {
           clearedCount++;
+          clearedRaids.push(raidLabel);
         } else {
-          remaining.push(raidTitle);
+          remaining.push(raidLabel);
         }
       }
 
@@ -1052,10 +1060,12 @@ export function exportRaidLeftSnapshot(
         charRole: ch.role || "DEALER",
         tableName: table.name,
         ilvl,
-        allRaids: selectedRaidTitles.map((raid) => withDiff(raid, ilvl)),
-        remainingRaids: remaining.map((raid) => withDiff(raid, ilvl)),
+        allRaids: activeRaids,
+        activeRaids,
+        remainingRaids: remaining,
+        clearedRaids,
         clearedCount,
-        totalCount: selectedRaidTitles.length,
+        totalCount: activeRaids.length,
       });
     }
   }
@@ -1111,9 +1121,10 @@ export function importRaidLeftSnapshot(raw: any): RaidLeftSnapshotPayload {
     tableName: r?.tableName ?? parsed.tableName ?? undefined,
     ilvl: typeof r?.ilvl === "number" ? r.ilvl : undefined,
     allRaids: Array.isArray(r?.allRaids) ? r.allRaids : [],
+    activeRaids: Array.isArray(r?.activeRaids) ? r.activeRaids : [],
     remainingRaids: Array.isArray(r?.remainingRaids) ? r.remainingRaids : [],
+    clearedRaids: Array.isArray(r?.clearedRaids) ? r.clearedRaids : [],
     clearedCount: Number(r?.clearedCount ?? 0),
-    totalCount: Number(r?.totalCount ?? 0),
   }));
 
   return parsed as RaidLeftSnapshotPayload;
@@ -1152,7 +1163,9 @@ export function normalizeFriendRaidSnapshotAfterWeeklyReset(
           return {
             ...row,
             allRaids,
+            activeRaids: allRaids,
             remainingRaids: allRaids,
+            clearedRaids: [],
             clearedCount: 0,
             totalCount: allRaids.length,
           };
@@ -1161,9 +1174,15 @@ export function normalizeFriendRaidSnapshotAfterWeeklyReset(
         return {
           ...row,
           allRaids,
+          activeRaids: Array.isArray((row as any).activeRaids)
+            ? (row as any).activeRaids.filter(Boolean)
+            : allRaids,
           remainingRaids,
+          clearedRaids: Array.isArray((row as any).clearedRaids)
+            ? (row as any).clearedRaids.filter(Boolean)
+            : [],
           clearedCount: Number(row.clearedCount ?? 0),
-          totalCount: Number(row.totalCount ?? remainingRaids.length),
+          totalCount: Number(row.totalCount ?? allRaids.length),
         };
       })
       : [],
