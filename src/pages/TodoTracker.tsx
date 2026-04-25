@@ -3371,16 +3371,18 @@ export default function TodoTracker() {
               {displayFriendCandidates.length ? (
                 <div className="manualRemainList">
                   {displayFriendCandidates.map((fr: FriendCandidate) => {
+                    const visibleFriendRaids = fr.remainingRaids.length > 0 ? fr.remainingRaids : fr.activeRaids;
+
                     const scheduleState = getRemainScheduleState(
                       fr.key,
-                      fr.allRaids,
+                      visibleFriendRaids,
                       scheduledFriendRaidSetByChar
                     );
 
                     // 4/23 현재 화면에 보이는 레이드칩이 전부 회색 조건이면 이름도 같이 회색
                     const allVisibleRaidsMuted =
-                      fr.allRaids.length > 0 &&
-                      fr.allRaids.every((raid: string) => {
+                      visibleFriendRaids.length > 0 &&
+                      visibleFriendRaids.every((raid: string) => {
                         const normalized = normalizeRaidName(raid);
                         const isScheduled = scheduleState.scheduledSet.has(normalized);
                         const isRemaining = fr.remainingRaids.some(
@@ -3405,7 +3407,7 @@ export default function TodoTracker() {
                         </div>
 
                         <div className="manualRemainRaids">
-                          {fr.allRaids.map((raid: string) => {
+                          {visibleFriendRaids.map((raid: string) => {
                             const normalized = normalizeRaidName(raid);
                             const isScheduled = scheduleState.scheduledSet.has(normalized);
                             const isRemaining = fr.remainingRaids.some(
