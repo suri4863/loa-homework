@@ -3314,21 +3314,22 @@ export default function TodoTracker() {
               {displayMyCandidates.length ? (
                 <div className="manualRemainList">
                   {displayMyCandidates.map((me) => {
+                    // 4/26 다음 주 초기화 기준도 새 일정표에 넣은 레이드는 흑백 처리되도록 수정
                     const scheduleState = getRemainScheduleState(
                       me.key,
                       me.allRaids,
                       scheduledMyRaidSetByChar
                     );
-
-                    // 4/23 현재 화면에 보이는 레이드칩이 전부 회색 조건이면 이름도 같이 회색
+                    // 4/26 다음 주 초기화 기준은 레이드는 초기화값으로 보되, 일정표에 넣은 레이드는 흑백 처리
                     const allVisibleRaidsMuted =
                       me.allRaids.length > 0 &&
                       me.allRaids.every((raid) => {
                         const normalized = normalizeRaidName(raid);
                         const isScheduled = scheduleState.scheduledSet.has(normalized);
-                        const isRemaining = me.remainingRaids.some(
-                          (x) => normalizeRaidName(x) === normalized
-                        );
+                        // 4/26 다음 주 초기화 기준일 때는 모든 표시 레이드를 남은 레이드로 처리
+                        const isRemaining =
+                          schedulePlanningMode === "NEXT_RESET" ||
+                          me.remainingRaids.some((x) => normalizeRaidName(x) === normalized);
 
                         return !isRemaining || isScheduled;
                       });
@@ -3351,9 +3352,11 @@ export default function TodoTracker() {
                           {me.allRaids.map((raid) => {
                             const normalized = normalizeRaidName(raid);
                             const isScheduled = scheduleState.scheduledSet.has(normalized);
-                            const isRemaining = me.remainingRaids.some(
-                              (x) => normalizeRaidName(x) === normalized
-                            );
+
+                            // 4/26 다음 주 초기화 기준일 때는 기존 클리어 체크를 무시하고 전부 남은 레이드로 처리
+                            const isRemaining =
+                              schedulePlanningMode === "NEXT_RESET" ||
+                              me.remainingRaids.some((x) => normalizeRaidName(x) === normalized);
 
                             return (
                               <span
@@ -3387,8 +3390,11 @@ export default function TodoTracker() {
                           ? fr.allRaids
                           : fr.remainingRaids;
 
+                    // 4/26 다음 주 초기화 기준은 친구 클리어 기록은 무시하고, 새 일정표에 넣은 레이드만 흑백 처리
                     const clearedRaidSet = new Set(
-                      (fr.clearedRaids ?? []).map((raid: string) => normalizeRaidName(raid))
+                      schedulePlanningMode === "NEXT_RESET"
+                        ? []
+                        : (fr.clearedRaids ?? []).map((raid: string) => normalizeRaidName(raid))
                     );
 
                     const scheduleState = getRemainScheduleState(
