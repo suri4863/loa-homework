@@ -2919,22 +2919,30 @@ body.pip-dark .pip-cube.is-pressed {
   font-size: 12px;
 }
 
+/* 4/26 화이트모드 레이드 선택 버튼 active 글자색 수정 */
 .raid-pick-btn.active {
   border-color: rgba(59, 130, 246, 0.55);
   background: rgba(59, 130, 246, 0.18);
-  color: #dbeafe;
+  color: var(--text);
   font-weight: 800;
+}
+
+.raid-pick-btn.manual.active {
+  border-color: rgba(59, 130, 246, 0.55);
+  background: rgba(59, 130, 246, 0.18);
+  color: var(--text);
+}
+
+/* 4/26 다크모드에서는 기존처럼 밝게 표시 */
+html[data-theme="dark"] .raid-pick-btn.active,
+html[data-theme="dark"] .raid-pick-btn.manual.active {
+  color: #dbeafe;
 }
 
 .raid-pick-btn.auto:not(.hidden) {
   border-color: rgba(59, 130, 246, 0.35);
 }
 
-.raid-pick-btn.manual.active {
-  border-color: rgba(59, 130, 246, 0.55);
-  background: rgba(59, 130, 246, 0.18);
-  color: #dbeafe;
-}
 
 .raid-pick-btn.hidden {
   opacity: 0.55;
