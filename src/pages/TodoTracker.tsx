@@ -1807,22 +1807,26 @@ export default function TodoTracker() {
 
     if (schedule) {
       for (const item of schedule.items) {
-        const itemBaseRaids = (item.baseRaidNames ?? []).map((raid) => normalizeRaidName(raid));
+        // 4/26 실제 일정표에 들어간 레이드만 흑백 처리되도록 수정
+        const itemScheduledRaids = (
+          Array.isArray(item.raidNames) && item.raidNames.length > 0
+            ? item.raidNames
+            : item.baseRaidNames ?? []
+        ).map((raid) => normalizeRaidName(raid));
 
         if (item.myCharKey) {
           const prev = scheduledMyRaidSetByChar.get(item.myCharKey) ?? new Set<string>();
-          itemBaseRaids.forEach((raid) => prev.add(raid));
+          itemScheduledRaids.forEach((raid) => prev.add(raid));
           scheduledMyRaidSetByChar.set(item.myCharKey, prev);
         }
 
         if (item.friendCharKey) {
           const prev = scheduledFriendRaidSetByChar.get(String(item.friendCharKey)) ?? new Set<string>();
-          itemBaseRaids.forEach((raid) => prev.add(raid));
+          itemScheduledRaids.forEach((raid) => prev.add(raid));
           scheduledFriendRaidSetByChar.set(String(item.friendCharKey), prev);
         }
       }
     }
-
     function getRemainScheduleState(
       charKey: string,
       targetRaids: string[],
