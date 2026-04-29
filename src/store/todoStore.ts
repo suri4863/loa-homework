@@ -89,6 +89,7 @@ export type UserProfile = {
 
   autoRaidLeftUploadEnabled?: boolean;
   autoRaidLeftUploadMinutes?: number;
+  deletedDefaultTaskKeys?: string[];
 };
 
 export type FriendEntry = {
@@ -155,14 +156,18 @@ export type SharedWeeklyScheduleItem = {
 
   myCharKey: string;
   myCharName: string;
+  myTableName?: string | null;
   myCharPower: number | null;
 
   // 4/22 일정표 레이드 난이도 표시용 키 추가
   myWeeklyRaidPickKey?: string | null;
+  myClearedRaidNames?: string[];
 
   friendCharKey: string | null;
   friendCharName: string | null;
+  friendTableName?: string | null;
   friendCharPower: number | null;
+  friendClearedRaidNames?: string[];
 
   mode: SharedWeeklyScheduleItemMode;
 
@@ -199,6 +204,45 @@ export type TodoState = {
 };
 
 const STORAGE_KEY = "loa-todo:v1";
+
+function defaultTaskKey(spec: { title: string; period: Period; section?: string; cellType?: CellType }) {
+  return [spec.period, spec.section ?? "", spec.cellType ?? "", spec.title].join("|");
+}
+
+const DEFAULT_PERSISTED_TASK_KEYS = new Set<string>([
+  defaultTaskKey({ title: "천상", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
+  defaultTaskKey({ title: "혈석 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
+  defaultTaskKey({ title: "클리어메달 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" }),
+  defaultTaskKey({ title: "메모", period: "WEEKLY", cellType: "TEXT", section: "주간 교환" }),
+  defaultTaskKey({ title: "낙원 트리", period: "NONE", cellType: "TEXT", section: "기타" }),
+  defaultTaskKey({ title: "1해금", period: "NONE", cellType: "TEXT", section: "기타" }),
+  defaultTaskKey({ title: "2해금", period: "NONE", cellType: "TEXT", section: "기타" }),
+  defaultTaskKey({ title: "3해금", period: "NONE", cellType: "TEXT", section: "기타" }),
+  defaultTaskKey({ title: "4해금", period: "NONE", cellType: "TEXT", section: "기타" }),
+  defaultTaskKey({ title: "큐브", period: "NONE", cellType: "TEXT", section: "기타" }),
+  defaultTaskKey({ title: "발탄", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+  defaultTaskKey({ title: "비아키스", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+  defaultTaskKey({ title: "쿠크세이튼", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+  defaultTaskKey({ title: "아브렐슈드", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+  defaultTaskKey({ title: "카양겔", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+  defaultTaskKey({ title: "일리아칸", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+  defaultTaskKey({ title: "상아탑", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+  defaultTaskKey({ title: "카멘", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+  defaultTaskKey({ title: "에키드나", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+  defaultTaskKey({ title: "베히모스", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+  defaultTaskKey({ title: "1막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+  defaultTaskKey({ title: "2막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+  defaultTaskKey({ title: "3막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+  defaultTaskKey({ title: "4막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+  defaultTaskKey({ title: "종막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+  defaultTaskKey({ title: "세르카", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+  defaultTaskKey({ title: "1막 익스트림", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+  defaultTaskKey({ title: "2막 익스트림", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+]);
+
+export function isPersistedDefaultTask(spec: { title: string; period: Period; section?: string; cellType?: CellType }) {
+  return DEFAULT_PERSISTED_TASK_KEYS.has(defaultTaskKey(spec));
+}
 
 /** id */
 function uid(prefix: string) {
@@ -451,8 +495,6 @@ export function exportFriendRaidPlan(
     { raids: string[]; goldRaids?: string[]; diffs?: Record<string, string> }
   >
 ): string {
-  if (state.profile?.shareMode === "PRIVATE") throw new Error("PRIVATE_MODE");
-
   const weeklyRaidTasks = state.tasks.filter(
     (t) => t.period === "WEEKLY" && t.section === "주간 레이드" && t.cellType === "CHECK"
   );
@@ -652,6 +694,7 @@ function makeDefaultState(): TodoState {
     kkanbuExcludedFriendTableNames: [],
     autoRaidLeftUploadEnabled: false,
     autoRaidLeftUploadMinutes: 30,
+    deletedDefaultTaskKeys: [],
   };
 
   return {
@@ -676,8 +719,11 @@ function normalizeState(parsed: any): TodoState {
         shareMode: "PUBLIC",
         nickname: "",
         kkanbuExcludePairs: [],
+        kkanbuExcludedTableIds: [],
+        kkanbuExcludedFriendTableNames: [],
         autoRaidLeftUploadEnabled: false,
         autoRaidLeftUploadMinutes: 30,
+        deletedDefaultTaskKeys: [],
       };
     } else {
       st.profile.shareMode = st.profile.shareMode ?? "PUBLIC";
@@ -702,6 +748,9 @@ function normalizeState(parsed: any): TodoState {
     st.reset.weeklyResetWeekday = st.reset.weeklyResetWeekday ?? 3;
     st.reset.lastDailyResetAt = st.reset.lastDailyResetAt ?? 0;
     st.reset.lastWeeklyResetAt = st.reset.lastWeeklyResetAt ?? 0;
+    st.profile.deletedDefaultTaskKeys = Array.isArray(st.profile.deletedDefaultTaskKeys)
+      ? st.profile.deletedDefaultTaskKeys.map((x) => String(x))
+      : [];
 
     st.tasks = Array.isArray(st.tasks) ? st.tasks : [];
 
@@ -712,7 +761,9 @@ function normalizeState(parsed: any): TodoState {
     // [기타] 4해금, 3해금, 2해금, 1해금, 낙원 트리
     // ------------------------------------------------------------
 
+    const deletedDefaultTaskKeys = new Set(st.profile.deletedDefaultTaskKeys);
     const ensureTask = (spec: { title: string; period: Period; cellType: CellType; section: string; order?: number; id?: string; max?: number }) => {
+      if (deletedDefaultTaskKeys.has(defaultTaskKey(spec))) return;
       const exists = st.tasks.some(
         (t) =>
           t.title === spec.title &&
@@ -1001,8 +1052,6 @@ export function exportRaidLeftSnapshot(
     { raids: string[]; goldRaids?: string[]; diffs?: Record<string, string> }
   >
 ): string {
-  if (state.profile?.shareMode === "PRIVATE") throw new Error("PRIVATE_MODE");
-
   const weeklyRaidTasks = state.tasks.filter(
     (t) => t.period === "WEEKLY" && t.section === "주간 레이드" && t.cellType === "CHECK"
   );

@@ -15,6 +15,7 @@ import type {
   SharedWeeklyScheduleItem,
   WeeklyScheduleDay,
 } from "../store/todoStore";
+import { isPersistedDefaultTask } from "../store/todoStore";
 
 import BidPopover from "../components/BidPopover";
 
@@ -217,17 +218,7 @@ export default function TodoTracker() {
   }, [state]);
 
 
-  // =========================
-  // ✅ Theme (light/dark)
-  // =========================
-  type Theme = "light" | "dark";
-  const THEME_KEY = "todoTheme";
   const INCLUDE_BOUND_GOLD_KEY = "loa-include-bound-gold:v1";
-
-  const [theme, setTheme] = useState<Theme>(() => {
-    const saved = localStorage.getItem(THEME_KEY);
-    return saved === "dark" ? "dark" : "light";
-  });
 
   const [includeBoundGold, setIncludeBoundGold] = useState<boolean>(() => {
     const saved = localStorage.getItem(INCLUDE_BOUND_GOLD_KEY);
@@ -235,15 +226,33 @@ export default function TodoTracker() {
   });
 
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem(THEME_KEY, theme);
-  }, [theme]);
-
-  useEffect(() => {
     localStorage.setItem(INCLUDE_BOUND_GOLD_KEY, includeBoundGold ? "1" : "0");
   }, [includeBoundGold]);
 
-  const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
+  type AuthMode = "signIn" | "signUp";
+  type LegacyLinkInfo = {
+    friendCode: string;
+    nickname?: string | null;
+    hasBackup?: boolean;
+    updatedAt?: string | null;
+  };
+
+  const AUTH_TOKEN_KEY = "loa-auth-token:v1";
+  const AUTH_LOGIN_ID_KEY = "loa-auth-login-id:v1";
+
+  const [authToken, setAuthToken] = useState(() => localStorage.getItem(AUTH_TOKEN_KEY) ?? "");
+  const [signedInLoginId, setSignedInLoginId] = useState(() => localStorage.getItem(AUTH_LOGIN_ID_KEY) ?? "");
+  const [authMode, setAuthMode] = useState<AuthMode>("signIn");
+  const [authId, setAuthId] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authMessage, setAuthMessage] = useState("");
+  const [legacyCode, setLegacyCode] = useState("");
+  const [legacyLoginAllowed, setLegacyLoginAllowed] = useState(true);
+  const [legacyBusy, setLegacyBusy] = useState(false);
+  const [legacyLinkInfo, setLegacyLinkInfo] = useState<LegacyLinkInfo | null>(null);
+
+  const isLoggedIn = Boolean(authToken);
 
 
   // =========================
@@ -548,6 +557,7 @@ export default function TodoTracker() {
     const headers = new Headers(init?.headers || {});
     headers.set("Content-Type", "application/json");
     headers.set("x-friend-code", state.profile.friendCode);
+    if (authToken && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${authToken}`);
 
     const nickRaw = ((state.profile.nickname || "").trim() || state.profile.friendCode).trim();
     // ✅ 한글/특수문자 헤더 안전 전송
@@ -580,6 +590,96 @@ export default function TodoTracker() {
     if (ct.includes("application/json")) return res.json();
     return (await res.text()) as any;
   }
+
+  async function submitAuth() {
+    const loginId = authId.trim();
+    if (!loginId) return setAuthMessage("아이디를 입력해줘.");
+    if (authPassword.length < 6) return setAuthMessage("비밀번호는 6자 이상으로 입력해줘.");
+
+    setAuthBusy(true);
+    setAuthMessage("");
+    try {
+      const res = await fetch(authMode === "signUp" ? "/api/auth/register" : "/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          loginId,
+          password: authPassword,
+          friendCode: state.profile.friendCode,
+          nickname: state.profile.nickname ?? "",
+        }),
+      });
+      const data: any = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || res.statusText || `HTTP ${res.status}`);
+
+      const nextToken = String(data?.token ?? "");
+      const nextLoginId = String(data?.user?.loginId ?? loginId);
+      localStorage.setItem(AUTH_TOKEN_KEY, nextToken);
+      localStorage.setItem(AUTH_LOGIN_ID_KEY, nextLoginId);
+      setAuthToken(nextToken);
+      setSignedInLoginId(nextLoginId);
+      setState((prev) => ({
+        ...prev,
+        profile: {
+          ...prev.profile,
+          friendCode: String(data?.user?.friendCode ?? prev.profile.friendCode),
+          nickname: data?.user?.nickname ?? prev.profile.nickname,
+          shareMode: data?.user?.shareMode ?? prev.profile.shareMode,
+        },
+      }));
+      setAuthPassword("");
+      setAuthMessage(authMode === "signUp" ? "회원가입이 완료됐어." : "로그인됐어.");
+    } catch (e: any) {
+      setAuthMessage(e?.message || String(e));
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function signOut() {
+    if (authToken) {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+      }).catch(() => null);
+    }
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    localStorage.removeItem(AUTH_LOGIN_ID_KEY);
+    setAuthToken("");
+    setSignedInLoginId("");
+    setLegacyLinkInfo(null);
+  }
+
+  useEffect(() => {
+    if (!authToken) return;
+
+    let cancelled = false;
+    apiFetch2("/api/me/account")
+      .then((account: any) => {
+        if (cancelled || !account?.friendCode) return;
+        setSignedInLoginId(String(account?.loginId ?? signedInLoginId));
+        setState((prev) => ({
+          ...prev,
+          profile: {
+            ...prev.profile,
+            friendCode: String(account.friendCode),
+            nickname: account.nickname ?? prev.profile.nickname,
+            shareMode: account.shareMode ?? prev.profile.shareMode,
+          },
+        }));
+      })
+      .catch(() => {
+        // ignore sync failures; interactive actions will surface auth errors
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authToken]);
 
   function formatDateOnly(d: Date) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -663,6 +763,7 @@ export default function TodoTracker() {
   function buildScheduleItemsFromMySlots(
     myList: Array<{
       key: string;
+      tableName?: string;
       name: string;
       power: number;
       remainingRaids: string[];
@@ -675,6 +776,7 @@ export default function TodoTracker() {
 
       myCharKey: me.key,
       myCharName: me.name,
+      myTableName: me.tableName ?? null,
       myCharPower: me.power ?? null,
 
       friendCharKey: null,
@@ -714,11 +816,13 @@ export default function TodoTracker() {
 
         myCharKey: result.my.key,
         myCharName: result.my.name,
+        myTableName: result.my.tableName ?? null,
         myCharPower: result.my.power ?? null,
         myWeeklyRaidPickKey: weeklyCharKey(result.my.tableId, result.my.charId), // 4/22 일정표 레이드 난이도 표시용
 
         friendCharKey: result.friend.key,
         friendCharName: result.friend.name,
+        friendTableName: result.friend.tableName ?? null,
         friendCharPower: result.friend.power ?? null,
 
         mode: "MATCHED",
@@ -792,7 +896,7 @@ export default function TodoTracker() {
       console.error("일정표 불러오기 실패", e);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [SERVER_MODE, authToken]);
 
   async function createWeeklyScheduleFromRecommendation(
     pairResults: Array<{
@@ -830,13 +934,26 @@ export default function TodoTracker() {
       items,
     };
 
+    const hydratedPayload = hydrateScheduleWithLocalCompletion({
+      id: "",
+      ownerFriendCode: getCurrentFriendCode(),
+      targetFriendCode: selectedFriendCode,
+      title: payload.title,
+      weekStartDate: payload.weekStartDate,
+      items: payload.items,
+      updatedAt: Date.now(),
+    });
+
     const created = await apiFetch2("/api/weekly-schedules", {
       method: "POST",
       body: JSON.stringify({
         targetFriendCode: selectedFriendCode,
         title: payload.title,
         weekStartDate: payload.weekStartDate,
-        scheduleJson: JSON.stringify(payload),
+        scheduleJson: JSON.stringify({
+          ...payload,
+          items: hydratedPayload.items,
+        }),
       }),
     });
 
@@ -941,6 +1058,98 @@ export default function TodoTracker() {
     return { tableId: tableId ?? "", charId: charId ?? "" };
   }
 
+  function getCurrentFriendCode() {
+    return String(state.profile.friendCode ?? "").trim();
+  }
+
+  function getSchedulePerspectiveForCurrentUser(schedule: SharedWeeklySchedule) {
+    const currentFriendCode = getCurrentFriendCode();
+    return {
+      isOwnerView: schedule.ownerFriendCode === currentFriendCode,
+      isTargetView: schedule.targetFriendCode === currentFriendCode,
+    };
+  }
+
+  function getLocalWeeklyRaidTaskId(raidName: string) {
+    const normalizedTarget = normalizeRaidName(raidName);
+
+    const task = state.tasks.find(
+      (t) =>
+        t.period === "WEEKLY" &&
+        (t.section ?? "").trim() === "주간 레이드" &&
+        normalizeRaidName(String(t.title ?? "")) === normalizedTarget
+    );
+
+    return task?.id ?? "";
+  }
+
+  function isLocalScheduleCharRaidCleared(charKey: string | null | undefined, raidName: string) {
+    const { tableId, charId } = parseScheduleMyCharKey(String(charKey ?? ""));
+    if (!tableId || !charId) return false;
+
+    const table = state.tables.find((t) => t.id === tableId);
+    if (!table || !table.characters.some((ch) => ch.id === charId)) return false;
+
+    const taskId = getLocalWeeklyRaidTaskId(raidName);
+    if (!taskId) return false;
+
+    const cell = getCellByTableId(state, tableId, taskId, charId);
+    return !!(cell && cell.type === "CHECK" && cell.checked);
+  }
+
+  function getLocalClearedRaidNamesForScheduleChar(
+    charKey: string | null | undefined,
+    raidNames: string[]
+  ) {
+    return raidNames.filter((raid) => isLocalScheduleCharRaidCleared(charKey, raid));
+  }
+
+  function isStoredScheduleRaidCleared(
+    storedRaidNames: string[] | null | undefined,
+    raidName: string
+  ) {
+    if (!Array.isArray(storedRaidNames)) return false;
+    const normalizedTarget = normalizeRaidName(raidName);
+    return storedRaidNames.some((raid) => normalizeRaidName(raid) === normalizedTarget);
+  }
+
+  function getScheduleItemRaidNames(item: SharedWeeklyScheduleItem) {
+    return Array.isArray(item.raidNames) && item.raidNames.length > 0
+      ? item.raidNames
+      : item.baseRaidNames ?? [];
+  }
+
+  function hydrateScheduleWithLocalCompletion(schedule: SharedWeeklySchedule) {
+    const { isOwnerView, isTargetView } = getSchedulePerspectiveForCurrentUser(schedule);
+
+    return {
+      ...schedule,
+      items: schedule.items.map((item) => {
+        const raidNames = getScheduleItemRaidNames(item);
+
+        return {
+          ...item,
+          ...(isOwnerView
+            ? {
+              myClearedRaidNames: getLocalClearedRaidNamesForScheduleChar(
+                item.myCharKey,
+                raidNames
+              ),
+            }
+            : {}),
+          ...(isTargetView
+            ? {
+              friendClearedRaidNames: getLocalClearedRaidNamesForScheduleChar(
+                item.friendCharKey,
+                raidNames
+              ),
+            }
+            : {}),
+        };
+      }),
+    };
+  }
+
   function resolveScheduleWeeklyPickKey(item: SharedWeeklyScheduleItem) {
     const directPickKey = String(item.myWeeklyRaidPickKey ?? "").trim();
     if (directPickKey) return directPickKey;
@@ -965,22 +1174,15 @@ export default function TodoTracker() {
     // 미래 일정표는 항상 클린
     if (isFutureWeeklySchedule(schedule)) return false;
 
-    const { tableId, charId } = parseScheduleMyCharKey(item.myCharKey);
-    if (!tableId || !charId) return false;
+    const { isOwnerView, isTargetView } = getSchedulePerspectiveForCurrentUser(schedule);
 
-    const normalizedTarget = normalizeRaidName(raidName);
+    if (isStoredScheduleRaidCleared(item.myClearedRaidNames, raidName)) return true;
+    if (isStoredScheduleRaidCleared(item.friendClearedRaidNames, raidName)) return true;
 
-    const task = state.tasks.find(
-      (t) =>
-        t.period === "WEEKLY" &&
-        (t.section ?? "").trim() === "주간 레이드" &&
-        normalizeRaidName(String(t.title ?? "")) === normalizedTarget
-    );
+    if (isOwnerView && isLocalScheduleCharRaidCleared(item.myCharKey, raidName)) return true;
+    if (isTargetView && isLocalScheduleCharRaidCleared(item.friendCharKey, raidName)) return true;
 
-    if (!task) return false;
-
-    const cell = getCellByTableId(state, tableId, task.id, charId);
-    return !!(cell && cell.type === "CHECK" && cell.checked);
+    return false;
   }
 
 
@@ -1121,6 +1323,7 @@ export default function TodoTracker() {
     me: {
       key: string;
       tableId: string;
+      tableName?: string;
       charId: string;
       name: string;
       power: number;
@@ -1159,11 +1362,13 @@ export default function TodoTracker() {
 
           myCharKey: me.key,
           myCharName: me.name,
+          myTableName: me.tableName ?? null,
           myCharPower: me.power ?? null,
           myWeeklyRaidPickKey: weeklyCharKey(me.tableId, me.charId), // 4/22 일정표 레이드 난이도 표시용
 
           friendCharKey: null,
           friendCharName: null,
+          friendTableName: null,
           friendCharPower: null,
 
           mode: "OPEN_SLOT",
@@ -1187,6 +1392,8 @@ export default function TodoTracker() {
   async function saveWeeklySchedule(schedule: SharedWeeklySchedule) {
     if (!SERVER_MODE) return;
 
+    const hydratedSchedule = hydrateScheduleWithLocalCompletion(schedule);
+
     setScheduleSaving(true);
     try {
       await apiFetch2(`/api/weekly-schedules?id=${schedule.id}`, {
@@ -1195,7 +1402,7 @@ export default function TodoTracker() {
           title: schedule.title,
           weekStartDate: schedule.weekStartDate,
           scheduleJson: JSON.stringify({
-            items: schedule.items,
+            items: hydratedSchedule.items,
           }),
         }),
       });
@@ -1413,6 +1620,85 @@ export default function TodoTracker() {
 
     alert("서버 복원 완료!");
   }
+
+  async function requestLegacyLink(action: "verify" | "load" | "claim") {
+    if (!isLoggedIn) return alert("먼저 로그인해줘.");
+
+    const friendCode = legacyCode.trim();
+    const password = backupPassword.trim();
+    if (!friendCode) return alert("FC 코드를 입력해줘.");
+    if (!password) return alert("서버 백업 비밀번호를 입력해줘.");
+
+    setLegacyBusy(true);
+    try {
+      const data: any = await apiFetch2("/api/me/link-legacy", {
+        method: "POST",
+        body: JSON.stringify({
+          friendCode,
+          password,
+          action,
+          legacyLoginAllowed,
+        }),
+      });
+
+      if (action === "load") {
+        const next = importStateFromJson(String(data?.stateJson ?? ""));
+        setState({
+          ...next,
+          profile: {
+            ...next.profile,
+            friendCode,
+          },
+        });
+        alert("연동된 기존 데이터를 불러왔어.");
+      } else {
+        setLegacyLinkInfo({
+          friendCode,
+          nickname: data?.nickname ?? null,
+          hasBackup: data?.hasBackup,
+          updatedAt: data?.updatedAt ?? null,
+        });
+
+        if (action === "claim") {
+          const nextToken = String(data?.token ?? "");
+          if (nextToken) {
+            localStorage.setItem(AUTH_TOKEN_KEY, nextToken);
+            setAuthToken(nextToken);
+          }
+          const claimedStateRaw = String(data?.stateJson ?? "");
+          if (claimedStateRaw) {
+            const next = importStateFromJson(claimedStateRaw);
+            setState({
+              ...next,
+              profile: {
+                ...next.profile,
+                friendCode,
+                nickname: data?.nickname ?? next.profile.nickname,
+              },
+            });
+          } else {
+            setState((prev) => ({
+              ...prev,
+              profile: {
+                ...prev.profile,
+                friendCode,
+                nickname: data?.nickname ?? prev.profile.nickname,
+              },
+            }));
+          }
+          await refreshFriends(nextToken || undefined).catch((e) => {
+            console.error("친구 목록 동기화 실패", e);
+          });
+          alert("이 계정에 기존 데이터를 귀속했어.");
+        }
+      }
+    } catch (e: any) {
+      alert(e?.message || String(e));
+    } finally {
+      setLegacyBusy(false);
+    }
+  }
+
   function parseNum(v: any): number | null {
     if (v == null) return null;
     const s = String(v).trim();
@@ -1805,25 +2091,51 @@ export default function TodoTracker() {
     const scheduledMyRaidSetByChar = new Map<string, Set<string>>();
     const scheduledFriendRaidSetByChar = new Map<string, Set<string>>();
 
+    function addScheduledRaids(
+      map: Map<string, Set<string>>,
+      charKey: string | null | undefined,
+      raidNames: string[]
+    ) {
+      const key = String(charKey ?? "").trim();
+      if (!key) return;
+      const prev = map.get(key) ?? new Set<string>();
+      raidNames.forEach((raid) => prev.add(raid));
+      map.set(key, prev);
+    }
+
+    function getSnapshotCandidateKey(tableName: string | null | undefined, charName: string | null | undefined) {
+      const name = String(charName ?? "").trim();
+      if (!name) return "";
+      return `${String(tableName ?? "").trim()}|${name}`;
+    }
+
     if (schedule) {
+      const { isTargetView } = getSchedulePerspectiveForCurrentUser(schedule);
+
       for (const item of schedule.items) {
         // 4/26 실제 일정표에 들어간 레이드만 흑백 처리되도록 수정
-        const itemScheduledRaids = (
-          Array.isArray(item.raidNames) && item.raidNames.length > 0
-            ? item.raidNames
-            : item.baseRaidNames ?? []
-        ).map((raid) => normalizeRaidName(raid));
+        const itemScheduledRaids = getScheduleItemRaidNames(item).map((raid) => normalizeRaidName(raid));
 
-        if (item.myCharKey) {
-          const prev = scheduledMyRaidSetByChar.get(item.myCharKey) ?? new Set<string>();
-          itemScheduledRaids.forEach((raid) => prev.add(raid));
-          scheduledMyRaidSetByChar.set(item.myCharKey, prev);
-        }
+        if (isTargetView) {
+          addScheduledRaids(scheduledMyRaidSetByChar, item.friendCharKey, itemScheduledRaids);
 
-        if (item.friendCharKey) {
-          const prev = scheduledFriendRaidSetByChar.get(String(item.friendCharKey)) ?? new Set<string>();
-          itemScheduledRaids.forEach((raid) => prev.add(raid));
-          scheduledFriendRaidSetByChar.set(String(item.friendCharKey), prev);
+          // 친구가 보는 화면에서는 owner 캐릭터가 오른쪽 "친구 캐릭터" 목록에 있다.
+          // 최신 일정표는 tableName|charName으로 맞추고, 구버전 일정표는 이름만으로도 보정한다.
+          addScheduledRaids(
+            scheduledFriendRaidSetByChar,
+            getSnapshotCandidateKey(item.myTableName, item.myCharName),
+            itemScheduledRaids
+          );
+          addScheduledRaids(scheduledFriendRaidSetByChar, item.myCharName, itemScheduledRaids);
+        } else {
+          addScheduledRaids(scheduledMyRaidSetByChar, item.myCharKey, itemScheduledRaids);
+          addScheduledRaids(scheduledFriendRaidSetByChar, item.friendCharKey, itemScheduledRaids);
+          addScheduledRaids(
+            scheduledFriendRaidSetByChar,
+            getSnapshotCandidateKey(item.friendTableName, item.friendCharName),
+            itemScheduledRaids
+          );
+          addScheduledRaids(scheduledFriendRaidSetByChar, item.friendCharName, itemScheduledRaids);
         }
       }
     }
@@ -1832,7 +2144,15 @@ export default function TodoTracker() {
       targetRaids: string[],
       raidSetMap: Map<string, Set<string>>
     ) {
-      const scheduledSet = raidSetMap.get(charKey) ?? new Set<string>();
+      const scheduledSet = new Set<string>(raidSetMap.get(charKey) ?? []);
+      const charNameFallback = String(charKey ?? "").includes("|")
+        ? String(charKey ?? "").split("|").slice(-1)[0]
+        : "";
+
+      if (charNameFallback) {
+        const nameSet = raidSetMap.get(charNameFallback);
+        if (nameSet) nameSet.forEach((raid) => scheduledSet.add(raid));
+      }
 
       const scheduledRaids = targetRaids.filter((raid) =>
         scheduledSet.has(normalizeRaidName(raid))
@@ -1887,7 +2207,7 @@ export default function TodoTracker() {
           : [];
 
         const activeRaids =
-          schedulePlanningMode === "NEXT_RESET" ? allRaids : allRaids;
+          schedulePlanningMode === "NEXT_RESET" ? allRaids : remainingRaids;
 
         return {
           key: `${row.tableName ?? ""}|${row.charName ?? ""}`,
@@ -2179,6 +2499,7 @@ export default function TodoTracker() {
                 mode: "OPEN_SLOT" as const,
                 friendCharKey: null,
                 friendCharName: null,
+                friendTableName: null,
                 friendCharPower: null,
                 raidNames: Array.isArray(item.baseRaidNames) ? [...item.baseRaidNames] : [],
                 avgPower: null,
@@ -2210,6 +2531,7 @@ export default function TodoTracker() {
               mode: "MATCHED" as const,
               friendCharKey: friend.key,
               friendCharName: friend.name,
+              friendTableName: friend.tableName ?? null,
               friendCharPower: friend.power ?? null,
               raidNames: [...commonRaids],
               avgPower,
@@ -3497,12 +3819,13 @@ export default function TodoTracker() {
   }
 
 
-  async function refreshFriends() {
+  async function refreshFriends(tokenOverride?: string) {
     if (!SERVER_MODE) return;
     setSyncingFriends(true);
     try {
-      const friendsRes = await apiFetch2("/api/friends");
-      const incomingRes = await apiFetch2("/api/friend-requests?type=incoming");
+      const headers = tokenOverride ? { Authorization: `Bearer ${tokenOverride}` } : undefined;
+      const friendsRes = await apiFetch2("/api/friends", { headers });
+      const incomingRes = await apiFetch2("/api/friend-requests?type=incoming", { headers });
 
       const friendsArr = Array.isArray(friendsRes)
         ? friendsRes
@@ -3524,10 +3847,25 @@ export default function TodoTracker() {
         }))
         .filter((x: any) => x.code);
 
-      setState((prev) => ({
-        ...prev,
-        friends: nextFriends,
-      }));
+      setState((prev) => {
+        const mergedFriends = [...prev.friends];
+        const existingCodes = new Set(mergedFriends.map((f) => f.code));
+
+        for (const friend of nextFriends) {
+          const index = mergedFriends.findIndex((f) => f.code === friend.code);
+          if (index >= 0) {
+            mergedFriends[index] = { ...mergedFriends[index], ...friend };
+          } else if (!existingCodes.has(friend.code)) {
+            mergedFriends.push(friend);
+            existingCodes.add(friend.code);
+          }
+        }
+
+        return {
+          ...prev,
+          friends: mergedFriends,
+        };
+      });
 
       // ✅ 현재 친구 목록에 없는 snapshot 정리
       setFriendSnapshots((prev) => {
@@ -3580,7 +3918,7 @@ export default function TodoTracker() {
 
     const snapAny = (data as any).snapshotJson;
     const snapStr = typeof snapAny === "string" ? snapAny : JSON.stringify(snapAny);
-    attachSnapshotToFriend(snapStr, code);
+    attachSnapshotToFriend(snapStr, code, { suppressAlerts: true });
   }
 
   useEffect(() => {
@@ -3699,24 +4037,35 @@ export default function TodoTracker() {
     }
   }
 
-  function attachSnapshotToFriend(snapshotRaw: string, targetFriendCode?: string) {
+  function attachSnapshotToFriend(
+    snapshotRaw: string,
+    targetFriendCode?: string,
+    options?: { suppressAlerts?: boolean }
+  ) {
+    const suppressAlerts = options?.suppressAlerts === true;
     let snap;
     try {
       snap = importRaidLeftSnapshot(snapshotRaw);
     } catch {
-      alert("스냅샷 JSON 형식이 올바르지 않아");
+      if (!suppressAlerts) {
+        alert("스냅샷 JSON 형식이 올바르지 않아");
+      }
       return;
     }
 
     if (snap.shareMode === "PRIVATE") {
-      alert("친구가 비공개로 설정했어. 확인 불가!");
+      if (!suppressAlerts) {
+        alert("친구가 비공개로 설정했어. 확인 불가!");
+      }
       return;
     }
 
     const codeToAttach = (targetFriendCode || snap.friendCode || "").trim();
 
     if (!codeToAttach) {
-      alert("친구 코드가 비어있어. 스냅샷을 연결할 수 없어");
+      if (!suppressAlerts) {
+        alert("친구 코드가 비어있어. 스냅샷을 연결할 수 없어");
+      }
       return;
     }
 
@@ -4656,6 +5005,55 @@ export default function TodoTracker() {
     );
   }
 
+  async function syncCharacterFromOfficial(tableId: string, ch: Character) {
+    const nickname = String(ch.name ?? "").trim();
+    if (!nickname) return;
+
+    try {
+      const response = await fetch(`/api/growth/kloa-character?nickname=${encodeURIComponent(nickname)}`);
+      const data = await response.json();
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.detail || data?.error || "공식 캐릭터 정보를 불러오지 못했어.");
+      }
+
+      const itemLevel =
+        typeof data.currentItemLevel === "number" && Number.isFinite(data.currentItemLevel)
+          ? String(data.currentItemLevel)
+          : "";
+      const combatPower =
+        typeof data.combatPower === "number" && Number.isFinite(data.combatPower)
+          ? String(data.combatPower)
+          : "";
+
+      if (!itemLevel && !combatPower) {
+        alert("공식 캐릭터 정보에서 아이템레벨/전투력을 찾지 못했어.");
+        return;
+      }
+
+      const applyPower = combatPower ? confirm(`${nickname} 전투력 ${combatPower}도 불러올까요?`) : false;
+
+      setState((prev) => {
+        const table = getTableById(prev, tableId);
+        const nextChars: Character[] = table.characters.map((c) =>
+          c.id === ch.id
+            ? {
+                ...c,
+                itemLevel: itemLevel || c.itemLevel,
+                power: applyPower && combatPower ? combatPower : c.power,
+              }
+            : c
+        );
+        const nextTable: TodoTable = { ...table, characters: nextChars };
+        return {
+          ...prev,
+          tables: prev.tables.map((t) => (t.id === nextTable.id ? nextTable : t)),
+        };
+      });
+    } catch (error: any) {
+      alert(error?.message || "공식 캐릭터 정보를 불러오지 못했어.");
+    }
+  }
+
   function deleteCharacter(ch: Character) {
     if (!confirm(`'${ch.name}' 캐릭터를 삭제할까요? (해당 캐릭터의 체크 데이터도 제거됨)`)) return;
 
@@ -4801,6 +5199,11 @@ export default function TodoTracker() {
 
     setState((prev) => {
       const nextTasks = prev.tasks.filter((t) => t.id !== task.id);
+      const defaultTaskKey = [task.period, task.section ?? "", task.cellType ?? "", task.title].join("|");
+      const shouldRememberDeletion = isPersistedDefaultTask(task);
+      const deletedDefaultTaskKeys = shouldRememberDeletion
+        ? Array.from(new Set([...(prev.profile.deletedDefaultTaskKeys ?? []), defaultTaskKey]))
+        : prev.profile.deletedDefaultTaskKeys ?? [];
 
       const nextTables = prev.tables.map((tbl) => {
         const values = { ...(tbl.values ?? {}) };
@@ -4808,7 +5211,15 @@ export default function TodoTracker() {
         return { ...tbl, values };
       });
 
-      return { ...prev, tasks: nextTasks, tables: nextTables };
+      return {
+        ...prev,
+        tasks: nextTasks,
+        tables: nextTables,
+        profile: {
+          ...prev.profile,
+          deletedDefaultTaskKeys,
+        },
+      };
     });
   }
 
@@ -5039,6 +5450,8 @@ export default function TodoTracker() {
     | { tableId: string; charId: string; charName: string; ilvl: number; x: number; y: number }
     | null;
 
+  type WeeklyPopupRaidTab = "current" | "legacy";
+
   type WeeklyRaidPick = {
     raids: string[];      // 이번 주 도는 레이드 전체
     goldRaids: string[];  // 골드 받는 레이드 (최대 3개)
@@ -5055,12 +5468,29 @@ export default function TodoTracker() {
   const [weeklyRaidPickByChar, setWeeklyRaidPickByChar] = useState<Record<string, WeeklyRaidPick>>({});
   const weeklyRaidPickRef = useRef<Record<string, WeeklyRaidPick>>({});
   const [weeklyTop3Popup, setWeeklyTop3Popup] = useState<WeeklyTop3Popup>(null);
+  const [weeklyPopupRaidTab, setWeeklyPopupRaidTab] = useState<WeeklyPopupRaidTab>("current");
 
   useEffect(() => {
     weeklyRaidPickRef.current = weeklyRaidPickByChar;
   }, [weeklyRaidPickByChar]);
 
+  useEffect(() => {
+    if (weeklyTop3Popup) {
+      setWeeklyPopupRaidTab("current");
+    }
+  }, [weeklyTop3Popup]);
+
   const POPUP_WEEKLY_CHECK_MAX_ILVL = 1700;
+  const LEGACY_POPUP_RAID_NAMES = new Set([
+    "발탄",
+    "비아키스",
+    "쿠크세이튼",
+    "아브렐슈드",
+    "카양겔",
+    "일리아칸",
+    "상아탑",
+    "카멘",
+  ]);
 
   function weeklyCharKey(tableId: string, charId: string) {
     return `${tableId}:${charId}`;
@@ -5440,8 +5870,69 @@ export default function TodoTracker() {
   };
 
   const RAID_CATALOG: RaidDef[] = [
-    { key: "epic", name: "베히모스", diffs: [{ name: "노말", minIlvl: 1640, gold: getSplitTotal(RAID_REWARD_INFO["베히모스"].normal) }] },
+    {
+      key: "VALTAN",
+      name: "발탄",
+      diffs: [
+        { name: "노말", minIlvl: 1415, gold: getSplitTotal(RAID_REWARD_INFO["발탄"].normal) },
+        { name: "하드", minIlvl: 1445, gold: getSplitTotal(RAID_REWARD_INFO["발탄"].hard) },
+      ],
+    },
+    {
+      key: "VYKAS",
+      name: "비아키스",
+      diffs: [
+        { name: "노말", minIlvl: 1430, gold: getSplitTotal(RAID_REWARD_INFO["비아키스"].normal) },
+        { name: "하드", minIlvl: 1460, gold: getSplitTotal(RAID_REWARD_INFO["비아키스"].hard) },
+      ],
+    },
+    {
+      key: "KOUKOU",
+      name: "쿠크세이튼",
+      diffs: [{ name: "노말", minIlvl: 1475, gold: getSplitTotal(RAID_REWARD_INFO["쿠크세이튼"].normal) }],
+    },
+    {
+      key: "ABREL",
+      name: "아브렐슈드",
+      diffs: [
+        { name: "노말", minIlvl: 1490, gold: getSplitTotal(RAID_REWARD_INFO["아브렐슈드"].normal) },
+        { name: "하드", minIlvl: 1540, gold: getSplitTotal(RAID_REWARD_INFO["아브렐슈드"].hard) },
+      ],
+    },
+    {
+      key: "KAYANGEL",
+      name: "카양겔",
+      diffs: [
+        { name: "노말", minIlvl: 1540, gold: getSplitTotal(RAID_REWARD_INFO["카양겔"].normal) },
+        { name: "하드", minIlvl: 1580, gold: getSplitTotal(RAID_REWARD_INFO["카양겔"].hard) },
+      ],
+    },
+    {
+      key: "ILLIAKAN",
+      name: "일리아칸",
+      diffs: [
+        { name: "노말", minIlvl: 1580, gold: getSplitTotal(RAID_REWARD_INFO["일리아칸"].normal) },
+        { name: "하드", minIlvl: 1600, gold: getSplitTotal(RAID_REWARD_INFO["일리아칸"].hard) },
+      ],
+    },
+    {
+      key: "IVORY",
+      name: "상아탑",
+      diffs: [
+        { name: "노말", minIlvl: 1600, gold: getSplitTotal(RAID_REWARD_INFO["상아탑"].normal) },
+        { name: "하드", minIlvl: 1620, gold: getSplitTotal(RAID_REWARD_INFO["상아탑"].hard) },
+      ],
+    },
+    {
+      key: "KAMEN",
+      name: "카멘",
+      diffs: [
+        { name: "노말", minIlvl: 1610, gold: getSplitTotal(RAID_REWARD_INFO["카멘"].normal) },
+        { name: "하드", minIlvl: 1630, gold: getSplitTotal(RAID_REWARD_INFO["카멘"].hard) },
+      ],
+    },
     { key: "ACT0", name: "서막", diffs: [{ name: "노말", minIlvl: 1620, gold: getSplitTotal(RAID_REWARD_INFO["서막"].normal) }, { name: "하드", minIlvl: 1640, gold: getSplitTotal(RAID_REWARD_INFO["서막"].hard) }] },
+    { key: "epic", name: "베히모스", diffs: [{ name: "노말", minIlvl: 1640, gold: getSplitTotal(RAID_REWARD_INFO["베히모스"].normal) }] },
     { key: "ACT1", name: "1막", diffs: [{ name: "노말", minIlvl: 1660, gold: getSplitTotal(RAID_REWARD_INFO["1막"].normal) }, { name: "하드", minIlvl: 1680, gold: getSplitTotal(RAID_REWARD_INFO["1막"].hard) }] },
     { key: "ACT2", name: "2막", diffs: [{ name: "노말", minIlvl: 1670, gold: getSplitTotal(RAID_REWARD_INFO["2막"].normal) }, { name: "하드", minIlvl: 1690, gold: getSplitTotal(RAID_REWARD_INFO["2막"].hard) }] },
     { key: "ACT3", name: "3막", diffs: [{ name: "노말", minIlvl: 1680, gold: getSplitTotal(RAID_REWARD_INFO["3막"].normal) }, { name: "하드", minIlvl: 1700, gold: getSplitTotal(RAID_REWARD_INFO["3막"].hard) }] },
@@ -6278,7 +6769,11 @@ body.pip-dark .pip-select option{
                         <div className="char-meta" style={{ fontSize: 11, opacity: 0.7 }}>{tableName}</div>
 
 
-                        <div className="char-name" title={ch.name}>
+                        <div
+                          className="char-name"
+                          title={`${ch.name}\n더블클릭하면 공식 캐릭터 정보에서 아이템레벨을 불러와.`}
+                          onDoubleClick={() => void syncCharacterFromOfficial(tableId, ch)}
+                        >
                           {ch.name}
                         </div>
 
@@ -6620,7 +7115,12 @@ body.pip-dark .pip-select option{
                           <div className="char-head">
                             <div
                               className="char-name"
-                              title={isTouch ? ch.name : "드래그해서 캐릭터 순서 변경"}
+                              title={
+                                isTouch
+                                  ? `${ch.name}\n더블클릭하면 공식 캐릭터 정보에서 아이템레벨을 불러와.`
+                                  : "드래그해서 캐릭터 순서 변경 / 더블클릭하면 공식 캐릭터 정보에서 아이템레벨을 불러와."
+                              }
+                              onDoubleClick={() => void syncCharacterFromOfficial(tableId, ch)}
                               draggable={!isTouch}
                               onDragStart={() => {
                                 if (isTouch) return;
@@ -7339,46 +7839,11 @@ body.pip-dark .pip-select option{
                 📝 메모장
               </button>
               <BidPopover />
-              <button className="btn" onClick={toggleTheme} title="테마 전환">
-                {theme === "dark" ? "☀️ 화이트모드" : "🌙 다크모드"}
-              </button>
             </div>
           </div>
 
           <div className="topbar-right">
             <div className="topbar-cards">
-              {SERVER_MODE && (
-                <div className="serverBackupPanel">
-                  <div className="serverBackupRow">
-                    <input
-                      className="friendInput"
-                      placeholder="내 코드(FC_...)"
-                      value={restoreCode}
-                      onChange={(e) => setRestoreCode(e.target.value)}
-                    />
-                    <input
-                      className="friendInput"
-                      type="password"
-                      value={backupPassword}
-                      onChange={(e) => setBackupPassword(e.target.value)}
-                      placeholder="서버 백업 비밀번호"
-                    />
-                    <button className="btn" onClick={() => downloadBackupWithCode(restoreCode.trim())}>
-                      이 코드로 서버 복원
-                    </button>
-                  </div>
-
-                  <div className="serverBackupRow">
-                    <button className="btn" onClick={uploadBackupToServer}>
-                      서버 업로드
-                    </button>
-                    <button className="btn" onClick={downloadBackupFromServer}>
-                      서버 다운로드
-                    </button>
-                  </div>
-                </div>
-              )}
-
               <div className="friendBox friendBoxTop">
                 <div className="friendRow">
                   <div className="friendLabel">내 코드</div>
@@ -7741,7 +8206,14 @@ body.pip-dark .pip-select option{
                                   alert("친구 남은 레이드 불러오기 완료!");
                                 } catch (e) {
                                   console.error("친구 스냅샷 불러오기 실패", e);
-                                  alert("불러오기 실패(비공개이거나 친구가 아직 스냅샷 업로드를 안 했을 수 있어)");
+                                  const msg = String((e as any)?.message ?? e ?? "");
+                                  if (msg.includes("403")) {
+                                    alert("불러오기 실패(서버 기준 친구 관계가 아니거나 상대가 비공개야)");
+                                  } else if (msg.includes("404")) {
+                                    alert("불러오기 실패(친구가 아직 스냅샷 업로드를 안 했어)");
+                                  } else {
+                                    alert("불러오기 실패(비공개이거나 친구가 아직 스냅샷 업로드를 안 했을 수 있어)");
+                                  }
                                 }
                               }}
                               title="서버에서 최신 남은 레이드 스냅샷 불러오기"
@@ -8104,6 +8576,12 @@ body.pip-dark .pip-select option{
           weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(popupIlvl)
         );
         const pickedResult = calcWeeklySelectedGold(popupIlvl, picked);
+        const popupRaidDefs = RAID_CATALOG.filter((raid) => availableDiffNames(popupIlvl, raid.name).length > 0);
+        const popupVisibleRaidDefs = popupRaidDefs.filter((raid) =>
+          weeklyPopupRaidTab === "legacy"
+            ? LEGACY_POPUP_RAID_NAMES.has(raid.name)
+            : !LEGACY_POPUP_RAID_NAMES.has(raid.name)
+        );
 
         function toggleRaid(raidName: string) {
           if (availableDiffNames(popupIlvl, raidName).length === 0) return;
@@ -8214,10 +8692,25 @@ body.pip-dark .pip-select option{
               </div>
             </div>
 
+            <div className="weekly-top3-tabs">
+              <button
+                type="button"
+                className={`weekly-top3-tab ${weeklyPopupRaidTab === "current" ? "active" : ""}`}
+                onClick={() => setWeeklyPopupRaidTab("current")}
+              >
+                현재 라인
+              </button>
+              <button
+                type="button"
+                className={`weekly-top3-tab ${weeklyPopupRaidTab === "legacy" ? "active" : ""}`}
+                onClick={() => setWeeklyPopupRaidTab("legacy")}
+              >
+                이전 라인
+              </button>
+            </div>
+
             <div className="weekly-top3-pick-list">
-              {RAID_CATALOG
-                .filter((raid) => availableDiffNames(popupIlvl, raid.name).length > 0)
-                .map((raid) => {
+              {popupVisibleRaidDefs.map((raid) => {
                   const active = picked.raids.some((name) => normalizeRaidName(name) === normalizeRaidName(raid.name));
 
                   return (

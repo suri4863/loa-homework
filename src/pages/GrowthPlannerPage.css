@@ -1,0 +1,1457 @@
+.growthPage {
+  display: grid;
+  gap: 14px;
+}
+
+.growthHero,
+.growthCard {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--soft-2);
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+
+.growthHero {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.growthHero h2,
+.growthCardTitle {
+  margin: 0;
+  color: var(--text);
+}
+
+.growthHero p,
+.growthHint,
+.growthHeroMeta,
+.growthEmpty,
+.resultLabel {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.growthHeroMeta {
+  display: grid;
+  gap: 6px;
+  min-width: 220px;
+}
+
+.growthGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.growthTopGrid {
+  display: grid;
+  grid-template-columns: minmax(420px, 5fr) minmax(360px, 4fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.setupCard {
+  order: 2;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+.scanDetails {
+  order: 1;
+  grid-column: 1;
+}
+
+.topOcrDetails {
+  order: 3;
+  grid-column: 1;
+}
+
+.sideOcrDetails {
+  display: none;
+}
+
+.goalQuickGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+
+.goalQuickGrid label {
+  min-width: 0;
+}
+
+.goalCalculateButton {
+  grid-column: 1 / -1;
+  min-height: 44px;
+  white-space: nowrap;
+}
+
+.topOcrDetails,
+.sideOcrDetails {
+  min-width: 0;
+}
+
+.topOcrDetails .growthCard,
+.sideOcrDetails .growthCard {
+  box-shadow: none;
+}
+
+.topOcrDetails .ocrDesignerGrid,
+.sideOcrDetails .ocrDesignerGrid {
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.topOcrDetails .ocrFieldList,
+.sideOcrDetails .ocrFieldList {
+  max-height: 230px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.topOcrDetails .ocrFieldItem,
+.sideOcrDetails .ocrFieldItem {
+  padding: 9px 10px;
+}
+
+.plannerWorkLayout {
+  display: grid;
+  grid-template-columns: minmax(340px, 430px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.plannerSideColumn,
+.plannerMainColumn {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.plannerMainColumn {
+  grid-template-columns: minmax(220px, 1fr) minmax(340px, 2fr) minmax(340px, 2fr);
+  align-items: start;
+}
+
+.plannerSideColumn .ocrDesignerGrid {
+  grid-template-columns: 1fr;
+}
+
+.plannerSideColumn .ocrFieldList {
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.plannerSideColumn .ocrFieldItem {
+  padding: 9px 10px;
+}
+
+.plannerCoreGrid {
+  display: contents;
+}
+
+.plannerBottomGrid {
+  display: contents;
+}
+
+.equipmentStateCard {
+  grid-column: 1;
+}
+
+.routePanel {
+  grid-column: 2;
+}
+
+.estimateResultCard {
+  grid-column: 3;
+}
+
+.weeklyRewardTabsCard {
+  grid-column: 1 / -1;
+}
+
+.ocrReviewCard .growthFieldGrid {
+  grid-template-columns: 1fr;
+}
+
+.growthCard {
+  display: grid;
+  gap: 12px;
+}
+
+.growthFieldGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.growthCard label,
+.pieceCard label {
+  display: grid;
+  gap: 6px;
+}
+
+.growthCard span,
+.pieceCard span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.growthCard input,
+.growthCard select,
+.pieceCard input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--text);
+  padding: 10px 12px;
+}
+
+.growthAction {
+  border: 1px solid var(--primary);
+  background: var(--primary-soft);
+  color: var(--text);
+  border-radius: 12px;
+  min-height: 42px;
+  padding: 0 14px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.growthAction.secondary {
+  border-color: var(--border);
+  background: var(--card);
+}
+
+.growthAction.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.growthAction:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.growthUpload {
+  display: grid;
+  place-items: center;
+  min-height: 110px;
+  border: 1px dashed var(--border);
+  border-radius: 16px;
+  background: var(--card);
+  cursor: pointer;
+}
+
+.growthUpload input {
+  display: none;
+}
+
+.growthUploadButton input {
+  display: none;
+}
+
+.growthPreview {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: 360px;
+  height: auto;
+  object-fit: contain;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--card);
+}
+
+.growthPreview.live {
+  min-height: 280px;
+}
+
+.growthPreviewFrame {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+}
+
+.growthPreviewFrame.compact {
+  max-width: 100%;
+}
+
+.ocrOverlay {
+  position: absolute;
+  inset: 0;
+}
+
+.ocrBox {
+  position: absolute;
+  border: 2px solid var(--primary);
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--text);
+  border-radius: 10px;
+  cursor: move;
+}
+
+.ocrBox.active {
+  background: rgba(59, 130, 246, 0.2);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.ocrBox span {
+  display: inline-block;
+  margin: 6px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ocrDesignerGrid {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 14px;
+}
+
+.ocrFieldList {
+  display: grid;
+  gap: 8px;
+}
+
+.ocrFieldItem {
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  border-radius: 14px;
+  padding: 12px;
+  text-align: left;
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+}
+
+.ocrFieldItem.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.ocrFieldItem span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.ocrFieldEditor {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.growthCardTitle.small {
+  font-size: 16px;
+}
+
+.growthCard.compact {
+  padding: 14px;
+}
+
+.kloaBox,
+.growthSummaryBox {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+  padding: 14px;
+}
+
+.kloaBox {
+  display: grid;
+  gap: 10px;
+}
+
+.growthInlineActions,
+.growthChipRow,
+.growthWarningList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.growthInlineActions {
+  align-items: center;
+}
+
+.growthInlineActions input {
+  flex: 1 1 220px;
+}
+
+.growthCompactBar {
+  display: grid;
+  gap: 10px;
+}
+
+.growthTemplateField {
+  max-width: 360px;
+}
+
+.scanWorkspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.8fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.scanPreviewPanel,
+.scanInfoPanel {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.scanPreviewPanel {
+  justify-items: center;
+}
+
+.scanEmpty {
+  min-height: 220px;
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: var(--soft-2);
+}
+
+.screenCaptureCanvas {
+  display: none;
+}
+
+.scanStatus {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--soft-2);
+  color: var(--text);
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.scanStatus.running {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.scanResultList {
+  display: grid;
+  gap: 6px;
+}
+
+.scanResultItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--soft-2);
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.scanResultItem span {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scanResultItem strong {
+  color: var(--text);
+}
+
+.scanResultItem small {
+  color: var(--muted);
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.marketItemGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.marketItemEditor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--soft-2);
+  padding: 8px 10px;
+}
+
+.marketItemEditor span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.marketItemEditor input {
+  height: 32px;
+  min-height: 32px;
+  padding: 4px 8px;
+  text-align: right;
+}
+
+.growthDetails {
+  display: grid;
+  gap: 10px;
+}
+
+.growthDetailsSummary {
+  list-style: none;
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 700;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--soft-2);
+  padding: 12px 14px;
+}
+
+.growthDetailsSummary::-webkit-details-marker {
+  display: none;
+}
+
+.growthError {
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.08);
+  color: #fca5a5;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.growthChip {
+  border: 1px solid var(--border);
+  background: var(--soft-2);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.raidPlanCard {
+  align-content: start;
+}
+
+.raidPlanGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.weeklyRewardTabsCard {
+  gap: 14px;
+}
+
+.raidBonusCard {
+  align-content: start;
+}
+
+.bonusSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.bonusSummaryGrid div {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--soft-2);
+  padding: 10px 12px;
+}
+
+.bonusSummaryGrid span,
+.bonusRewardItem span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.bonusSummaryGrid strong,
+.bonusRewardItem strong {
+  color: var(--text);
+}
+
+.bonusRaidList {
+  display: grid;
+  gap: 8px;
+}
+
+.bonusRaidRow {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--soft-2);
+  overflow: hidden;
+}
+
+.bonusRaidRow summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  padding: 10px 12px;
+}
+
+.bonusRaidRow summary span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bonusRaidRow summary em {
+  border: 1px solid var(--primary);
+  border-radius: 999px;
+  color: var(--text);
+  font-style: normal;
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.bonusRewardList {
+  display: grid;
+  gap: 6px;
+  border-top: 1px solid var(--border);
+  padding: 8px 12px 10px;
+}
+
+.bonusRewardItem {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bonusRewardItem > span {
+  display: grid;
+  gap: 4px;
+}
+
+.bonusRewardBreakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.bonusRewardBreakdown span {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--soft);
+  color: var(--text);
+  padding: 2px 7px;
+}
+
+.bonusRewardPriceChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bonusRewardPriceChip b,
+.bonusRewardPriceChip em {
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.bonusRewardPriceInput {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.bonusRewardPriceInput span {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.bonusRewardPriceInput input {
+  width: 86px;
+  min-height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--text);
+  padding: 3px 7px;
+  font: inherit;
+  font-size: 12px;
+  text-align: right;
+}
+
+.estimateOptionCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.estimateToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--soft-2);
+  color: var(--text);
+  padding: 8px 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.estimateToggle.inline {
+  justify-self: start;
+  padding: 6px 10px;
+}
+
+.estimateToggle input {
+  width: 16px;
+  height: 16px;
+  min-height: 16px;
+  accent-color: var(--primary);
+}
+
+.growthChipButton {
+  cursor: pointer;
+}
+
+.growthChipButton.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.raidCardControls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.raidSelectionList {
+  display: grid;
+  gap: 8px;
+}
+
+.raidSelectionCompact {
+  display: grid;
+  gap: 10px;
+}
+
+.raidChoiceChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 78px;
+  overflow: auto;
+  padding: 2px;
+}
+
+.raidSelectionList.compact {
+  gap: 8px;
+}
+
+.raidSelectionRow {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--soft-2);
+  padding: 10px 12px;
+}
+
+.raidSelectionRow.compact {
+  padding: 10px 12px;
+}
+
+.raidSelectionRow.selected {
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+}
+
+.raidSelectionMain {
+  display: grid;
+  gap: 8px;
+}
+
+.raidSelectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.raidSelectionMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.raidSelectionCheck {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.raidSelectionCheck input {
+  width: 16px;
+  height: 16px;
+}
+
+.raidSelectionCheck span {
+  color: var(--text);
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.raidSelectionTitle span {
+  color: var(--text);
+  font-weight: 800;
+  font-size: 15px;
+}
+
+.raidSelectionDiffs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.raidSelectionStats {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: right;
+}
+
+.raidSelectionGold {
+  color: var(--text);
+  font-size: 16px;
+  white-space: nowrap;
+}
+
+.raidSelectionToggle {
+  min-width: 58px;
+  text-align: center;
+  padding-inline: 8px;
+}
+
+.pieceGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pieceAccordionList {
+  display: grid;
+  gap: 10px;
+}
+
+.pieceAccordion {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  overflow: hidden;
+}
+
+.pieceAccordionSummary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+}
+
+.pieceAccordionSummary::-webkit-details-marker {
+  display: none;
+}
+
+.pieceAccordionHeading,
+.pieceAccordionMeta,
+.pieceCompactFields {
+  display: flex;
+  gap: 8px;
+}
+
+.pieceAccordionHeading {
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.pieceDivider,
+.pieceAccordionMeta {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.pieceName {
+  color: var(--text);
+  min-width: 0;
+}
+
+.pieceTier {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pieceAccordionMeta {
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.pieceCompactFields {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) repeat(4, minmax(110px, 1fr));
+  gap: 10px;
+}
+
+.pieceCard,
+.resultCard {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  padding: 12px;
+}
+
+.pieceCard {
+  display: grid;
+  gap: 10px;
+}
+
+.pieceCard.compact {
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  padding: 12px 14px 14px;
+}
+
+.pieceTitle {
+  font-weight: 800;
+  color: var(--text);
+}
+
+.resultHero {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.resultValue {
+  color: var(--text);
+  font-size: 28px;
+  font-weight: 900;
+}
+
+.resultGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.resultCard {
+  display: grid;
+  gap: 4px;
+}
+
+.resultCard strong {
+  color: var(--text);
+  font-size: 18px;
+}
+
+.resultList,
+.resultMaterialTable {
+  display: grid;
+  gap: 8px;
+}
+
+.routeStepList {
+  display: grid;
+  gap: 8px;
+}
+
+.routeStepItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 10px 12px;
+}
+
+.routeStepMain {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.routeStepMain strong,
+.routeStepMain span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.routeStepMain strong {
+  color: var(--text);
+}
+
+.routeStepMain span,
+.routeStepMeta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.routeStepMeta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.resultMaterialTable {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.equipmentRouteGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.72fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.routePanel {
+  align-content: start;
+}
+
+.equipmentStateCard,
+.routePanel,
+.estimateResultCard,
+.weeklyRewardTabsCard {
+  min-width: 0;
+}
+
+.routePanel,
+.estimateResultCard,
+.weeklyRewardTabsCard {
+  align-self: start;
+}
+
+.topEquipmentList {
+  display: grid;
+  gap: 8px;
+}
+
+.topEquipmentItem {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--text);
+  padding: 9px 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.topEquipmentItem strong {
+  font-size: 13px;
+}
+
+.topEquipmentItem span,
+.topEquipmentItem em,
+.topEquipmentItem small {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compactRouteList {
+  display: grid;
+  gap: 8px;
+  max-height: 360px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.compactRouteItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--text);
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.compactRouteItem.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.compactRouteItem span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-weight: 800;
+}
+
+.compactRouteItem strong {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.compactRouteItem em {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  color: var(--text);
+  font-style: normal;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.routeMaterialPreview {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  padding: 12px;
+}
+
+.routeMaterialHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.routeMaterialHeader strong {
+  color: var(--text);
+}
+
+.routeMaterialHeader span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.routeMaterialGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.routeMaterialGrid div {
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--soft-2);
+  padding: 8px 10px;
+}
+
+.routeMaterialGrid span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.routeMaterialGrid strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.routeUsageList {
+  display: grid;
+  gap: 8px;
+}
+
+.routeUsageRow {
+  display: grid;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--soft-2);
+  padding: 9px 10px;
+}
+
+.routeUsageGold {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
+.routeUsageRow span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.routeUsageRow strong {
+  color: var(--text);
+}
+
+.routeUsageTitle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.routeUsageParts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.routeUsageParts span {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--text);
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.routeSupportGuide {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--primary);
+  border-radius: 10px;
+  background: var(--primary-soft);
+  padding: 10px 12px;
+}
+
+.routeSupportGuide strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.routeSupportGuide p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.resourceTabsCard {
+  gap: 12px;
+}
+
+.resourceTabsHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.resourceTabs {
+  display: flex;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 4px;
+}
+
+.resourceTabs button {
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  padding: 8px 12px;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.resourceTabs button.active {
+  background: var(--primary-soft);
+  color: var(--text);
+}
+
+.compactInputs {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.compactInputs input {
+  min-height: 36px;
+  padding: 8px 10px;
+}
+
+.materialPairList {
+  display: grid;
+  gap: 8px;
+}
+
+.materialPairRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.materialPairRow label {
+  min-width: 0;
+}
+
+.materialPairRow span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.materialPairRow input {
+  min-height: 34px;
+  padding: 7px 9px;
+  border-radius: 10px;
+}
+
+.plannerSideColumn .resourceTabsHeader {
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+.plannerSideColumn .resourceTabs {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.plannerSideColumn .resourceTabs button {
+  flex: 1;
+}
+
+.plannerSideColumn .growthFieldGrid,
+.plannerSideColumn .marketItemGrid {
+  grid-template-columns: 1fr;
+}
+
+.recommendBox,
+.recommendGrid {
+  display: grid;
+  gap: 12px;
+}
+
+.recommendGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 900px) {
+  .growthHero,
+  .growthGrid,
+  .growthTopGrid,
+  .growthFieldGrid,
+  .goalQuickGrid,
+  .ocrDesignerGrid,
+  .scanWorkspace,
+  .raidPlanGrid,
+  .plannerWorkLayout,
+  .plannerCoreGrid,
+  .plannerBottomGrid,
+  .equipmentRouteGrid,
+  .resultHero,
+  .resultGrid,
+  .marketItemGrid,
+  .resultMaterialTable,
+  .compactInputs,
+  .routeMaterialGrid,
+  .recommendGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .estimateOptionCard {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .resourceTabsHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .compactRouteItem {
+    grid-template-columns: 1fr;
+  }
+
+  .compactRouteItem em {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .materialPairRow {
+    grid-template-columns: 1fr;
+  }
+
+  .pieceCompactFields {
+    grid-template-columns: 1fr;
+  }
+
+  .pieceAccordionSummary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .routeStepItem {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .routeStepMeta {
+    justify-content: flex-start;
+  }
+
+  .raidSelectionHeader,
+  .raidSelectionMeta {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .raidSelectionStats {
+    text-align: left;
+  }
+}

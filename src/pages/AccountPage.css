@@ -1,0 +1,155 @@
+.accountPage {
+  display: grid;
+  gap: 16px;
+}
+
+.accountCard {
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--soft-2);
+  padding: 18px;
+}
+
+.accountCardHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.accountCardHead h2 {
+  margin: 0;
+  font-size: 24px;
+  color: var(--text);
+}
+
+.accountCardSub,
+.accountHint {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.accountSwitch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.accessSwitch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.accessSwitch button,
+.accountSwitch button,
+.accountPrimary,
+.accountAction {
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  border-radius: 12px;
+  min-height: 42px;
+  padding: 0 14px;
+  cursor: pointer;
+}
+
+.accessSwitch button.active,
+.accountSwitch button.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.accountPrimary {
+  width: 100%;
+  background: var(--card);
+}
+
+.accountStack {
+  display: grid;
+  gap: 10px;
+}
+
+.accountStack input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--text);
+  padding: 11px 12px;
+  box-sizing: border-box;
+}
+
+.accountGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.accountBox {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+  padding: 14px;
+  box-shadow: var(--shadow);
+}
+
+.accountBoxTitle {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.accountInfoRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.accountInfoRow strong {
+  color: var(--text);
+  font-weight: 700;
+  text-align: right;
+}
+
+.accountButtonRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.accountStatus {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.accountCheck {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.singleFirst {
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .accountGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .accountCard {
+    padding: 14px;
+  }
+}
