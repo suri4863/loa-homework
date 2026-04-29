@@ -639,10 +639,13 @@ function buildAdvancedPriceTable(
   return priceTable;
 }
 
-function mapAdvancedExpectedMaterials(materials: { name: string; amount: number }[], piece: EquipmentPieceState): MaterialNeedPatch {
+function mapAdvancedExpectedMaterials(
+  materials: Array<{ name: string; amount: number } | undefined | null> = [],
+  piece: EquipmentPieceState
+): MaterialNeedPatch {
   const patch: MaterialNeedPatch = {};
   materials.forEach((material, index) => {
-    const amount = Number(material.amount || 0);
+    const amount = Number(material?.amount || 0);
     if (!amount) return;
 
     if (index === 0) {
@@ -674,17 +677,6 @@ function mapAdvancedExpectedMaterials(materials: { name: string; amount: number 
     patch[key] = (patch[key] || 0) + amount;
   });
 
-  return patch;
-
-  for (const material of materials) {
-    if (material.name === "운명의수호석") patch.protectionStones = (patch.protectionStones || 0) + material.amount;
-    if (material.name === "운명의파괴석") patch.destructionStones = (patch.destructionStones || 0) + material.amount;
-    if (material.name === "운돌") patch.leapstones = (patch.leapstones || 0) + material.amount;
-    if (material.name === "아비도스") patch.fusion = (patch.fusion || 0) + material.amount;
-    if (material.name === "운명의파편") patch.shards = (patch.shards || 0) + material.amount;
-    if (material.name === "빙하") patch.iceBreaths = (patch.iceBreaths || 0) + material.amount;
-    if (material.name === "용암") patch.lavaBreaths = (patch.lavaBreaths || 0) + material.amount;
-  }
   return patch;
 }
 
@@ -755,7 +747,7 @@ function mapNormalExpectedMaterials(table: RefineTable, piece: EquipmentPieceSta
     });
 
     breathEntries.forEach(([name], index) => {
-      const amount = step.breathes[name] || 0;
+      const amount = step.breathes?.[name] || 0;
       if (!amount) return;
       const key =
         index === 0
@@ -781,7 +773,7 @@ function normalBreathNames(table: RefineTable, path: NormalRefinePath, piece: Eq
   const names = new Set<string>();
   const breathKeys = Object.keys(table.breath);
   path.forEach((step) => {
-    Object.entries(step.breathes).forEach(([name, amount]) => {
+    Object.entries(step.breathes || {}).forEach(([name, amount]) => {
       if (!amount) return;
       const index = breathKeys.indexOf(name);
       if (index === 0) names.add(isWeapon(piece) ? "용암의 숨결" : "빙하의 숨결");

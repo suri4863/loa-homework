@@ -28,7 +28,7 @@ function getBasePrice(
   priceTable: Record<string, number>
 ) {
   return Object.entries(refineTable.amount)
-    .map(([name, amount]) => priceTable[name] * amount)
+    .map(([name, amount]) => (priceTable[name] ?? 0) * amount)
     .reduce((sum, x) => sum + x, 0);
 }
 
@@ -40,7 +40,7 @@ function getSortedBreathByPrice(
     .map(([name, amount]) => ({
       name,
       amount,
-      price: priceTable[name] * amount,
+      price: (priceTable[name] ?? 0) * amount,
     }))
     .sort((a, b) => a.price - b.price);
 }
@@ -53,7 +53,7 @@ function getBookWithPrice(
     ? {
         name: refineTable.book,
         amount: 1,
-        price: priceTable[refineTable.book],
+        price: priceTable[refineTable.book] ?? 0,
       }
     : undefined;
 }
@@ -68,8 +68,8 @@ function getAdditionalPrice(
   const book = getBookWithPrice(refineTable, priceTable);
 
   return (
-    sortedBreath.slice(0, breathCount).reduce((sum, x) => sum + x.price, 0) +
-    (book ? bookCount * book.price : 0)
+    sortedBreath.slice(0, breathCount).reduce((sum, x) => sum + (x?.price ?? 0), 0) +
+    (book ? bookCount * (book.price ?? 0) : 0)
   );
 }
 
@@ -166,13 +166,14 @@ export function getReport(
                   amount: amount * expectedTryCount,
                 })),
                 ...sortedBreath.map((x, index) => {
-                  const normalAmount = index < normalBreath ? x.amount : 0;
-                  const bonusAmount = index < bonusBreath ? x.amount : 0;
+                  const breathAmount = x?.amount ?? 0;
+                  const normalAmount = index < normalBreath ? breathAmount : 0;
+                  const bonusAmount = index < bonusBreath ? breathAmount : 0;
                   const enhancedBonusAmount =
-                    index < enhancedBonusBreath ? x.amount : 0;
+                    index < enhancedBonusBreath ? breathAmount : 0;
 
                   return {
-                    name: x.name,
+                    name: x?.name ?? "",
                     amount:
                       normalAmount * (data.freeNormalTry + data.paidNormalTry) +
                       bonusAmount * data.bonusTry +
@@ -190,7 +191,7 @@ export function getReport(
                       },
                     ]
                   : []),
-              ];
+              ].filter((material) => material.name && Number.isFinite(material.amount));
 
               const expectedPrice =
                 paidNormalPrice * data.paidNormalTry +
@@ -202,15 +203,15 @@ export function getReport(
                 hasEnhancedBonus: refineTable.hasEnhancedBonus,
 
                 normalBreathNames: [
-                  ...sortedBreath.slice(0, normalBreath).map((x) => x.name),
+                  ...sortedBreath.slice(0, normalBreath).map((x) => x?.name).filter(Boolean),
                   ...(normalBook ? [book!.name] : []),
                 ],
                 bonusBreathNames: [
-                  ...sortedBreath.slice(0, bonusBreath).map((x) => x.name),
+                  ...sortedBreath.slice(0, bonusBreath).map((x) => x?.name).filter(Boolean),
                   ...(bonusBook ? [book!.name] : []),
                 ],
                 enhancedBonusBreathNames: [
-                  ...sortedBreath.slice(0, enhancedBonusBreath).map((x) => x.name),
+                  ...sortedBreath.slice(0, enhancedBonusBreath).map((x) => x?.name).filter(Boolean),
                   ...(enhancedBonusBook ? [book!.name] : [])
                 ],
 
