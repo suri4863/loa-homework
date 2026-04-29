@@ -74,9 +74,13 @@ function getAdditionalPrice(
 }
 
 export function getReport(
-  refineTable: AdvancedRefineTable,
+  refineTable: AdvancedRefineTable | null | undefined,
   priceTable: Record<string, number>
 ): AdvancedRefineReport[] {
+  if (!refineTable?.amount || !refineTable?.breath || !Array.isArray(refineTable.data)) {
+    return [];
+  }
+
   const result: AdvancedRefineReport[] = [];
   const basePrice = getBasePrice(refineTable, priceTable);
   const sortedBreath = getSortedBreathByPrice(refineTable, priceTable);

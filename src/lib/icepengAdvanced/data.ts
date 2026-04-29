@@ -240,7 +240,7 @@ export const advancedRefineTable: Record<
 export function getAdvancedRefineTable(
   type: 'armor' | 'weapon',
   target: AdvancedRefineTarget
-): AdvancedRefineTable {
+): AdvancedRefineTable | null {
   let costReduction = 0;
   let fragmentReduction = 0;
   let goldReduction = 0;
@@ -257,6 +257,9 @@ export function getAdvancedRefineTable(
   }
 
   const data = advancedRefineTable[type]?.[target];
+  if (!data?.amount || !data?.breath || !Array.isArray(data.data)) {
+    return null;
+  }
 
   return {
     ...data,

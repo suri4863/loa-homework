@@ -909,6 +909,8 @@ function createCandidate(
   if (action === "advanced" && family === "legacy") {
     const target = advancedTargetForLevel(piece.advancedRefiningLevel);
     const table = getAdvancedRefineTable(isWeapon(piece) ? "weapon" : "armor", target);
+    if (!table) return null;
+
     const priceTable = buildAdvancedPriceTable(table, piece, market, materials);
     const fallbackTap = advancedTapCost(piece, family);
     const stepRatio = 1 / 10;
