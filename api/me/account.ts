@@ -20,7 +20,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       shareMode: me.share_mode,
       legacyLoginAllowed: me.legacy_login_allowed !== false,
       loginId: me.login_id ?? "",
-      hasBackup: backup.rowCount > 0,
+      hasBackup: (backup.rowCount ?? 0) > 0,
       backupUpdatedAt: backup.rows[0]?.updated_at ?? null,
     });
   } catch (e) {
