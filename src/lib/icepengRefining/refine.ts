@@ -18,7 +18,7 @@ export const breathNames = ['은총', '축복', '가호', '용암', '빙하'];
 function getPrice(
   priceMap: Record<string, number>,
   bindedMap: Record<string, number>,
-  amountMap: Record<string, number>
+  amountMap: Record<string, number> = {}
 ) {
   return Object.entries(amountMap)
     .map(([key, amount]) => (priceMap[key] ?? 0) * Math.max(amount - (bindedMap[key] ?? 0), 0))
@@ -38,7 +38,7 @@ function subtractAmount(
 
 function buildBreath(
   priceMap: Record<string, number>,
-  breathMap: Record<string, [number, number]>,
+  breathMap: Record<string, [number, number]> = {},
   bindedMap: Record<string, number>,
   baseProb: number
 ) {
@@ -110,6 +110,9 @@ export function optimize(
   probFromFailure: number,
   startJangin: number
 ) {
+  if (!table?.amount || !table?.breath) {
+    return { price: Number.POSITIVE_INFINITY, path: [] };
+  }
   const baseProb = table.baseProb;
   const additionalProb = table.additionalProb;
   const defaultBasePrice = getPrice(priceMap, {}, table.amount);
@@ -208,6 +211,9 @@ export function fixed(
   startJangin: number,
   breathCount: number
 ) {
+  if (!table?.amount || !table?.breath) {
+    return { price: Number.POSITIVE_INFINITY, path: [] };
+  }
   const baseProb = table.baseProb;
   const additionalProb = table.additionalProb;
   const defaultBasePrice = getPrice(priceMap, {}, table.amount);

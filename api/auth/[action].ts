@@ -14,7 +14,11 @@ function getAction(req: VercelRequest) {
   return Array.isArray(action) ? action[0] : String(action ?? "");
 }
 
-function authUserPayload(result: Awaited<ReturnType<typeof loginWithCredentials>>) {
+function authUserPayload(
+  result:
+    | Awaited<ReturnType<typeof loginWithCredentials>>
+    | Awaited<ReturnType<typeof registerWithCredentials>>
+) {
   return {
     ok: true,
     token: result.token,

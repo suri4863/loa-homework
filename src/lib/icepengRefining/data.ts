@@ -2152,7 +2152,7 @@ export function getTargetList(
   if (!itemType || !itemGrade) {
     return [];
   }
-  return Object.keys(refineData[itemType][itemGrade]).map((x) => +x);
+  return Object.keys(refineData[itemType]?.[itemGrade] ?? {}).map((x) => +x);
 }
 
 export function getRefineTable(
@@ -2165,7 +2165,10 @@ export function getRefineTable(
   if (!itemType || !itemGrade || !refineTarget) {
     return undefined;
   }
-  const data = refineData[itemType][itemGrade][refineTarget];
+  const data = refineData[itemType]?.[itemGrade]?.[refineTarget];
+  if (!data?.amount || !data?.breath) {
+    return undefined;
+  }
 
   let additionalProb = 0;
   let costReduction = 0;
