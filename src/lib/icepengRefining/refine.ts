@@ -21,10 +21,7 @@ function getPrice(
   amountMap: Record<string, number>
 ) {
   return Object.entries(amountMap)
-    .map(
-      ([key, amount]) =>
-        priceMap[key] * Math.max(amount - (bindedMap[key] ?? 0), 0)
-    )
+    .map(([key, amount]) => (priceMap[key] ?? 0) * Math.max(amount - (bindedMap[key] ?? 0), 0))
     .reduce((sum, x) => sum + x, 0);
 }
 
@@ -46,40 +43,45 @@ function buildBreath(
   baseProb: number
 ) {
   const breathes = Object.keys(breathMap).sort((a, b) => {
-    const comparator =
-      (Math.max(breathMap[a][0] - (bindedMap[a] ?? 0), 0) * priceMap[a]) /
-        (breathMap[a][0] * breathMap[a][1]) -
-      (Math.max(breathMap[b][0] - (bindedMap[b] ?? 0), 0) * priceMap[b]) /
-        (breathMap[b][0] * breathMap[b][1]);
+    const [amountA, probA] = breathMap[a] ?? [0, 0];
+    const [amountB, probB] = breathMap[b] ?? [0, 0];
+    const priceA = priceMap[a] ?? 0;
+    const priceB = priceMap[b] ?? 0;
+    const valueA = amountA * probA
+      ? (Math.max(amountA - (bindedMap[a] ?? 0), 0) * priceA) / (amountA * probA)
+      : Number.POSITIVE_INFINITY;
+    const valueB = amountB * probB
+      ? (Math.max(amountB - (bindedMap[b] ?? 0), 0) * priceB) / (amountB * probB)
+      : Number.POSITIVE_INFINITY;
+    const comparator = valueA - valueB;
 
     if (comparator === 0) {
-      return priceMap[a] / breathMap[a][1] - priceMap[b] / breathMap[b][1];
+      const unitA = probA ? priceA / probA : Number.POSITIVE_INFINITY;
+      const unitB = probB ? priceB / probB : Number.POSITIVE_INFINITY;
+      return unitA - unitB;
     }
 
     return comparator;
   });
 
-  const adjustedBreathMap: Record<
-    string,
-    { price: number; prob: number; amount: number }
-  > = {};
+  const adjustedBreathMap: Record<string, { price: number; prob: number; amount: number }> = {};
   let probLeft = Math.max(baseProb, 0.01);
 
   breathes.forEach((name) => {
-    const [breathAmount, breathProb] = breathMap[name];
+    const [breathAmount, breathProb] = breathMap[name] ?? [0, 0];
+    const price = priceMap[name] ?? 0;
+
     if (breathNames.includes(name)) {
-      // 숨결
-      const amount = Math.min(Math.ceil(probLeft / breathProb), breathAmount);
+      const amount = breathProb > 0 ? Math.min(Math.ceil(probLeft / breathProb), breathAmount) : 0;
       adjustedBreathMap[name] = {
-        price: Math.max(amount - (bindedMap[name] ?? 0), 0) * priceMap[name],
+        price: Math.max(amount - (bindedMap[name] ?? 0), 0) * price,
         prob: Math.min(amount * breathProb, probLeft),
         amount,
       };
       probLeft -= amount * breathProb;
     } else {
-      // 책
       adjustedBreathMap[name] = {
-        price: Math.max(1 - (bindedMap[name] ?? 0), 0) * priceMap[name],
+        price: Math.max(1 - (bindedMap[name] ?? 0), 0) * price,
         prob: breathProb,
         amount: 1,
       };
@@ -89,7 +91,7 @@ function buildBreath(
   return breathes.reduce(
     (arr, name) => {
       const prev = arr[arr.length - 1];
-      const current = adjustedBreathMap[name];
+      const current = adjustedBreathMap[name] ?? { price: 0, prob: 0, amount: 0 };
       arr.push({
         price: prev.price + current.price,
         prob: prev.prob + current.prob,
@@ -157,7 +159,7 @@ export function optimize(
     const pathes: Path[] = [];
 
     for (let i = 0; i <= breathCount; i += 1) {
-      const { price: breathPrice, prob: breathProb, breathes } = breath[i];
+      const { price: breathPrice, prob: breathProb, breathes } = breath[i] ?? { price: 0, prob: 0, breathes: {} };
       const prob =
         Math.round(
           Math.min(currentProb + additionalProb + breathProb, 1) * 10000
@@ -184,7 +186,7 @@ export function optimize(
     }
 
     const minPrice = Math.min(...prices);
-    const path = pathes[prices.indexOf(minPrice)];
+    const path = pathes[prices.indexOf(minPrice)] ?? [];
 
     return { price: minPrice, path };
   }
@@ -254,7 +256,7 @@ export function fixed(
       price: breathPrice,
       prob: breathProb,
       breathes,
-    } = breath[breathCount];
+    } = breath[breathCount] ?? { price: 0, prob: 0, breathes: {} };
 
     const prob =
       Math.round(
