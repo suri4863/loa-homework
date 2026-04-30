@@ -2960,19 +2960,17 @@ export default function TodoTracker() {
     }
 
     function getSchedulableRaidsForFriendCandidate(friend: FriendCandidate) {
-      const source =
-        friend.activeRaids.length > 0
-          ? friend.activeRaids
-          : friend.remainingRaids.length > 0
-            ? friend.remainingRaids
-            : friend.allRaids;
       const clearedSet = new Set(
         (friend.clearedRaids ?? []).map((raid: string) => normalizeRaidName(raid))
       );
       const seen = new Set<string>();
       const raids: string[] = [];
 
-      for (const raid of source) {
+      for (const raid of [
+        ...friend.activeRaids,
+        ...friend.remainingRaids,
+        ...friend.allRaids,
+      ]) {
         const normalized = normalizeRaidName(raid);
         if (!normalized || seen.has(normalized) || clearedSet.has(normalized)) continue;
         seen.add(normalized);
