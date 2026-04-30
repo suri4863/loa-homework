@@ -3133,37 +3133,21 @@ export default function TodoTracker() {
       const currentSelectedKey = getScheduleFriendSelectValue(schedule, item);
       const sourceCandidates = getScheduleAssignableCandidates(schedule);
       const assigningMySide = isScheduleAssigningMySide(schedule);
+      const scheduledRaidMap = assigningMySide
+        ? scheduledMyRaidSetByChar
+        : scheduledFriendRaidSetByChar;
 
       const options = sourceCandidates
         .map((fr: FriendCandidate) => {
-          const usedRaidSet = new Set<string>(
-            schedule.items
-              .filter(
-                (x: SharedWeeklyScheduleItem) =>
-                  x.id !== item.id &&
-                  (assigningMySide
-                    ? isSameFriendScheduleCandidate(
-                      fr,
-                      x.myCharKey,
-                      x.myTableName,
-                      x.myCharName,
-                      x.mySnapshot
-                    )
-                    : isSameFriendScheduleCandidate(
-                      fr,
-                      x.friendCharKey,
-                      x.friendTableName,
-                      x.friendCharName,
-                      x.friendSnapshot
-                    ))
-              )
-              .flatMap((x: SharedWeeklyScheduleItem) => x.raidNames ?? [])
-              .map((raid: string) => normalizeRaidName(getScheduleRaidBaseName(raid)))
-          );
-
           const rawCommonRaids = getCommonRaidsForScheduleItem(item, fr);
+          const scheduleState = getRemainScheduleState(
+            fr.key,
+            rawCommonRaids,
+            scheduledRaidMap,
+            [fr.name, getScheduleSnapshotCandidateKey(fr.tableName, fr.name)]
+          );
           const commonRaids = rawCommonRaids.filter(
-            (raid: string) => !usedRaidSet.has(normalizeRaidName(getScheduleRaidBaseName(raid)))
+            (raid: string) => !scheduleState.scheduledSet.has(normalizeRaidName(getScheduleRaidBaseName(raid)))
           );
 
           return {
@@ -3233,35 +3217,19 @@ export default function TodoTracker() {
             const friend = candidatePool.find((fr) => fr.key === friendKey);
             if (!friend) return item;
             const assigningMySide = isScheduleAssigningMySide(schedule);
-
-            const usedRaidSet = new Set(
-              schedule.items
-                .filter(
-                  (x) =>
-                    x.id !== item.id &&
-                    (assigningMySide
-                      ? isSameFriendScheduleCandidate(
-                        friend,
-                        x.myCharKey,
-                        x.myTableName,
-                        x.myCharName,
-                        x.mySnapshot
-                      )
-                      : isSameFriendScheduleCandidate(
-                        friend,
-                        x.friendCharKey,
-                        x.friendTableName,
-                        x.friendCharName,
-                        x.friendSnapshot
-                      ))
-                )
-                .flatMap((x) => x.raidNames ?? [])
-                .map((raid) => normalizeRaidName(getScheduleRaidBaseName(raid)))
-            );
+            const scheduledRaidMap = assigningMySide
+              ? scheduledMyRaidSetByChar
+              : scheduledFriendRaidSetByChar;
 
             const rawCommonRaids = getCommonRaidsForScheduleItem(item, friend);
+            const scheduleState = getRemainScheduleState(
+              friend.key,
+              rawCommonRaids,
+              scheduledRaidMap,
+              [friend.name, getScheduleSnapshotCandidateKey(friend.tableName, friend.name)]
+            );
             const commonRaids = rawCommonRaids.filter(
-              (raid) => !usedRaidSet.has(normalizeRaidName(getScheduleRaidBaseName(raid)))
+              (raid) => !scheduleState.scheduledSet.has(normalizeRaidName(getScheduleRaidBaseName(raid)))
             );
             if (!commonRaids.length) return item;
 
