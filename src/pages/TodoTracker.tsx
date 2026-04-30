@@ -2959,6 +2959,29 @@ export default function TodoTracker() {
       return friendCandidates;
     }
 
+    function getSchedulableRaidsForFriendCandidate(friend: FriendCandidate) {
+      const source =
+        friend.activeRaids.length > 0
+          ? friend.activeRaids
+          : friend.remainingRaids.length > 0
+            ? friend.remainingRaids
+            : friend.allRaids;
+      const clearedSet = new Set(
+        (friend.clearedRaids ?? []).map((raid: string) => normalizeRaidName(raid))
+      );
+      const seen = new Set<string>();
+      const raids: string[] = [];
+
+      for (const raid of source) {
+        const normalized = normalizeRaidName(raid);
+        if (!normalized || seen.has(normalized) || clearedSet.has(normalized)) continue;
+        seen.add(normalized);
+        raids.push(raid);
+      }
+
+      return raids;
+    }
+
     function getCommonRaidsForScheduleItem(
       item: SharedWeeklyScheduleItem,
       friend: FriendCandidate
@@ -2967,12 +2990,13 @@ export default function TodoTracker() {
         Array.isArray(item.baseRaidNames) && item.baseRaidNames.length
           ? item.baseRaidNames
           : item.raidNames ?? [];
+      const candidateRaids = getSchedulableRaidsForFriendCandidate(friend);
 
       return baseRaids
         .map((raid: string) => normalizeRaidName(raid))
         .filter((raid: string, index: number, arr: string[]) => arr.indexOf(raid) === index)
         .filter((raid: string) =>
-          friend.activeRaids.some((fr: string) => normalizeRaidName(fr) === raid)
+          candidateRaids.some((fr: string) => normalizeRaidName(fr) === raid)
         );
     }
 
