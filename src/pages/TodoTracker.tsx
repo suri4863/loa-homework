@@ -2999,6 +2999,29 @@ export default function TodoTracker() {
       return found?.name ?? canonicalRaidName(raw);
     }
 
+    function getScheduleItemIlvl(item: SharedWeeklyScheduleItem) {
+      return (
+        parseScheduleNumberValue(item.mySnapshot?.ilvl) ??
+        parseScheduleNumberValue(item.mySnapshot?.itemLevel) ??
+        parseScheduleNumberValue((item as any).myCharItemLevel) ??
+        0
+      );
+    }
+
+    function getHighestAvailableRaidDiffName(
+      raidName: string,
+      ilvl: number
+    ): DiffName | null {
+      const baseName = getScheduleRaidBaseName(raidName);
+      const def = RAID_CATALOG.find(
+        (raid) => normalizeRaidName(raid.name) === normalizeRaidName(baseName)
+      );
+      if (!def) return null;
+
+      const available = def.diffs.filter((diff) => ilvl >= diff.minIlvl);
+      return available.length ? available[available.length - 1].name : null;
+    }
+
     function getScheduleRaidDiffName(
       item: SharedWeeklyScheduleItem,
       raidName: string
@@ -3006,8 +3029,16 @@ export default function TodoTracker() {
       const baseName = getScheduleRaidBaseName(raidName);
       const pickKey = resolveScheduleWeeklyPickKey(item);
       const pick = pickKey ? weeklyRaidPickByChar[pickKey] : null;
-      const picked = pick?.diffs?.[baseName] ?? pick?.diffs?.[raidName];
-      if (picked) return picked;
+
+      const picked =
+        pick?.diffs?.[baseName] ??
+        pick?.diffs?.[raidName] ??
+        Object.entries(pick?.diffs ?? {}).find(
+          ([key]) =>
+            normalizeRaidName(getScheduleRaidBaseName(key)) === normalizeRaidName(baseName)
+        )?.[1];
+
+      if (picked) return picked as DiffName;
 
       const normalized = normalizeRaidName(raidName);
       const def = RAID_CATALOG.find(
@@ -3016,8 +3047,10 @@ export default function TodoTracker() {
       const parsed = def?.diffs.find(
         (diff) => normalized === `${normalizeRaidName(baseName)}${normalizeRaidName(diff.name)}`
       );
+      if (parsed) return parsed.name;
 
-      return parsed?.name ?? null;
+      const itemIlvl = getScheduleItemIlvl(item);
+      return itemIlvl > 0 ? getHighestAvailableRaidDiffName(baseName, itemIlvl) : null;
     }
 
     function canFriendCandidateEnterScheduleRaid(
@@ -3027,14 +3060,17 @@ export default function TodoTracker() {
     ) {
       const baseName = getScheduleRaidBaseName(raidName);
       const diffName = getScheduleRaidDiffName(item, raidName);
-      if (!diffName) return true;
 
       const def = RAID_CATALOG.find(
         (raid) => normalizeRaidName(raid.name) === normalizeRaidName(baseName)
       );
-      const diff = def?.diffs.find((x) => x.name === diffName);
+      if (!def) return true;
 
-      return !diff || friend.ilvl >= diff.minIlvl;
+      const diff =
+        def.diffs.find((x) => x.name === diffName) ??
+        def.diffs.reduce((lowest, cur) => (cur.minIlvl < lowest.minIlvl ? cur : lowest));
+
+      return friend.ilvl >= diff.minIlvl;
     }
 
     function getCommonRaidsForScheduleItem(
