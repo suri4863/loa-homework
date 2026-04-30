@@ -2793,6 +2793,18 @@ export default function TodoTracker() {
       ]);
     }
 
+    function getFriendCandidateScheduleKeys(friend: FriendCandidate) {
+      return compactScheduleKeys([
+        friend.key,
+        friend.name,
+        getScheduleSnapshotCandidateKey(friend.tableName, friend.name),
+      ]);
+    }
+
+    function candidateKeysMatch(candidateKeys: string[], scheduleKeys: string[]) {
+      return candidateKeys.some((key) => scheduleKeys.includes(key));
+    }
+
     function getScheduleSnapshotPower(
       snapshot: SharedScheduleCharacterSnapshot | null | undefined,
       fallback: number | null | undefined
@@ -2969,23 +2981,30 @@ export default function TodoTracker() {
 
       const options = sourceCandidates
         .map((fr: FriendCandidate) => {
+          const candidateKeys = getFriendCandidateScheduleKeys(fr);
           const usedRaidSet = new Set<string>(
             schedule.items
               .filter(
                 (x: SharedWeeklyScheduleItem) =>
                   x.id !== item.id &&
-                  (getScheduleCandidateKeys(
-                    x.friendCharKey,
-                    x.friendTableName,
-                    x.friendCharName,
-                    x.friendSnapshot
-                  ).includes(fr.key) ||
+                  (candidateKeysMatch(
+                    candidateKeys,
                     getScheduleCandidateKeys(
-                      x.myCharKey,
-                      x.myTableName,
-                      x.myCharName,
-                      x.mySnapshot
-                    ).includes(fr.key))
+                      x.friendCharKey,
+                      x.friendTableName,
+                      x.friendCharName,
+                      x.friendSnapshot
+                    )
+                  ) ||
+                    candidateKeysMatch(
+                      candidateKeys,
+                      getScheduleCandidateKeys(
+                        x.myCharKey,
+                        x.myTableName,
+                        x.myCharName,
+                        x.mySnapshot
+                      )
+                    ))
               )
               .flatMap((x: SharedWeeklyScheduleItem) => x.raidNames ?? [])
               .map((raid: string) => normalizeRaidName(raid))
@@ -3001,17 +3020,16 @@ export default function TodoTracker() {
           };
         })
         .filter((fr: FriendCandidate & { commonRaids: string[] }) => {
-          if (fr.key === currentSelectedKey) return true;
           return fr.commonRaids.length > 0;
         });
 
-      if (
+      if (false &&
         currentSelectedKey &&
         !options.some((fr) => fr.key === currentSelectedKey) &&
         (item.friendSnapshot?.name || item.friendCharName)
       ) {
         const snapshotRaids = Array.isArray(item.friendSnapshot?.raids)
-          ? item.friendSnapshot.raids.map((raid) => normalizeRaidName(raid))
+          ? item.friendSnapshot?.raids?.map((raid) => normalizeRaidName(raid)) ?? []
           : getScheduleItemRaidNames(item);
 
         options.unshift({
@@ -3062,24 +3080,31 @@ export default function TodoTracker() {
             const candidatePool = getScheduleAssignableCandidates(schedule);
             const friend = candidatePool.find((fr) => fr.key === friendKey);
             if (!friend) return item;
+            const candidateKeys = getFriendCandidateScheduleKeys(friend);
 
             const usedRaidSet = new Set(
               schedule.items
                 .filter(
                   (x) =>
                     x.id !== item.id &&
-                    (getScheduleCandidateKeys(
-                      x.friendCharKey,
-                      x.friendTableName,
-                      x.friendCharName,
-                      x.friendSnapshot
-                    ).includes(friend.key) ||
+                    (candidateKeysMatch(
+                      candidateKeys,
                       getScheduleCandidateKeys(
-                        x.myCharKey,
-                        x.myTableName,
-                        x.myCharName,
-                        x.mySnapshot
-                      ).includes(friend.key))
+                        x.friendCharKey,
+                        x.friendTableName,
+                        x.friendCharName,
+                        x.friendSnapshot
+                      )
+                    ) ||
+                      candidateKeysMatch(
+                        candidateKeys,
+                        getScheduleCandidateKeys(
+                          x.myCharKey,
+                          x.myTableName,
+                          x.myCharName,
+                          x.mySnapshot
+                        )
+                      ))
                 )
                 .flatMap((x) => x.raidNames ?? [])
                 .map((raid) => normalizeRaidName(raid))
