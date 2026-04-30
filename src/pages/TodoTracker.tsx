@@ -4397,7 +4397,7 @@ export default function TodoTracker() {
                                 className={`manualRaidChip ${!isRemaining || isScheduled ? "is-scheduled" : ""
                                   } ${allVisibleRaidsMuted ? "is-schedule-full" : ""}`}
                               >
-                                {raid}
+                                {formatRemainRaidWithDiff(raid, me.ilvl, weeklyCharKey(me.tableId, me.charId))}
                               </span>
                             );
                           })}
@@ -4474,7 +4474,7 @@ export default function TodoTracker() {
                                 className={`manualRaidChip ${isScheduled || isCleared ? "is-scheduled" : ""
                                   } ${allVisibleRaidsMuted ? "is-schedule-full" : ""}`}
                               >
-                                {raid}
+                                {formatRemainRaidWithDiff(raid, fr.ilvl)}
                               </span>
                             );
                           })}
@@ -7230,6 +7230,63 @@ body.pip-dark .pip-select option{
     return def.diffs
       .filter((d) => ilvl >= d.minIlvl)
       .map((d) => d.name);
+  }
+
+  function getRaidBaseNameForRemainLabel(raidName: string) {
+    const normalized = normalizeRaidName(raidName);
+    const found = [...RAID_CATALOG]
+      .sort((a, b) => normalizeRaidName(b.name).length - normalizeRaidName(a.name).length)
+      .find((raid) => {
+        const base = normalizeRaidName(raid.name);
+        return normalized === base || raid.diffs.some((diff) =>
+          normalized === `${base} ${normalizeRaidName(diff.name)}` ||
+          normalized === `${base}${normalizeRaidName(diff.name)}`
+        );
+      });
+
+    return found?.name ?? canonicalRaidName(raidName);
+  }
+
+  function getRaidDiffFromLabel(raidName: string): DiffName | null {
+    const baseName = getRaidBaseNameForRemainLabel(raidName);
+    const def = RAID_CATALOG.find((raid) => normalizeRaidName(raid.name) === normalizeRaidName(baseName));
+    if (!def) return null;
+
+    const normalized = normalizeRaidName(raidName);
+    return (
+      def.diffs.find(
+        (diff) => normalized === `${normalizeRaidName(baseName)} ${normalizeRaidName(diff.name)}` ||
+          normalized === `${normalizeRaidName(baseName)}${normalizeRaidName(diff.name)}`
+      )?.name ?? null
+    );
+  }
+
+  function getHighestAvailableDiffNameForRaid(ilvl: number, raidName: string): DiffName | null {
+    const baseName = getRaidBaseNameForRemainLabel(raidName);
+    const available = availableDiffNames(ilvl, baseName);
+    return available.length ? available[available.length - 1] : null;
+  }
+
+  function formatRemainRaidWithDiff(
+    raidName: string,
+    ilvl: number,
+    pickKey?: string | null
+  ) {
+    const baseName = getRaidBaseNameForRemainLabel(raidName);
+    const pickedDiff =
+      pickKey
+        ? weeklyRaidPickByChar[pickKey]?.diffs?.[baseName] ??
+          weeklyRaidPickByChar[pickKey]?.diffs?.[raidName] ??
+          Object.entries(weeklyRaidPickByChar[pickKey]?.diffs ?? {}).find(
+            ([key]) => normalizeRaidName(getRaidBaseNameForRemainLabel(key)) === normalizeRaidName(baseName)
+          )?.[1]
+        : null;
+    const diffName =
+      pickedDiff ??
+      getRaidDiffFromLabel(raidName) ??
+      getHighestAvailableDiffNameForRaid(ilvl, baseName);
+
+    return diffName ? `${baseName} ${diffName}` : baseName;
   }
 
   /**
