@@ -1187,7 +1187,9 @@ export default function TodoTracker() {
     setImportScheduleSourceId(source.id);
   }
 
-  async function confirmImportPreviousWeeklySchedule(mode: "CURRENT" | "NEW") {
+  async function confirmImportPreviousWeeklySchedule(
+    mode: "APPEND_SELECTED" | "NEW_CURRENT" | "NEW_NEXT"
+  ) {
     const source = weeklySchedules.find((schedule) => schedule.id === importScheduleSourceId);
     if (!source) {
       setImportScheduleSourceId("");
@@ -1195,7 +1197,7 @@ export default function TodoTracker() {
       return;
     }
 
-    if (mode === "CURRENT") {
+    if (mode === "APPEND_SELECTED") {
       if (!selectedScheduleId) {
         alert("현재 일정표에 추가하려면 먼저 일정표를 선택해줘.");
         return;
@@ -1220,15 +1222,16 @@ export default function TodoTracker() {
       return;
     }
 
+    const targetMode = mode === "NEW_NEXT" ? "NEXT_RESET" : "CURRENT";
     const defaultTitle = `${stripNextResetSuffix(source.title || "이전 일정")} 복사`;
     const nextTitle = prompt("새 일정표 이름", defaultTitle)?.trim() || defaultTitle;
     const importedItems = cloneScheduleItemsForImport(source.items);
     const payload = {
       title:
-        schedulePlanningMode === "NEXT_RESET"
+        targetMode === "NEXT_RESET"
           ? `${stripNextResetSuffix(nextTitle)} (다음 주)`
           : stripNextResetSuffix(nextTitle),
-      weekStartDate: getScheduleWeekStartDate(schedulePlanningMode),
+      weekStartDate: getScheduleWeekStartDate(targetMode),
       items: importedItems,
     };
 
@@ -1244,8 +1247,13 @@ export default function TodoTracker() {
 
     await refreshWeeklySchedules();
     if (created?.id) setSelectedScheduleId(String(created.id));
+    setSchedulePlanningMode(targetMode);
     setImportScheduleSourceId("");
-    alert("새 일정표로 이전 일정 불러오기 완료!");
+    alert(
+      targetMode === "NEXT_RESET"
+        ? "다음 주 일정표로 이전 일정 불러오기 완료!"
+        : "현재 주 일정표로 이전 일정 불러오기 완료!"
+    );
   }
 
   async function renameWeeklySchedule(scheduleId: string, nextTitle: string) {
@@ -4662,23 +4670,34 @@ export default function TodoTracker() {
                     className="btn"
                     disabled={!selectedScheduleId}
                     onClick={() => {
-                      confirmImportPreviousWeeklySchedule("CURRENT").catch((e) => {
+                      confirmImportPreviousWeeklySchedule("APPEND_SELECTED").catch((e) => {
                         alert(`현재 일정표에 추가 실패: ${String(e)}`);
                       });
                     }}
                   >
-                    현재 일정표에 추가
+                    현재 선택 일정표에 추가
                   </button>
                   <button
                     type="button"
                     className="btn"
                     onClick={() => {
-                      confirmImportPreviousWeeklySchedule("NEW").catch((e) => {
-                        alert(`새 일정표 만들기 실패: ${String(e)}`);
+                      confirmImportPreviousWeeklySchedule("NEW_CURRENT").catch((e) => {
+                        alert(`현재 주 일정표 만들기 실패: ${String(e)}`);
                       });
                     }}
                   >
-                    새 일정표로 만들기
+                    현재 주 새 일정표
+                  </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => {
+                      confirmImportPreviousWeeklySchedule("NEW_NEXT").catch((e) => {
+                        alert(`다음 주 일정표 만들기 실패: ${String(e)}`);
+                      });
+                    }}
+                  >
+                    다음 주 새 일정표
                   </button>
                 </div>
               </div>
