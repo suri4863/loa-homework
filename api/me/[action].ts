@@ -297,6 +297,19 @@ async function handleLinkLegacy(req: VercelRequest, res: VercelResponse) {
   });
 }
 
+async function handleResetData(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== "DELETE") return res.status(405).send("Method Not Allowed");
+
+  const me = await requireAuthUser(req);
+
+  await sql`delete from shared_weekly_schedules where owner_user_id=${me.id} or target_user_id=${me.id}`;
+  await sql`delete from raid_left_snapshots where user_id=${me.id}`;
+  await sql`delete from state_backups where user_id=${me.id}`;
+  await sql`delete from friend_raid_plans where friend_code=${me.friend_code}`;
+
+  return sendJson(res, { ok: true });
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const action = getAction(req);
@@ -308,6 +321,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (action === "raid-plan") return handleRaidPlan(req, res);
     if (action === "state-backup") return handleStateBackup(req, res);
     if (action === "link-legacy") return handleLinkLegacy(req, res);
+    if (action === "reset-data") return handleResetData(req, res);
 
     return res.status(404).send("Not Found");
   } catch (e) {

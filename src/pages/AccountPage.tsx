@@ -12,6 +12,7 @@ type AccountInfo = {
   friendCode: string;
   nickname?: string | null;
   loginId?: string;
+  shareMode?: "PUBLIC" | "PRIVATE" | string;
   hasBackup?: boolean;
   backupUpdatedAt?: string | null;
   legacyLoginAllowed?: boolean;
@@ -61,6 +62,8 @@ export default function AccountPage() {
   const [deletePassword, setDeletePassword] = useState("");
   const [deleteMessage, setDeleteMessage] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [resetDataBusy, setResetDataBusy] = useState(false);
+  const [resetDataMessage, setResetDataMessage] = useState("");
   const [accountInfo, setAccountInfo] = useState<AccountInfo | null>(null);
 
   const profile = useMemo(() => DEFAULT_TODO_STATE.load()?.profile ?? DEFAULT_TODO_STATE.make().profile, []);
@@ -440,6 +443,70 @@ export default function AccountPage() {
     }
   }
 
+  function clearLocalAppStorage() {
+    const prefixes = [
+      "loa-weekly-raid-pick:v1:",
+      "todoMemo:v1:",
+      "loa-account-daily:v1:",
+      "loa-life-energy:v1:",
+    ];
+    const exactKeys = [
+      "loa-include-bound-gold:v1",
+      "friendsDockOpen:v1",
+      "loa-today-must-do-settings:v1",
+      "loa-weekly-must-do-settings:v1",
+    ];
+
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+      if (exactKeys.includes(key) || prefixes.some((prefix) => key.startsWith(prefix))) {
+        localStorage.removeItem(key);
+      }
+    }
+  }
+
+  async function resetAppData() {
+    const ok = confirm(
+      isLoggedIn
+        ? "데이터를 초기화할까요? 현재 브라우저 데이터와 서버의 백업/스냅샷/공유 일정표가 삭제돼. 계정과 친구 관계는 유지돼."
+        : "현재 브라우저의 앱 데이터를 초기화할까요? 계정/FC 정보는 유지돼."
+    );
+    if (!ok) return;
+
+    setResetDataBusy(true);
+    setResetDataMessage("");
+    try {
+      if (isLoggedIn) {
+        await authedFetch("/api/me/reset-data", { method: "DELETE" });
+      }
+
+      const current = DEFAULT_TODO_STATE.load() ?? DEFAULT_TODO_STATE.make();
+      const next = DEFAULT_TODO_STATE.make();
+      DEFAULT_TODO_STATE.save({
+        ...next,
+        profile: {
+          ...next.profile,
+          friendCode: accountInfo?.friendCode || current.profile.friendCode || profile.friendCode,
+          nickname: accountInfo?.nickname ?? current.profile.nickname,
+          shareMode:
+            accountInfo?.shareMode === "PUBLIC" || accountInfo?.shareMode === "PRIVATE"
+              ? accountInfo.shareMode
+              : current.profile.shareMode,
+        },
+      });
+      clearLocalAppStorage();
+      setFriendCodeAccess(null);
+      setLegacyLinkInfo(null);
+      setResetDataMessage("데이터를 초기화했어. 열려 있던 숙제 화면은 새로고침하면 바로 반영돼.");
+      await refreshAccount().catch(() => null);
+    } catch (e: any) {
+      setResetDataMessage(e?.message || String(e));
+    } finally {
+      setResetDataBusy(false);
+    }
+  }
+
   function moveFriendCodeToAccount(nextAuthMode: AuthMode) {
     setAccessMode("account");
     setAuthMode(nextAuthMode);
@@ -545,6 +612,19 @@ export default function AccountPage() {
                       비밀번호 변경
                     </button>
                     {resetMessage && <div className="accountHint">{resetMessage}</div>}
+                  </div>
+                </section>
+
+                <section className="accountBox">
+                  <div className="accountBoxTitle">데이터 초기화</div>
+                  <div className="accountHint">
+                    계정과 친구 관계는 유지하고, 로컬 앱 데이터와 서버 백업/스냅샷/공유 일정표를 기본 상태로 되돌려.
+                  </div>
+                  <div className="accountStack">
+                    <button className="accountAction" onClick={resetAppData} disabled={resetDataBusy}>
+                      {resetDataBusy ? "초기화 중..." : "데이터 초기화"}
+                    </button>
+                    {resetDataMessage && <div className="accountHint">{resetDataMessage}</div>}
                   </div>
                 </section>
 
@@ -728,6 +808,26 @@ export default function AccountPage() {
                   </div>
                 </>
               )}
+            </section>
+            <section className="accountBox">
+              <div className="accountBoxTitle">데이터 초기화</div>
+              <div className="accountHint">
+                현재 브라우저의 앱 데이터를 기본 상태로 되돌려. FC 코드와 로그인 정보는 유지돼.
+              </div>
+              <button className="accountAction" onClick={resetAppData} disabled={resetDataBusy}>
+                {resetDataBusy ? "초기화 중..." : "데이터 초기화"}
+              </button>
+              {resetDataMessage && <div className="accountHint">{resetDataMessage}</div>}
+            </section>
+
+            <section className="accountBox">
+              <div className="accountBoxTitle">회원탈퇴</div>
+              <div className="accountHint">
+                회원탈퇴는 아이디/비밀번호 회원 계정으로 로그인한 뒤 진행할 수 있어. FC 코드 백업 접근은 회원 계정 로그인이 아니라서 여기서는 탈퇴 버튼이 비활성화돼.
+              </div>
+              <button className="accountAction" onClick={() => moveFriendCodeToAccount("signIn")}>
+                아이디 로그인으로 이동
+              </button>
             </section>
           </div>
         )}
