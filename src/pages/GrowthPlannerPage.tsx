@@ -1555,6 +1555,10 @@ export default function GrowthPlannerPage() {
       .finally(() => setGrowthEngineLoading(false));
   }
 
+  useEffect(() => {
+    loadGrowthEngine();
+  }, []);
+
   const selectedTable = todoState.tables.find((table) => table.id === getInitialTableId(todoState.tables, planner));
   const selectedCharacter = selectedTable?.characters.find((character) => character.id === planner.character.charId);
   const isLinkedToTable = Boolean(selectedTable && selectedCharacter);
@@ -2702,8 +2706,6 @@ export default function GrowthPlannerPage() {
       </section>
     );
   }
-  const profileWarnings = profileSummary?.warnings ?? [];
-
   return (
     <div className="growthPage">
       <section className="growthHero">
@@ -2746,7 +2748,6 @@ export default function GrowthPlannerPage() {
           </div>
         </div>
         {growthEngineError ? <div className="growthError">{growthEngineError}</div> : null}
-        <div className="growthEmpty">목표 레벨+전투력 시뮬레이터는 추후 구현 예정이야.</div>
       </section>
 
       <div className="growthTopGrid">
@@ -2868,55 +2869,7 @@ export default function GrowthPlannerPage() {
               <div className="growthSummaryBox">
                 <div>마지막 불러오기: {profileSummary.nickname} / {formatDateTime(profileSummary.fetchedAt)}</div>
                 <div>사용 소스: {profileSummary.source === "official" ? "공식 전투정보실" : "KLOA 보조"}</div>
-                <div>직업/타입: {profileSummary.className || "-"} / {combatRole === "support" ? "서포터" : "딜러"}</div>
                 <div>아이템레벨: {profileSummary.currentItemLevel?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "-"}</div>
-                <div>전투력: {profileSummary.combatPower?.toLocaleString() ?? "-"}</div>
-                <div>
-                  공격력/생명력: {profileSummary.combatDetails?.pureBaseAttack?.toLocaleString() ?? "-"} /{" "}
-                  {profileSummary.combatDetails?.maxHp?.toLocaleString() ?? "-"}
-                </div>
-                <div>
-                  아크패시브: 진화 {profileSummary.combatDetails?.arkEvolutionPoints ?? "-"} / 깨달음{" "}
-                  {profileSummary.combatDetails?.arkEnlightenmentPoints ?? "-"} / 도약 {profileSummary.combatDetails?.arkLeapPoints ?? "-"}
-                </div>
-                {profileSummary.combatSystems ? (
-                  <>
-                    <div>
-                      각인: {profileSummary.combatSystems.engravingNames.length ? profileSummary.combatSystems.engravingNames.join(" / ") : "-"}
-                    </div>
-                    <div>
-                      보석: {profileSummary.combatSystems.gemCount || "-"}개, 합 {profileSummary.combatSystems.gemLevelSum || "-"} / 아크그리드:{" "}
-                      {profileSummary.combatSystems.arkGridPoints || "-"} / 악세: {profileSummary.combatSystems.accessoryCount || "-"}개 / 아바타:{" "}
-                      {profileSummary.combatSystems.avatarGradeLevel === 2
-                        ? "스페셜"
-                        : profileSummary.combatSystems.avatarGradeLevel === 1
-                          ? "전설"
-                          : profileSummary.combatSystems.avatarCount
-                            ? "장착 확인"
-                            : "-"}
-                    </div>
-                    <div className="growthChipRow">
-                      {(profileSummary.combatSystems.gems ?? []).slice(0, 11).map((gem, index) => (
-                        <span key={`${gem.name}-${gem.level}-${index}`} className="growthChip">
-                          {gem.name} {gem.level}레벨 {gem.type}
-                        </span>
-                      ))}
-                      {(profileSummary.combatSystems.accessories ?? []).map((accessory, index) => (
-                        <span key={`${accessory.name}-${index}`} className="growthChip">
-                          {accessory.name}
-                          {accessory.effects.length ? ` ${accessory.effects.slice(0, 2).join(" / ")}` : ""}
-                        </span>
-                      ))}
-                      {(profileSummary.combatSystems.avatars ?? []).map((avatar, index) => (
-                        <span key={`${avatar.name}-${index}`} className="growthChip">
-                          {avatar.grade ? `${avatar.grade} ` : ""}
-                          {avatar.name}
-                          {avatar.effect ? ` ${avatar.effect}` : ""}
-                        </span>
-                      ))}
-                    </div>
-                  </>
-                ) : null}
                 <div className="growthChipRow">
                   {profileSummary.pieces.map((piece) => (
                     <span key={piece.slot} className="growthChip">
@@ -2924,15 +2877,6 @@ export default function GrowthPlannerPage() {
                     </span>
                   ))}
                 </div>
-                {profileWarnings.length ? (
-                  <div className="growthWarningList">
-                    {profileWarnings.map((warning) => (
-                      <span key={warning} className="growthChip">
-                        {warning}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
               </div>
             ) : null}
           </div>
