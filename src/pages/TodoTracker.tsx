@@ -2235,6 +2235,7 @@ export default function TodoTracker() {
             const normalizedRemainingRaids = Array.isArray(row?.remainingRaids)
               ? row.remainingRaids.map((raid: string) => normalizeRaidName(raid)).filter(Boolean)
               : [];
+            const displayAllRaids = normalizedAllRaids.length > 0 ? normalizedAllRaids : normalizedRemainingRaids;
 
             return {
               ...row,
@@ -2244,10 +2245,10 @@ export default function TodoTracker() {
               charPower: row?.charPower ? String(row.charPower) : undefined,
               tableName: row?.tableName ? String(row.tableName) : "",
               ilvl: rowIlvl,
-              allRaids: normalizedAllRaids,
+              allRaids: displayAllRaids,
               remainingRaids: normalizedRemainingRaids,
               clearedCount: Number(row?.clearedCount ?? 0),
-              totalCount: Number(row?.totalCount ?? normalizedRemainingRaids.length),
+              totalCount: Number(row?.totalCount ?? displayAllRaids.length),
             };
           })
           .filter((r: FriendSnapshotRow) => Boolean(r && r.charName));
@@ -4250,10 +4251,10 @@ export default function TodoTracker() {
                 <div className="manualRemainList">
                   {displayFriendCandidates.map((fr: FriendCandidate) => {
                     const visibleFriendRaids =
-                      fr.activeRaids.length > 0
-                        ? fr.activeRaids
-                        : fr.allRaids.length > 0
-                          ? fr.allRaids
+                      fr.allRaids.length > 0
+                        ? fr.allRaids
+                        : fr.activeRaids.length > 0
+                          ? fr.activeRaids
                           : fr.remainingRaids;
 
                     // 4/26 다음 주 초기화 기준은 친구 클리어 기록은 무시하고, 새 일정표에 넣은 레이드만 흑백 처리
@@ -7269,7 +7270,7 @@ body.pip-dark .pip-select option{
 
     // 2) 주간 레이드 체크 3개 미만만 남기기
     // (네가 이미 만들어둔 getWeeklyRaidCheckedCount(tableId, charId) 그대로 사용)
-    const visibleCols = allCols.filter(({ tableId, ch }) => getWeeklyRaidCheckedCount(tableId, ch.id) < 3);
+    const visibleCols = allCols;
 
     // 3) 남은 캐릭 0명 안내
     if (visibleCols.length === 0) {
@@ -7585,13 +7586,7 @@ body.pip-dark .pip-select option{
     const isActivePane = tableId === state.activeTableId;
 
     // ✅ 남은 레이드 탭일 때만: 주간 레이드 체크 3개 미만 캐릭만 노출
-    const visibleCharacters =
-      periodTab === "RAID_LEFT"
-        ? characters
-          .map((ch) => ({ ch, raidDone: getWeeklyRaidCheckedCount(tableId, ch.id) }))
-          .filter(({ raidDone }) => raidDone < 3)
-          .map(({ ch }) => ch)
-        : characters;
+    const visibleCharacters = characters;
 
 
     return (
