@@ -3114,9 +3114,13 @@ export default function TodoTracker() {
       power: number;
       remainingRaids: string[];
       commonRaids: string[];
+      disabledReason?: string;
     }> {
       const currentSelectedKey = getScheduleFriendSelectValue(schedule, item);
       const sourceCandidates = getScheduleAssignableCandidates(schedule);
+      const requiredRaids = getScheduleItemRaidNames(item)
+        .map((raid) => getScheduleRaidBaseName(raid))
+        .filter(Boolean);
 
       const options = sourceCandidates
         .map((fr: FriendCandidate) => {
@@ -3148,13 +3152,22 @@ export default function TodoTracker() {
             (raid: string) => !usedRaidSet.has(normalizeRaidName(getScheduleRaidBaseName(raid)))
           );
 
+          const rawCommonRaids = getCommonRaidsForScheduleItem(item, fr);
+          const disabledReason =
+            commonRaids.length > 0
+              ? undefined
+              : rawCommonRaids.length > 0
+                ? `이미 일정: ${rawCommonRaids.join(", ")}`
+                : `불일치: 필요 ${requiredRaids.join(", ") || "-"} / 친구 ${getSchedulableRaidsForFriendCandidate(fr).join(", ") || "-"}`;
+
           return {
             ...fr,
             commonRaids,
+            disabledReason,
           };
         })
-        .filter((fr: FriendCandidate & { commonRaids: string[] }) => {
-          return fr.commonRaids.length > 0;
+        .filter((fr: FriendCandidate & { commonRaids: string[]; disabledReason?: string }) => {
+          return fr.commonRaids.length > 0 || Boolean(fr.disabledReason);
         });
 
       if (false &&
@@ -3177,6 +3190,7 @@ export default function TodoTracker() {
           activeRaids: snapshotRaids,
           clearedRaids: [],
           commonRaids: getScheduleItemRaidNames(item),
+          disabledReason: undefined,
         });
       }
 
@@ -3877,8 +3891,9 @@ export default function TodoTracker() {
                                           : "친구 캐릭"}
                                       </option>
                                       {getSelectableFriendOptionsForScheduleItem(schedule, item).map((fr) => (
-                                        <option key={fr.key} value={fr.key}>
+                                        <option key={fr.key} value={fr.key} disabled={Boolean(fr.disabledReason)}>
                                           {fr.name} / Lv {fr.ilvl} / 전투력 {fr.power > 0 ? fr.power : "-"}
+                                          {fr.disabledReason ? ` (${fr.disabledReason})` : ""}
                                         </option>
                                       ))}
                                     </select>
@@ -4397,7 +4412,7 @@ export default function TodoTracker() {
                                 className={`manualRaidChip ${!isRemaining || isScheduled ? "is-scheduled" : ""
                                   } ${allVisibleRaidsMuted ? "is-schedule-full" : ""}`}
                               >
-                                {formatRemainRaidWithDiff(raid, me.ilvl, weeklyCharKey(me.tableId, me.charId))}
+                                {renderRemainRaidWithDiff(raid, me.ilvl, weeklyCharKey(me.tableId, me.charId))}
                               </span>
                             );
                           })}
@@ -4474,7 +4489,7 @@ export default function TodoTracker() {
                                 className={`manualRaidChip ${isScheduled || isCleared ? "is-scheduled" : ""
                                   } ${allVisibleRaidsMuted ? "is-schedule-full" : ""}`}
                               >
-                                {formatRemainRaidWithDiff(raid, fr.ilvl)}
+                                {renderRemainRaidWithDiff(raid, fr.ilvl)}
                               </span>
                             );
                           })}
@@ -7267,7 +7282,7 @@ body.pip-dark .pip-select option{
     return available.length ? available[available.length - 1] : null;
   }
 
-  function formatRemainRaidWithDiff(
+  function getRemainRaidLabelParts(
     raidName: string,
     ilvl: number,
     pickKey?: string | null
@@ -7286,7 +7301,31 @@ body.pip-dark .pip-select option{
       getRaidDiffFromLabel(raidName) ??
       getHighestAvailableDiffNameForRaid(ilvl, baseName);
 
+    return { baseName, diffName };
+  }
+
+  function formatRemainRaidWithDiff(
+    raidName: string,
+    ilvl: number,
+    pickKey?: string | null
+  ) {
+    const { baseName, diffName } = getRemainRaidLabelParts(raidName, ilvl, pickKey);
     return diffName ? `${baseName} ${diffName}` : baseName;
+  }
+
+  function renderRemainRaidWithDiff(
+    raidName: string,
+    ilvl: number,
+    pickKey?: string | null
+  ) {
+    const { baseName, diffName } = getRemainRaidLabelParts(raidName, ilvl, pickKey);
+
+    return (
+      <>
+        <span>{baseName}</span>
+        {diffName ? <span className="manualRaidDiffBadge">{diffName}</span> : null}
+      </>
+    );
   }
 
   /**

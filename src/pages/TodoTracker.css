@@ -3131,6 +3131,7 @@ html[data-theme="dark"] .raid-pick-btn.manual.active {
 .manualRaidChip {
   display: inline-flex;
   align-items: center;
+  gap: 4px;
   padding: 4px 8px;
   border-radius: 999px;
   background: var(--soft);
@@ -3138,6 +3139,19 @@ html[data-theme="dark"] .raid-pick-btn.manual.active {
   color: var(--text);
   font-size: 12px;
   font-weight: 700;
+}
+
+.manualRaidDiffBadge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 1px 5px;
+  background: rgba(96, 165, 250, 0.18);
+  border: 1px solid rgba(96, 165, 250, 0.4);
+  color: #93c5fd;
+  font-size: 11px;
+  line-height: 1.2;
+  font-weight: 800;
 }
 
 .manualKkanbuActions {
