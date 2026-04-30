@@ -2960,6 +2960,10 @@ export default function TodoTracker() {
       return friendCandidates;
     }
 
+    function isScheduleAssigningMySide(schedule: SharedWeeklySchedule) {
+      return schedule.targetFriendCode === myFriendCode;
+    }
+
     function getSchedulableRaidsForFriendCandidate(friend: FriendCandidate) {
       const clearedSet = new Set(
         (friend.clearedRaids ?? []).map((raid: string) => normalizeRaidName(raid))
@@ -3128,6 +3132,7 @@ export default function TodoTracker() {
     }> {
       const currentSelectedKey = getScheduleFriendSelectValue(schedule, item);
       const sourceCandidates = getScheduleAssignableCandidates(schedule);
+      const assigningMySide = isScheduleAssigningMySide(schedule);
 
       const options = sourceCandidates
         .map((fr: FriendCandidate) => {
@@ -3136,19 +3141,20 @@ export default function TodoTracker() {
               .filter(
                 (x: SharedWeeklyScheduleItem) =>
                   x.id !== item.id &&
-                  (isSameFriendScheduleCandidate(
-                    fr,
-                    x.friendCharKey,
-                    x.friendTableName,
-                    x.friendCharName,
-                    x.friendSnapshot
-                  ) ||
-                    isSameFriendScheduleCandidate(
+                  (assigningMySide
+                    ? isSameFriendScheduleCandidate(
                       fr,
                       x.myCharKey,
                       x.myTableName,
                       x.myCharName,
                       x.mySnapshot
+                    )
+                    : isSameFriendScheduleCandidate(
+                      fr,
+                      x.friendCharKey,
+                      x.friendTableName,
+                      x.friendCharName,
+                      x.friendSnapshot
                     ))
               )
               .flatMap((x: SharedWeeklyScheduleItem) => x.raidNames ?? [])
@@ -3156,10 +3162,9 @@ export default function TodoTracker() {
           );
 
           const rawCommonRaids = getCommonRaidsForScheduleItem(item, fr);
-          const availableCommonRaids = rawCommonRaids.filter(
+          const commonRaids = rawCommonRaids.filter(
             (raid: string) => !usedRaidSet.has(normalizeRaidName(getScheduleRaidBaseName(raid)))
           );
-          const commonRaids = availableCommonRaids.length > 0 ? availableCommonRaids : rawCommonRaids;
 
           return {
             ...fr,
@@ -3227,25 +3232,27 @@ export default function TodoTracker() {
             const candidatePool = getScheduleAssignableCandidates(schedule);
             const friend = candidatePool.find((fr) => fr.key === friendKey);
             if (!friend) return item;
+            const assigningMySide = isScheduleAssigningMySide(schedule);
 
             const usedRaidSet = new Set(
               schedule.items
                 .filter(
                   (x) =>
                     x.id !== item.id &&
-                    (isSameFriendScheduleCandidate(
-                      friend,
-                      x.friendCharKey,
-                      x.friendTableName,
-                      x.friendCharName,
-                      x.friendSnapshot
-                    ) ||
-                      isSameFriendScheduleCandidate(
+                    (assigningMySide
+                      ? isSameFriendScheduleCandidate(
                         friend,
                         x.myCharKey,
                         x.myTableName,
                         x.myCharName,
                         x.mySnapshot
+                      )
+                      : isSameFriendScheduleCandidate(
+                        friend,
+                        x.friendCharKey,
+                        x.friendTableName,
+                        x.friendCharName,
+                        x.friendSnapshot
                       ))
                 )
                 .flatMap((x) => x.raidNames ?? [])
@@ -3253,10 +3260,10 @@ export default function TodoTracker() {
             );
 
             const rawCommonRaids = getCommonRaidsForScheduleItem(item, friend);
-            const availableCommonRaids = rawCommonRaids.filter(
+            const commonRaids = rawCommonRaids.filter(
               (raid) => !usedRaidSet.has(normalizeRaidName(getScheduleRaidBaseName(raid)))
             );
-            const commonRaids = availableCommonRaids.length > 0 ? availableCommonRaids : rawCommonRaids;
+            if (!commonRaids.length) return item;
 
             const myPower = getScheduleSnapshotPower(item.mySnapshot, item.myCharPower);
             const avgPower =
