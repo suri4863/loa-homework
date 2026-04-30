@@ -2980,22 +2980,91 @@ export default function TodoTracker() {
       return raids;
     }
 
+    function getScheduleRaidBaseName(raidName: string) {
+      const raw = String(raidName ?? "").trim();
+      const normalized = normalizeRaidName(raw);
+      if (!normalized) return "";
+
+      const defs = [...RAID_CATALOG].sort(
+        (a, b) => normalizeRaidName(b.name).length - normalizeRaidName(a.name).length
+      );
+      const found = defs.find((raid) => {
+        const base = normalizeRaidName(raid.name);
+        if (normalized === base) return true;
+        return raid.diffs.some(
+          (diff) => normalized === `${base}${normalizeRaidName(diff.name)}`
+        );
+      });
+
+      return found?.name ?? canonicalRaidName(raw);
+    }
+
+    function getScheduleRaidDiffName(
+      item: SharedWeeklyScheduleItem,
+      raidName: string
+    ): DiffName | null {
+      const baseName = getScheduleRaidBaseName(raidName);
+      const pickKey = resolveScheduleWeeklyPickKey(item);
+      const pick = pickKey ? weeklyRaidPickByChar[pickKey] : null;
+      const picked = pick?.diffs?.[baseName] ?? pick?.diffs?.[raidName];
+      if (picked) return picked;
+
+      const normalized = normalizeRaidName(raidName);
+      const def = RAID_CATALOG.find(
+        (raid) => normalizeRaidName(raid.name) === normalizeRaidName(baseName)
+      );
+      const parsed = def?.diffs.find(
+        (diff) => normalized === `${normalizeRaidName(baseName)}${normalizeRaidName(diff.name)}`
+      );
+
+      return parsed?.name ?? null;
+    }
+
+    function canFriendCandidateEnterScheduleRaid(
+      friend: FriendCandidate,
+      item: SharedWeeklyScheduleItem,
+      raidName: string
+    ) {
+      const baseName = getScheduleRaidBaseName(raidName);
+      const diffName = getScheduleRaidDiffName(item, raidName);
+      if (!diffName) return true;
+
+      const def = RAID_CATALOG.find(
+        (raid) => normalizeRaidName(raid.name) === normalizeRaidName(baseName)
+      );
+      const diff = def?.diffs.find((x) => x.name === diffName);
+
+      return !diff || friend.ilvl >= diff.minIlvl;
+    }
+
     function getCommonRaidsForScheduleItem(
       item: SharedWeeklyScheduleItem,
       friend: FriendCandidate
     ): string[] {
-      const baseRaids =
-        Array.isArray(item.baseRaidNames) && item.baseRaidNames.length
-          ? item.baseRaidNames
-          : item.raidNames ?? [];
+      const baseRaids = [
+        ...getScheduleItemRaidNames(item),
+        ...(Array.isArray(item.raidNames) ? item.raidNames : []),
+        ...(Array.isArray(item.baseRaidNames) ? item.baseRaidNames : []),
+      ];
       const candidateRaids = getSchedulableRaidsForFriendCandidate(friend);
+      const seen = new Set<string>();
+      const commonRaids: string[] = [];
 
-      return baseRaids
-        .map((raid: string) => normalizeRaidName(raid))
-        .filter((raid: string, index: number, arr: string[]) => arr.indexOf(raid) === index)
-        .filter((raid: string) =>
-          candidateRaids.some((fr: string) => normalizeRaidName(fr) === raid)
-        );
+      for (const raid of baseRaids) {
+        const baseName = getScheduleRaidBaseName(raid);
+        const normalized = normalizeRaidName(baseName);
+        if (!normalized || seen.has(normalized)) continue;
+        if (
+          !candidateRaids.some(
+            (fr: string) => normalizeRaidName(getScheduleRaidBaseName(fr)) === normalized
+          )
+        ) continue;
+        if (!canFriendCandidateEnterScheduleRaid(friend, item, raid)) continue;
+        seen.add(normalized);
+        commonRaids.push(baseName);
+      }
+
+      return commonRaids;
     }
 
     function getSelectableFriendOptionsForScheduleItem(
@@ -3036,11 +3105,11 @@ export default function TodoTracker() {
                     ))
               )
               .flatMap((x: SharedWeeklyScheduleItem) => x.raidNames ?? [])
-              .map((raid: string) => normalizeRaidName(raid))
+              .map((raid: string) => normalizeRaidName(getScheduleRaidBaseName(raid)))
           );
 
           const commonRaids = getCommonRaidsForScheduleItem(item, fr).filter(
-            (raid: string) => !usedRaidSet.has(normalizeRaidName(raid))
+            (raid: string) => !usedRaidSet.has(normalizeRaidName(getScheduleRaidBaseName(raid)))
           );
 
           return {
@@ -3131,11 +3200,11 @@ export default function TodoTracker() {
                       ))
                 )
                 .flatMap((x) => x.raidNames ?? [])
-                .map((raid) => normalizeRaidName(raid))
+                .map((raid) => normalizeRaidName(getScheduleRaidBaseName(raid)))
             );
 
             const commonRaids = getCommonRaidsForScheduleItem(item, friend).filter(
-              (raid) => !usedRaidSet.has(normalizeRaidName(raid))
+              (raid) => !usedRaidSet.has(normalizeRaidName(getScheduleRaidBaseName(raid)))
             );
 
             const myPower = getScheduleSnapshotPower(item.mySnapshot, item.myCharPower);
