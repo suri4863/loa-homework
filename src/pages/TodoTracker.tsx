@@ -1571,6 +1571,7 @@ export default function TodoTracker() {
       tableName?: string;
       charId: string;
       name: string;
+      ilvl: number;
       power: number;
       activeRaids: string[];
     },
@@ -3022,6 +3023,13 @@ export default function TodoTracker() {
       return available.length ? available[available.length - 1].name : null;
     }
 
+    function getRaidDiffRank(diffName: DiffName | null) {
+      if (diffName === "노말" || diffName === "1단계") return 1;
+      if (diffName === "하드" || diffName === "2단계") return 2;
+      if (diffName === "나이트메어" || diffName === "3단계") return 3;
+      return 0;
+    }
+
     function getScheduleRaidDiffName(
       item: SharedWeeklyScheduleItem,
       raidName: string
@@ -3070,7 +3078,10 @@ export default function TodoTracker() {
         def.diffs.find((x) => x.name === diffName) ??
         def.diffs.reduce((lowest, cur) => (cur.minIlvl < lowest.minIlvl ? cur : lowest));
 
-      return friend.ilvl >= diff.minIlvl;
+      if (friend.ilvl < diff.minIlvl) return false;
+
+      const friendDiffName = getHighestAvailableRaidDiffName(baseName, friend.ilvl);
+      return getRaidDiffRank(friendDiffName) >= getRaidDiffRank(diff.name);
     }
 
     function getCommonRaidsForScheduleItem(
@@ -3114,13 +3125,9 @@ export default function TodoTracker() {
       power: number;
       remainingRaids: string[];
       commonRaids: string[];
-      disabledReason?: string;
     }> {
       const currentSelectedKey = getScheduleFriendSelectValue(schedule, item);
       const sourceCandidates = getScheduleAssignableCandidates(schedule);
-      const requiredRaids = getScheduleItemRaidNames(item)
-        .map((raid) => getScheduleRaidBaseName(raid))
-        .filter(Boolean);
 
       const options = sourceCandidates
         .map((fr: FriendCandidate) => {
@@ -3148,26 +3155,19 @@ export default function TodoTracker() {
               .map((raid: string) => normalizeRaidName(getScheduleRaidBaseName(raid)))
           );
 
-          const commonRaids = getCommonRaidsForScheduleItem(item, fr).filter(
+          const rawCommonRaids = getCommonRaidsForScheduleItem(item, fr);
+          const availableCommonRaids = rawCommonRaids.filter(
             (raid: string) => !usedRaidSet.has(normalizeRaidName(getScheduleRaidBaseName(raid)))
           );
-
-          const rawCommonRaids = getCommonRaidsForScheduleItem(item, fr);
-          const disabledReason =
-            commonRaids.length > 0
-              ? undefined
-              : rawCommonRaids.length > 0
-                ? `이미 일정: ${rawCommonRaids.join(", ")}`
-                : `불일치: 필요 ${requiredRaids.join(", ") || "-"} / 친구 ${getSchedulableRaidsForFriendCandidate(fr).join(", ") || "-"}`;
+          const commonRaids = availableCommonRaids.length > 0 ? availableCommonRaids : rawCommonRaids;
 
           return {
             ...fr,
             commonRaids,
-            disabledReason,
           };
         })
-        .filter((fr: FriendCandidate & { commonRaids: string[]; disabledReason?: string }) => {
-          return fr.commonRaids.length > 0 || Boolean(fr.disabledReason);
+        .filter((fr: FriendCandidate & { commonRaids: string[] }) => {
+          return fr.commonRaids.length > 0;
         });
 
       if (false &&
@@ -3190,7 +3190,6 @@ export default function TodoTracker() {
           activeRaids: snapshotRaids,
           clearedRaids: [],
           commonRaids: getScheduleItemRaidNames(item),
-          disabledReason: undefined,
         });
       }
 
@@ -3253,9 +3252,11 @@ export default function TodoTracker() {
                 .map((raid) => normalizeRaidName(getScheduleRaidBaseName(raid)))
             );
 
-            const commonRaids = getCommonRaidsForScheduleItem(item, friend).filter(
+            const rawCommonRaids = getCommonRaidsForScheduleItem(item, friend);
+            const availableCommonRaids = rawCommonRaids.filter(
               (raid) => !usedRaidSet.has(normalizeRaidName(getScheduleRaidBaseName(raid)))
             );
+            const commonRaids = availableCommonRaids.length > 0 ? availableCommonRaids : rawCommonRaids;
 
             const myPower = getScheduleSnapshotPower(item.mySnapshot, item.myCharPower);
             const avgPower =
@@ -3891,9 +3892,8 @@ export default function TodoTracker() {
                                           : "친구 캐릭"}
                                       </option>
                                       {getSelectableFriendOptionsForScheduleItem(schedule, item).map((fr) => (
-                                        <option key={fr.key} value={fr.key} disabled={Boolean(fr.disabledReason)}>
+                                        <option key={fr.key} value={fr.key}>
                                           {fr.name} / Lv {fr.ilvl} / 전투력 {fr.power > 0 ? fr.power : "-"}
-                                          {fr.disabledReason ? ` (${fr.disabledReason})` : ""}
                                         </option>
                                       ))}
                                     </select>
