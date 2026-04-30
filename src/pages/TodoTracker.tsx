@@ -2974,12 +2974,18 @@ export default function TodoTracker() {
               .filter(
                 (x: SharedWeeklyScheduleItem) =>
                   x.id !== item.id &&
-                  getScheduleCandidateKeys(
+                  (getScheduleCandidateKeys(
                     x.friendCharKey,
                     x.friendTableName,
                     x.friendCharName,
                     x.friendSnapshot
-                  ).includes(fr.key)
+                  ).includes(fr.key) ||
+                    getScheduleCandidateKeys(
+                      x.myCharKey,
+                      x.myTableName,
+                      x.myCharName,
+                      x.mySnapshot
+                    ).includes(fr.key))
               )
               .flatMap((x: SharedWeeklyScheduleItem) => x.raidNames ?? [])
               .map((raid: string) => normalizeRaidName(raid))
@@ -3062,12 +3068,18 @@ export default function TodoTracker() {
                 .filter(
                   (x) =>
                     x.id !== item.id &&
-                    getScheduleCandidateKeys(
+                    (getScheduleCandidateKeys(
                       x.friendCharKey,
                       x.friendTableName,
                       x.friendCharName,
                       x.friendSnapshot
-                    ).includes(friend.key)
+                    ).includes(friend.key) ||
+                      getScheduleCandidateKeys(
+                        x.myCharKey,
+                        x.myTableName,
+                        x.myCharName,
+                        x.mySnapshot
+                      ).includes(friend.key))
                 )
                 .flatMap((x) => x.raidNames ?? [])
                 .map((raid) => normalizeRaidName(raid))
