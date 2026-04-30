@@ -12,6 +12,7 @@ import type {
   GridValues,
   KkanbuExcludePair,
   SharedWeeklySchedule,
+  SharedScheduleCharacterSnapshot,
   SharedWeeklyScheduleItem,
   WeeklyScheduleDay,
 } from "../store/todoStore";
@@ -760,6 +761,112 @@ export default function TodoTracker() {
     return timeState === "FUTURE";
   }
 
+  type ScheduleSnapshotSource = {
+    key?: string | null;
+    tableName?: string | null;
+    name?: string | null;
+    charName?: string | null;
+    power?: number | string | null;
+    charPower?: number | string | null;
+    itemLevel?: string | null;
+    charItemLevel?: string | null;
+    ilvl?: number | string | null;
+    remainingRaids?: string[];
+    activeRaids?: string[];
+    allRaids?: string[];
+    raidNames?: string[];
+    raids?: string[];
+  };
+
+  function parseScheduleNumberValue(value: unknown): number | null {
+    if (typeof value === "number") return Number.isFinite(value) ? value : null;
+    const raw = String(value ?? "").replace(/,/g, "").trim();
+    if (!raw) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function uniqueScheduleRaids(raids: unknown): string[] {
+    if (!Array.isArray(raids)) return [];
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const raid of raids) {
+      const normalized = normalizeRaidName(raid);
+      if (!normalized || seen.has(normalized)) continue;
+      seen.add(normalized);
+      out.push(normalized);
+    }
+    return out;
+  }
+
+  function buildScheduleCharacterSnapshot(
+    source: ScheduleSnapshotSource | null | undefined
+  ): SharedScheduleCharacterSnapshot | null {
+    const name = String(source?.name ?? source?.charName ?? "").trim();
+    if (!name) return null;
+    const itemLevel = source?.itemLevel ?? source?.charItemLevel ?? null;
+    const raids =
+      source?.raids ??
+      source?.remainingRaids ??
+      source?.activeRaids ??
+      source?.allRaids ??
+      source?.raidNames ??
+      [];
+    return {
+      key: source?.key ? String(source.key) : null,
+      tableName: source?.tableName ? String(source.tableName) : null,
+      name,
+      itemLevel: itemLevel != null ? String(itemLevel) : null,
+      ilvl: parseScheduleNumberValue(source?.ilvl ?? itemLevel),
+      power: parseScheduleNumberValue(source?.power ?? source?.charPower),
+      raids: uniqueScheduleRaids(raids),
+    };
+  }
+
+  function normalizeScheduleCharacterSnapshot(
+    snapshot: SharedScheduleCharacterSnapshot | null | undefined,
+    fallback: ScheduleSnapshotSource
+  ) {
+    return buildScheduleCharacterSnapshot({
+      ...fallback,
+      ...(snapshot ?? {}),
+      key: snapshot?.key ?? fallback.key,
+      tableName: snapshot?.tableName ?? fallback.tableName,
+      name: snapshot?.name ?? fallback.name ?? fallback.charName,
+      raids:
+        snapshot?.raids ??
+        fallback.raidNames ??
+        fallback.remainingRaids ??
+        fallback.activeRaids ??
+        fallback.allRaids,
+    });
+  }
+
+  function normalizeSharedScheduleItem(item: SharedWeeklyScheduleItem): SharedWeeklyScheduleItem {
+    const raidNames = getScheduleItemRaidNames(item);
+    const mySnapshot = normalizeScheduleCharacterSnapshot(item.mySnapshot, {
+      key: item.myCharKey,
+      tableName: item.myTableName,
+      name: item.myCharName,
+      power: item.myCharPower,
+      raidNames,
+    });
+    const friendSnapshot = normalizeScheduleCharacterSnapshot(item.friendSnapshot, {
+      key: item.friendCharKey,
+      tableName: item.friendTableName,
+      name: item.friendCharName,
+      power: item.friendCharPower,
+      raidNames,
+    });
+    return {
+      ...item,
+      mySnapshot,
+      friendSnapshot,
+      myWeeklyRaidPickKey:
+        String(item.myWeeklyRaidPickKey ?? "").trim() || resolveScheduleWeeklyPickKey(item),
+    };
+  }
+
   function buildScheduleItemsFromMySlots(
     myList: Array<{
       key: string;
@@ -778,10 +885,13 @@ export default function TodoTracker() {
       myCharName: me.name,
       myTableName: me.tableName ?? null,
       myCharPower: me.power ?? null,
+      mySnapshot: buildScheduleCharacterSnapshot(me),
 
       friendCharKey: null,
       friendCharName: null,
+      friendTableName: null,
       friendCharPower: null,
+      friendSnapshot: null,
 
       mode: "OPEN_SLOT",
 
@@ -818,12 +928,14 @@ export default function TodoTracker() {
         myCharName: result.my.name,
         myTableName: result.my.tableName ?? null,
         myCharPower: result.my.power ?? null,
+        mySnapshot: buildScheduleCharacterSnapshot(result.my),
         myWeeklyRaidPickKey: weeklyCharKey(result.my.tableId, result.my.charId), // 4/22 일정표 레이드 난이도 표시용
 
         friendCharKey: result.friend.key,
         friendCharName: result.friend.name,
         friendTableName: result.friend.tableName ?? null,
         friendCharPower: result.friend.power ?? null,
+        friendSnapshot: buildScheduleCharacterSnapshot(result.friend),
 
         mode: "MATCHED",
 
@@ -855,12 +967,7 @@ export default function TodoTracker() {
           targetFriendCode: String(row.targetFriendCode ?? ""),
           title: String(row.title ?? "일정표"),
           weekStartDate: String(row.weekStartDate ?? ""),
-          items: items.map((item: SharedWeeklyScheduleItem) => ({
-            ...item,
-            myWeeklyRaidPickKey:
-              String(item.myWeeklyRaidPickKey ?? "").trim() ||
-              resolveScheduleWeeklyPickKey(item),
-          })),
+          items: items.map((item: SharedWeeklyScheduleItem) => normalizeSharedScheduleItem(item)),
           updatedAt: new Date(row.updatedAt).getTime(),
         };
       });
@@ -1113,6 +1220,111 @@ export default function TodoTracker() {
     return storedRaidNames.some((raid) => normalizeRaidName(raid) === normalizedTarget);
   }
 
+  function compactScheduleKeysForItem(keys: Array<string | null | undefined>) {
+    const seen = new Set<string>();
+    const out: string[] = [];
+
+    for (const key of keys) {
+      const value = String(key ?? "").trim();
+      if (!value || seen.has(value)) continue;
+      seen.add(value);
+      out.push(value);
+    }
+
+    return out;
+  }
+
+  function getScheduleSnapshotCandidateKeyForItem(
+    tableName?: string | null,
+    charName?: string | null
+  ) {
+    const name = String(charName ?? "").trim();
+    if (!name) return "";
+    const table = String(tableName ?? "").trim();
+    return table ? `${table}|${name}` : name;
+  }
+
+  function hasLocalScheduleCharKeyForItem(charKey: string | null | undefined) {
+    const key = String(charKey ?? "").trim();
+    if (!key || !key.includes("|")) return false;
+    const [tableId, charId] = key.split("|");
+
+    return state.tables.some(
+      (table) =>
+        table.id === tableId && table.characters.some((ch) => ch.id === charId)
+    );
+  }
+
+  function findLocalScheduleCharKeyByNameForItem(
+    name?: string | null,
+    tableName?: string | null
+  ) {
+    const normalizedName = String(name ?? "").trim();
+    const normalizedTable = String(tableName ?? "").trim();
+    if (!normalizedName) return "";
+
+    if (normalizedTable) {
+      for (const table of state.tables) {
+        if (String(table.name ?? "").trim() !== normalizedTable) continue;
+        const ch = table.characters.find(
+          (candidate) => String(candidate.name ?? "").trim() === normalizedName
+        );
+        if (ch) return `${table.id}|${ch.id}`;
+      }
+    }
+
+    for (const table of state.tables) {
+      const ch = table.characters.find(
+        (candidate) => String(candidate.name ?? "").trim() === normalizedName
+      );
+      if (ch) return `${table.id}|${ch.id}`;
+    }
+
+    return "";
+  }
+
+  function resolveLocalScheduleCharKeyForItem(
+    charKey: string | null | undefined,
+    snapshot?: SharedScheduleCharacterSnapshot | null,
+    fallbackName?: string | null,
+    fallbackTableName?: string | null
+  ) {
+    const direct = String(charKey ?? "").trim();
+    if (hasLocalScheduleCharKeyForItem(direct)) return direct;
+
+    const snapshotKey = String(snapshot?.key ?? "").trim();
+    if (hasLocalScheduleCharKeyForItem(snapshotKey)) return snapshotKey;
+
+    return findLocalScheduleCharKeyByNameForItem(
+      snapshot?.name ?? fallbackName,
+      snapshot?.tableName ?? fallbackTableName
+    );
+  }
+
+  function getScheduleCandidateKeysForItem(
+    charKey: string | null | undefined,
+    tableName: string | null | undefined,
+    charName: string | null | undefined,
+    snapshot?: SharedScheduleCharacterSnapshot | null
+  ) {
+    const name = String(snapshot?.name ?? charName ?? "").trim();
+    const table = String(snapshot?.tableName ?? tableName ?? "").trim();
+
+    return compactScheduleKeysForItem([
+      charKey,
+      snapshot?.key,
+      name,
+      getScheduleSnapshotCandidateKeyForItem(table, name),
+    ]);
+  }
+
+  function getScheduleSnapshotPowerForItem(
+    snapshot: SharedScheduleCharacterSnapshot | null | undefined,
+    fallback: number | null | undefined
+  ) {
+    return parseScheduleNumberValue(snapshot?.power ?? fallback);
+  }
+
   function getScheduleItemRaidNames(item: SharedWeeklyScheduleItem) {
     return Array.isArray(item.raidNames) && item.raidNames.length > 0
       ? item.raidNames
@@ -1126,13 +1338,25 @@ export default function TodoTracker() {
       ...schedule,
       items: schedule.items.map((item) => {
         const raidNames = getScheduleItemRaidNames(item);
+        const myLocalKey = resolveLocalScheduleCharKeyForItem(
+          item.myCharKey,
+          item.mySnapshot,
+          item.myCharName,
+          item.myTableName
+        );
+        const friendLocalKey = resolveLocalScheduleCharKeyForItem(
+          item.friendCharKey,
+          item.friendSnapshot,
+          item.friendCharName,
+          item.friendTableName
+        );
 
         return {
           ...item,
           ...(isOwnerView
             ? {
               myClearedRaidNames: getLocalClearedRaidNamesForScheduleChar(
-                item.myCharKey,
+                myLocalKey,
                 raidNames
               ),
             }
@@ -1140,7 +1364,7 @@ export default function TodoTracker() {
           ...(isTargetView
             ? {
               friendClearedRaidNames: getLocalClearedRaidNamesForScheduleChar(
-                item.friendCharKey,
+                friendLocalKey,
                 raidNames
               ),
             }
@@ -1179,8 +1403,21 @@ export default function TodoTracker() {
     if (isStoredScheduleRaidCleared(item.myClearedRaidNames, raidName)) return true;
     if (isStoredScheduleRaidCleared(item.friendClearedRaidNames, raidName)) return true;
 
-    if (isOwnerView && isLocalScheduleCharRaidCleared(item.myCharKey, raidName)) return true;
-    if (isTargetView && isLocalScheduleCharRaidCleared(item.friendCharKey, raidName)) return true;
+    const myLocalKey = resolveLocalScheduleCharKeyForItem(
+      item.myCharKey,
+      item.mySnapshot,
+      item.myCharName,
+      item.myTableName
+    );
+    const friendLocalKey = resolveLocalScheduleCharKeyForItem(
+      item.friendCharKey,
+      item.friendSnapshot,
+      item.friendCharName,
+      item.friendTableName
+    );
+
+    if (isOwnerView && isLocalScheduleCharRaidCleared(myLocalKey, raidName)) return true;
+    if (isTargetView && isLocalScheduleCharRaidCleared(friendLocalKey, raidName)) return true;
 
     return false;
   }
@@ -1747,8 +1984,11 @@ export default function TodoTracker() {
     );
   }
   function recalcScheduleItemAvgPower(item: SharedWeeklyScheduleItem) {
-    return item.myCharPower != null && item.friendCharPower != null
-      ? Math.round((item.myCharPower + item.friendCharPower) / 2)
+    const myPower = getScheduleSnapshotPowerForItem(item.mySnapshot, item.myCharPower);
+    const friendPower = getScheduleSnapshotPowerForItem(item.friendSnapshot, item.friendCharPower);
+
+    return myPower != null && friendPower != null
+      ? Math.round((myPower + friendPower) / 2)
       : null;
   }
 
@@ -1779,7 +2019,15 @@ export default function TodoTracker() {
         }
 
         // 내가 target일 때: 내 캐릭은 friendCharKey로 들어있음
-        if (isTargetView && item.friendCharKey === myCharKey) {
+        if (
+          isTargetView &&
+          getScheduleCandidateKeysForItem(
+            item.friendCharKey,
+            item.friendTableName,
+            item.friendCharName,
+            item.friendSnapshot
+          ).includes(myCharKey)
+        ) {
           nextItem = {
             ...nextItem,
             friendCharPower: nextPower,
@@ -2075,7 +2323,14 @@ export default function TodoTracker() {
 
       const scheduledRaidSet = new Set(
         schedule.items
-          .filter((item) => item.myCharKey === me.key)
+          .filter((item) =>
+            getScheduleCandidateKeys(
+              item.myCharKey,
+              item.myTableName,
+              item.myCharName,
+              item.mySnapshot
+            ).includes(me.key)
+          )
           .flatMap((item) => item.baseRaidNames ?? [])
           .map((raid) => normalizeRaidName(raid))
       );
@@ -2103,6 +2358,14 @@ export default function TodoTracker() {
       map.set(key, prev);
     }
 
+    function addScheduledRaidsToKeys(
+      map: Map<string, Set<string>>,
+      keys: string[],
+      raidNames: string[]
+    ) {
+      keys.forEach((key) => addScheduledRaids(map, key, raidNames));
+    }
+
     function getSnapshotCandidateKey(tableName: string | null | undefined, charName: string | null | undefined) {
       const name = String(charName ?? "").trim();
       if (!name) return "";
@@ -2117,42 +2380,73 @@ export default function TodoTracker() {
         const itemScheduledRaids = getScheduleItemRaidNames(item).map((raid) => normalizeRaidName(raid));
 
         if (isTargetView) {
-          addScheduledRaids(scheduledMyRaidSetByChar, item.friendCharKey, itemScheduledRaids);
+          addScheduledRaidsToKeys(
+            scheduledMyRaidSetByChar,
+            getScheduleCandidateKeys(
+              item.friendCharKey,
+              item.friendTableName,
+              item.friendCharName,
+              item.friendSnapshot
+            ),
+            itemScheduledRaids
+          );
 
           // 친구가 보는 화면에서는 owner 캐릭터가 오른쪽 "친구 캐릭터" 목록에 있다.
           // 최신 일정표는 tableName|charName으로 맞추고, 구버전 일정표는 이름만으로도 보정한다.
-          addScheduledRaids(
+          addScheduledRaidsToKeys(
             scheduledFriendRaidSetByChar,
-            getSnapshotCandidateKey(item.myTableName, item.myCharName),
+            getScheduleCandidateKeys(
+              item.myCharKey,
+              item.myTableName,
+              item.myCharName,
+              item.mySnapshot
+            ),
             itemScheduledRaids
           );
-          addScheduledRaids(scheduledFriendRaidSetByChar, item.myCharName, itemScheduledRaids);
         } else {
-          addScheduledRaids(scheduledMyRaidSetByChar, item.myCharKey, itemScheduledRaids);
-          addScheduledRaids(scheduledFriendRaidSetByChar, item.friendCharKey, itemScheduledRaids);
-          addScheduledRaids(
-            scheduledFriendRaidSetByChar,
-            getSnapshotCandidateKey(item.friendTableName, item.friendCharName),
+          addScheduledRaidsToKeys(
+            scheduledMyRaidSetByChar,
+            getScheduleCandidateKeys(
+              item.myCharKey,
+              item.myTableName,
+              item.myCharName,
+              item.mySnapshot
+            ),
             itemScheduledRaids
           );
-          addScheduledRaids(scheduledFriendRaidSetByChar, item.friendCharName, itemScheduledRaids);
+          addScheduledRaidsToKeys(
+            scheduledFriendRaidSetByChar,
+            getScheduleCandidateKeys(
+              item.friendCharKey,
+              item.friendTableName,
+              item.friendCharName,
+              item.friendSnapshot
+            ),
+            itemScheduledRaids
+          );
         }
       }
     }
     function getRemainScheduleState(
       charKey: string,
       targetRaids: string[],
-      raidSetMap: Map<string, Set<string>>
+      raidSetMap: Map<string, Set<string>>,
+      extraKeys: string[] = []
     ) {
-      const scheduledSet = new Set<string>(raidSetMap.get(charKey) ?? []);
-      const charNameFallback = String(charKey ?? "").includes("|")
-        ? String(charKey ?? "").split("|").slice(-1)[0]
-        : "";
+      const scheduledSet = new Set<string>();
+      compactScheduleKeys([charKey, ...extraKeys]).forEach((key) => {
+        const directSet = raidSetMap.get(key);
+        if (directSet) directSet.forEach((raid) => scheduledSet.add(raid));
 
-      if (charNameFallback) {
-        const nameSet = raidSetMap.get(charNameFallback);
-        if (nameSet) nameSet.forEach((raid) => scheduledSet.add(raid));
-      }
+        const charNameFallback = key.includes("|")
+          ? key.split("|").slice(-1)[0]
+          : "";
+
+        if (charNameFallback) {
+          const nameSet = raidSetMap.get(charNameFallback);
+          if (nameSet) nameSet.forEach((raid) => scheduledSet.add(raid));
+        }
+      });
 
       const scheduledRaids = targetRaids.filter((raid) =>
         scheduledSet.has(normalizeRaidName(raid))
@@ -2342,6 +2636,153 @@ export default function TodoTracker() {
       return parsePowerValue(ch.power);
     }
 
+    function compactScheduleKeys(keys: Array<string | null | undefined>) {
+      const seen = new Set<string>();
+      const out: string[] = [];
+
+      for (const key of keys) {
+        const value = String(key ?? "").trim();
+        if (!value || seen.has(value)) continue;
+        seen.add(value);
+        out.push(value);
+      }
+
+      return out;
+    }
+
+    function getScheduleSnapshotCandidateKey(
+      tableName?: string | null,
+      charName?: string | null
+    ) {
+      const name = String(charName ?? "").trim();
+      if (!name) return "";
+      const table = String(tableName ?? "").trim();
+      return table ? `${table}|${name}` : name;
+    }
+
+    function hasLocalScheduleCharKey(charKey: string | null | undefined) {
+      const key = String(charKey ?? "").trim();
+      if (!key || !key.includes("|")) return false;
+      const [tableId, charId] = key.split("|");
+
+      return state.tables.some(
+        (table) =>
+          table.id === tableId && table.characters.some((ch) => ch.id === charId)
+      );
+    }
+
+    function findLocalScheduleCharKeyByName(
+      name?: string | null,
+      tableName?: string | null
+    ) {
+      const normalizedName = String(name ?? "").trim();
+      const normalizedTable = String(tableName ?? "").trim();
+      if (!normalizedName) return "";
+
+      if (normalizedTable) {
+        for (const table of state.tables) {
+          if (String(table.name ?? "").trim() !== normalizedTable) continue;
+          const ch = table.characters.find(
+            (candidate) => String(candidate.name ?? "").trim() === normalizedName
+          );
+          if (ch) return `${table.id}|${ch.id}`;
+        }
+      }
+
+      for (const table of state.tables) {
+        const ch = table.characters.find(
+          (candidate) => String(candidate.name ?? "").trim() === normalizedName
+        );
+        if (ch) return `${table.id}|${ch.id}`;
+      }
+
+      return "";
+    }
+
+    function resolveLocalScheduleCharKey(
+      charKey: string | null | undefined,
+      snapshot?: SharedScheduleCharacterSnapshot | null,
+      fallbackName?: string | null,
+      fallbackTableName?: string | null
+    ) {
+      const direct = String(charKey ?? "").trim();
+      if (hasLocalScheduleCharKey(direct)) return direct;
+
+      const snapshotKey = String(snapshot?.key ?? "").trim();
+      if (hasLocalScheduleCharKey(snapshotKey)) return snapshotKey;
+
+      return findLocalScheduleCharKeyByName(
+        snapshot?.name ?? fallbackName,
+        snapshot?.tableName ?? fallbackTableName
+      );
+    }
+
+    function getScheduleCandidateKeys(
+      charKey: string | null | undefined,
+      tableName: string | null | undefined,
+      charName: string | null | undefined,
+      snapshot?: SharedScheduleCharacterSnapshot | null
+    ) {
+      const name = String(snapshot?.name ?? charName ?? "").trim();
+      const table = String(snapshot?.tableName ?? tableName ?? "").trim();
+
+      return compactScheduleKeys([
+        charKey,
+        snapshot?.key,
+        name,
+        getScheduleSnapshotCandidateKey(table, name),
+      ]);
+    }
+
+    function getScheduleSnapshotPower(
+      snapshot: SharedScheduleCharacterSnapshot | null | undefined,
+      fallback: number | null | undefined
+    ) {
+      return parseScheduleNumberValue(snapshot?.power ?? fallback);
+    }
+
+    function getScheduleMyDisplayName(item: SharedWeeklyScheduleItem) {
+      return item.mySnapshot?.name || item.myCharName || "내 캐릭";
+    }
+
+    function getScheduleFriendDisplayName(item: SharedWeeklyScheduleItem) {
+      return item.friendSnapshot?.name || item.friendCharName || "";
+    }
+
+    function getScheduleFriendSelectValue(
+      schedule: SharedWeeklySchedule,
+      item: SharedWeeklyScheduleItem
+    ) {
+      const resolved = resolveLocalScheduleCharKey(
+        item.friendCharKey,
+        item.friendSnapshot,
+        item.friendCharName,
+        item.friendTableName
+      );
+
+      return (
+        resolved ||
+        String(
+          item.friendCharKey ??
+            item.friendSnapshot?.key ??
+            getScheduleSnapshotCandidateKey(
+              item.friendSnapshot?.tableName ?? item.friendTableName,
+              item.friendSnapshot?.name ?? item.friendCharName
+            )
+        ).trim()
+      );
+    }
+
+    function getLiveSchedulePower(
+      charKey: string | null | undefined,
+      snapshot: SharedScheduleCharacterSnapshot | null | undefined,
+      fallbackName?: string | null,
+      fallbackTableName?: string | null
+    ) {
+      const localKey = resolveLocalScheduleCharKey(charKey, snapshot, fallbackName, fallbackTableName);
+      return localKey ? getLivePowerFromMyTables(localKey) : null;
+    }
+
     function getScheduleViewerPerspective(schedule: SharedWeeklySchedule) {
       const isOwnerView = schedule.ownerFriendCode === myFriendCode;
       const isTargetView = schedule.targetFriendCode === myFriendCode;
@@ -2362,8 +2803,10 @@ export default function TodoTracker() {
       // - myChar = 내 로컬 캐릭이므로 실시간 조회 가능
       // - friendChar = 스냅샷/선택값 기준
       if (isOwnerView) {
-        const myPower = getLivePowerFromMyTables(item.myCharKey);
-        const friendPower = item.friendCharPower ?? null;
+        const myPower =
+          getLiveSchedulePower(item.myCharKey, item.mySnapshot, item.myCharName, item.myTableName) ??
+          getScheduleSnapshotPower(item.mySnapshot, item.myCharPower);
+        const friendPower = getScheduleSnapshotPower(item.friendSnapshot, item.friendCharPower);
 
         return {
           myPower,
@@ -2379,10 +2822,10 @@ export default function TodoTracker() {
       // - friendCharKey가 "내 캐릭"이므로 로컬에서 실시간 조회 가능
       // - myCharPower는 상대(owner) 저장값 사용
       if (isTargetView) {
-        const myPower = item.myCharPower ?? null;
-        const friendPower = item.friendCharKey
-          ? getLivePowerFromMyTables(item.friendCharKey)
-          : null;
+        const myPower = getScheduleSnapshotPower(item.mySnapshot, item.myCharPower);
+        const friendPower =
+          getLiveSchedulePower(item.friendCharKey, item.friendSnapshot, item.friendCharName, item.friendTableName) ??
+          getScheduleSnapshotPower(item.friendSnapshot, item.friendCharPower);
 
         return {
           myPower,
@@ -2395,8 +2838,8 @@ export default function TodoTracker() {
       }
 
       return {
-        myPower: item.myCharPower ?? null,
-        friendPower: item.friendCharPower ?? null,
+        myPower: getScheduleSnapshotPower(item.mySnapshot, item.myCharPower),
+        friendPower: getScheduleSnapshotPower(item.friendSnapshot, item.friendCharPower),
         avgPower: item.avgPower ?? null,
       };
     }
@@ -2405,13 +2848,22 @@ export default function TodoTracker() {
       schedule: SharedWeeklySchedule,
       item: SharedWeeklyScheduleItem
     ): number | null {
-      if (!item.friendCharKey) return null;
+      const selectedKey = getScheduleFriendSelectValue(schedule, item);
+      if (!selectedKey && !item.friendSnapshot && !item.friendCharName) return null;
 
+      const candidateKeys = getScheduleCandidateKeys(
+        item.friendCharKey,
+        item.friendTableName,
+        item.friendCharName,
+        item.friendSnapshot
+      );
       const sourceCandidates = getScheduleAssignableCandidates(schedule);
-      const friend = sourceCandidates.find((fr) => fr.key === item.friendCharKey);
-      if (!friend) return item.friendCharPower ?? null;
+      const friend = sourceCandidates.find(
+        (fr) => fr.key === selectedKey || candidateKeys.includes(fr.key)
+      );
+      if (!friend) return getScheduleSnapshotPower(item.friendSnapshot, item.friendCharPower);
 
-      return friend.power ?? null;
+      return friend.power ?? getScheduleSnapshotPower(item.friendSnapshot, item.friendCharPower);
     }
 
     function getScheduleAssignableCandidates(
@@ -2453,14 +2905,23 @@ export default function TodoTracker() {
       remainingRaids: string[];
       commonRaids: string[];
     }> {
-      const currentSelectedKey = item.friendCharKey ? String(item.friendCharKey) : "";
+      const currentSelectedKey = getScheduleFriendSelectValue(schedule, item);
       const sourceCandidates = getScheduleAssignableCandidates(schedule);
 
-      return sourceCandidates
+      const options = sourceCandidates
         .map((fr: FriendCandidate) => {
           const usedRaidSet = new Set<string>(
             schedule.items
-              .filter((x: SharedWeeklyScheduleItem) => x.id !== item.id && String(x.friendCharKey ?? "") === fr.key)
+              .filter(
+                (x: SharedWeeklyScheduleItem) =>
+                  x.id !== item.id &&
+                  getScheduleCandidateKeys(
+                    x.friendCharKey,
+                    x.friendTableName,
+                    x.friendCharName,
+                    x.friendSnapshot
+                  ).includes(fr.key)
+              )
               .flatMap((x: SharedWeeklyScheduleItem) => x.raidNames ?? [])
               .map((raid: string) => normalizeRaidName(raid))
           );
@@ -2478,6 +2939,31 @@ export default function TodoTracker() {
           if (fr.key === currentSelectedKey) return true;
           return fr.commonRaids.length > 0;
         });
+
+      if (
+        currentSelectedKey &&
+        !options.some((fr) => fr.key === currentSelectedKey) &&
+        (item.friendSnapshot?.name || item.friendCharName)
+      ) {
+        const snapshotRaids = Array.isArray(item.friendSnapshot?.raids)
+          ? item.friendSnapshot.raids.map((raid) => normalizeRaidName(raid))
+          : getScheduleItemRaidNames(item);
+
+        options.unshift({
+          key: currentSelectedKey,
+          tableName: item.friendSnapshot?.tableName ?? item.friendTableName ?? "",
+          name: item.friendSnapshot?.name ?? item.friendCharName ?? "친구 캐릭",
+          ilvl: parseScheduleNumberValue(item.friendSnapshot?.ilvl ?? item.friendSnapshot?.itemLevel) ?? 0,
+          power: getScheduleSnapshotPower(item.friendSnapshot, item.friendCharPower) ?? 0,
+          remainingRaids: snapshotRaids,
+          allRaids: snapshotRaids,
+          activeRaids: snapshotRaids,
+          clearedRaids: [],
+          commonRaids: getScheduleItemRaidNames(item),
+        });
+      }
+
+      return options;
     }
 
     function assignFriendToScheduleItem(
@@ -2501,6 +2987,8 @@ export default function TodoTracker() {
                 friendCharName: null,
                 friendTableName: null,
                 friendCharPower: null,
+                friendSnapshot: null,
+                friendClearedRaidNames: [],
                 raidNames: Array.isArray(item.baseRaidNames) ? [...item.baseRaidNames] : [],
                 avgPower: null,
               };
@@ -2512,7 +3000,16 @@ export default function TodoTracker() {
 
             const usedRaidSet = new Set(
               schedule.items
-                .filter((x) => x.id !== item.id && String(x.friendCharKey ?? "") === friend.key)
+                .filter(
+                  (x) =>
+                    x.id !== item.id &&
+                    getScheduleCandidateKeys(
+                      x.friendCharKey,
+                      x.friendTableName,
+                      x.friendCharName,
+                      x.friendSnapshot
+                    ).includes(friend.key)
+                )
                 .flatMap((x) => x.raidNames ?? [])
                 .map((raid) => normalizeRaidName(raid))
             );
@@ -2521,9 +3018,10 @@ export default function TodoTracker() {
               (raid) => !usedRaidSet.has(normalizeRaidName(raid))
             );
 
+            const myPower = getScheduleSnapshotPower(item.mySnapshot, item.myCharPower);
             const avgPower =
-              item.myCharPower != null && friend.power > 0
-                ? Math.round((item.myCharPower + friend.power) / 2)
+              myPower != null && friend.power > 0
+                ? Math.round((myPower + friend.power) / 2)
                 : null;
 
             return {
@@ -2533,6 +3031,7 @@ export default function TodoTracker() {
               friendCharName: friend.name,
               friendTableName: friend.tableName ?? null,
               friendCharPower: friend.power ?? null,
+              friendSnapshot: buildScheduleCharacterSnapshot(friend),
               raidNames: [...commonRaids],
               avgPower,
             };
@@ -3137,12 +3636,12 @@ export default function TodoTracker() {
                                       <div
                                         className={`weeklyScheduleMyChar ${completion.allCleared ? "is-cleared" : ""} ${completion.isPast ? "is-past" : ""}`}
                                       >
-                                        {item.friendCharName
-                                          ? `${item.myCharName} - ${item.friendCharName}`
-                                          : item.myCharName}
+                                        {getScheduleFriendDisplayName(item)
+                                          ? `${getScheduleMyDisplayName(item)} - ${getScheduleFriendDisplayName(item)}`
+                                          : getScheduleMyDisplayName(item)}
                                       </div>
 
-                                      {!item.friendCharKey && (
+                                      {!getScheduleFriendDisplayName(item) && (
                                         <div className="weeklyScheduleOpenBadge">
                                           선택 대기중
                                         </div>
@@ -3160,7 +3659,7 @@ export default function TodoTracker() {
 
                                     <select
                                       className="friendSelect weeklyScheduleFriendSelect"
-                                      value={item.friendCharKey ?? ""}
+                                      value={getScheduleFriendSelectValue(schedule, item)}
                                       onChange={(e) =>
                                         assignFriendToScheduleItem(schedule.id, item.id, e.target.value)
                                       }
@@ -3644,7 +4143,8 @@ export default function TodoTracker() {
                     const scheduleState = getRemainScheduleState(
                       me.key,
                       me.allRaids,
-                      scheduledMyRaidSetByChar
+                      scheduledMyRaidSetByChar,
+                      [me.name, getScheduleSnapshotCandidateKey(me.tableName, me.name)]
                     );
                     // 4/26 다음 주 초기화 기준은 레이드는 초기화값으로 보되, 일정표에 넣은 레이드는 흑백 처리
                     const allVisibleRaidsMuted =
@@ -3726,7 +4226,8 @@ export default function TodoTracker() {
                     const scheduleState = getRemainScheduleState(
                       fr.key,
                       visibleFriendRaids,
-                      scheduledFriendRaidSetByChar
+                      scheduledFriendRaidSetByChar,
+                      [fr.name, getScheduleSnapshotCandidateKey(fr.tableName, fr.name)]
                     );
 
                     // 4/23 현재 화면에 보이는 레이드칩이 전부 회색 조건이면 이름도 같이 회색

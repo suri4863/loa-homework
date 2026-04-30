@@ -150,6 +150,16 @@ export type WeeklyScheduleDay = "수" | "목" | "금" | "토" | "일" | "월" | 
 
 export type SharedWeeklyScheduleItemMode = "MATCHED" | "OPEN_SLOT";
 
+export type SharedScheduleCharacterSnapshot = {
+  key?: string | null;
+  tableName?: string | null;
+  name: string;
+  itemLevel?: string | null;
+  ilvl?: number | null;
+  power?: number | null;
+  raids?: string[];
+};
+
 export type SharedWeeklyScheduleItem = {
   id: string;
   day: WeeklyScheduleDay;
@@ -158,6 +168,7 @@ export type SharedWeeklyScheduleItem = {
   myCharName: string;
   myTableName?: string | null;
   myCharPower: number | null;
+  mySnapshot?: SharedScheduleCharacterSnapshot | null;
 
   // 4/22 일정표 레이드 난이도 표시용 키 추가
   myWeeklyRaidPickKey?: string | null;
@@ -167,6 +178,7 @@ export type SharedWeeklyScheduleItem = {
   friendCharName: string | null;
   friendTableName?: string | null;
   friendCharPower: number | null;
+  friendSnapshot?: SharedScheduleCharacterSnapshot | null;
   friendClearedRaidNames?: string[];
 
   mode: SharedWeeklyScheduleItemMode;
