@@ -1389,11 +1389,179 @@
   gap: 12px;
 }
 
+.simulatorTabsCard {
+  gap: 12px;
+}
+
+.simulatorTabsCard .resourceTabs {
+  width: fit-content;
+}
+
+.combatTargetGrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.targetCombatPanel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-soft);
+  padding: 12px;
+}
+
+.combatDetailEditor {
+  display: grid;
+  gap: 10px;
+}
+
+.combatDetailGrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.combatResultPanel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.combatResultPanel div {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 10px 12px;
+}
+
+.combatResultPanel strong {
+  color: var(--text);
+  font-size: 18px;
+}
+
+.combatUpgradeEditorGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.combatUpgradeEditor {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.2fr) repeat(4, minmax(82px, 1fr));
+  gap: 8px;
+  align-items: end;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 10px;
+}
+
+.combatUpgradeEditor > div {
+  display: grid;
+  gap: 3px;
+}
+
+.combatUpgradeEditor strong {
+  color: var(--text);
+}
+
+.combatUpgradeEditor span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.combatUpgradeEditor label {
+  gap: 4px;
+}
+
+.combatUpgradeEditor input {
+  min-height: 34px;
+  padding: 7px 8px;
+}
+
+.combatUpgradeRecommendation {
+  display: grid;
+  gap: 10px;
+}
+
+.combatUpgradeList {
+  display: grid;
+  gap: 8px;
+}
+
+.combatUpgradeRow {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 10px 12px;
+}
+
+.combatUpgradeRow summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.combatUpgradeRow summary::-webkit-details-marker {
+  display: none;
+}
+
+.combatUpgradeRow summary > div {
+  display: grid;
+  gap: 4px;
+}
+
+.combatUpgradeRow summary > div:last-child {
+  text-align: right;
+}
+
+.combatUpgradeRow span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.combatUpgradeDetailList {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .resourceTabsHeader {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+}
+
+.growthEngineStatus {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.growthEngineStatus button {
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--card);
+  color: var(--text);
+  padding: 7px 12px;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.growthEngineStatus button:disabled {
+  cursor: wait;
+  opacity: 0.65;
 }
 
 .resourceTabs {
@@ -1504,6 +1672,9 @@
   .resultMaterialTable,
   .compactInputs,
   .routeMaterialGrid,
+  .combatTargetGrid,
+  .combatDetailGrid,
+  .combatResultPanel,
   .recommendGrid {
     grid-template-columns: 1fr;
   }

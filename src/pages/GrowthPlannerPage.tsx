@@ -2,16 +2,17 @@
 import "./GrowthPlannerPage.css";
 import { DEFAULT_TODO_STATE, type Character, type TodoTable } from "../store/todoStore";
 import {
-  estimateGrowthPlan,
+  makeEmptyGrowthEstimate,
   makeEmptyPlannerState,
   type ConfirmedUpgrade,
   type EquipmentSlot,
+  type GrowthEstimate,
   type GrowthPlannerState,
   type MaterialInventory,
   type MarketPriceSnapshot,
   type RefiningRouteStep,
   type RefiningMode,
-} from "../lib/growthPlanner";
+} from "../lib/growthPlannerLight";
 import { OCR_SCREEN_TEMPLATES, type OcrFieldBox } from "../lib/refiningData";
 import {
   buildPlannerRaidSelections,
@@ -25,6 +26,7 @@ import {
 } from "../lib/raidGold";
 
 const STORAGE_KEY = "loa-growth-planner:v1";
+const COMBAT_SIMULATOR_ENABLED = false;
 
 const SLOT_ORDER: EquipmentSlot[] = ["helmet", "shoulder", "chest", "pants", "gloves", "weapon"];
 
@@ -233,6 +235,31 @@ type CharacterImportResponse = {
   sourceUrl: string;
   nickname: string;
   fetchedAt: string;
+  className?: string | null;
+  combatPower?: number | null;
+  inferredRole?: CombatRole;
+  combatDetails?: Partial<CombatPowerDetails>;
+  combatSystems?: {
+    engravingCount: number;
+    engravingNames: string[];
+    engravings?: Array<{ name: string; level?: number; points?: number }>;
+    gemLevelSum: number;
+    gemCount: number;
+    gems?: Array<{ name: string; level: number; type: string }>;
+    arkPassivePoints: number;
+    arkPassive?: {
+      evolution: number;
+      enlightenment: number;
+      leap: number;
+    };
+    arkGridPoints: number;
+    arkGrid?: Array<{ name: string; points: number }>;
+    accessoryCount: number;
+    accessories?: Array<{ name: string; quality?: number; effects: string[] }>;
+    avatarCount: number;
+    avatarGradeLevel: number;
+    avatars?: Array<{ name: string; grade: string; slot?: string; effect?: string }>;
+  } | null;
   currentItemLevel: number | null;
   pieces: CharacterImportPiece[];
   warnings: string[];
@@ -246,6 +273,63 @@ type CharacterImportResponse = {
     fallbackLevelSnippet: string;
   };
 };
+
+type GrowthSimulatorMode = "level" | "combat";
+type CombatRole = "dealer" | "support";
+
+type CombatPowerDetails = {
+  combatLevel: number;
+  pureBaseAttack: number;
+  maxHp: number;
+  weaponQualityBonusPct: number;
+  arkEvolutionPoints: number;
+  arkEnlightenmentPoints: number;
+  arkLeapPoints: number;
+  evolutionKarmaRanks: number;
+  enlightenmentKarmaRanks: number;
+  leapKarmaRanks: number;
+  transcendenceGradeSum: number;
+  t4GemLevelSum: number;
+  engravingBonusPct: number;
+  accessoryBonusPct: number;
+  braceletBonusPct: number;
+  elixirBonusPct: number;
+  miscBonusPct: number;
+  supportCareBonusPct: number;
+  supportBuffBonusPct: number;
+};
+
+type CombatUpgradeSystemKey = "avatar" | "bracelet" | "gem" | "engraving" | "arkGrid" | "arkPassive" | "accessory";
+
+type CombatUpgradeSetting = {
+  current: number;
+  target: number;
+  costPerStep: number;
+  powerGainPerStep: number;
+};
+
+type CombatUpgradeCandidate = {
+  key: CombatUpgradeSystemKey | "equipment";
+  label: string;
+  from: number;
+  to: number;
+  steps: number;
+  cost: number;
+  powerGain: number;
+  projectedPower: number;
+  note: string;
+  details: string[];
+};
+
+const COMBAT_UPGRADE_META: Array<{ key: CombatUpgradeSystemKey; label: string; note: string }> = [
+  { key: "avatar", label: "아바타", note: "영웅/전설/스페셜 아바타 단계 보정" },
+  { key: "bracelet", label: "팔찌", note: "유효 옵션 교체/상승 보정" },
+  { key: "gem", label: "보석", note: "4티어 보석 레벨 합 기준" },
+  { key: "engraving", label: "각인", note: "각인 포인트/유효 각인 보정" },
+  { key: "arkGrid", label: "아크그리드", note: "코어/노드 합산 단계 보정" },
+  { key: "arkPassive", label: "아크패시브", note: "진화/깨달음/도약 포인트 보정" },
+  { key: "accessory", label: "악세", note: "상/중/하 옵션 및 품질 보정" },
+];
 
 type MarketAutoFillResponse = {
   ok: boolean;
@@ -506,6 +590,8 @@ function formatItemLevel(value: number) {
 type DisplayRouteStep = RefiningRouteStep & {
   originalIndexes: number[];
 };
+
+type EstimateGrowthPlanFn = (input: GrowthPlannerState) => GrowthEstimate;
 
 type ConfirmedUpgradeDraft = {
   slot: EquipmentSlot;
@@ -1077,7 +1163,7 @@ function sumBonusRows(rows: BonusRewardRaidRow[]) {
   );
 }
 
-function shouldShowMarketField(key: keyof MarketPriceSnapshot, required: ReturnType<typeof estimateGrowthPlan>["requiredMaterials"]) {
+function shouldShowMarketField(key: keyof MarketPriceSnapshot, required: GrowthEstimate["requiredMaterials"]) {
   if (key === "shardPricePer1000") return required.shards > 0;
   if (key === "leapstonePrice") return required.leapstones > 0;
   if (key === "protectionStonePricePer10") return required.protectionStones > 0;
@@ -1184,6 +1270,216 @@ function averageImportedPieceLevel(pieces: CharacterImportPiece[]) {
   return levels.length === 6 ? levels.reduce((sum, value) => sum + value, 0) / 6 : null;
 }
 
+function routeFinalItemLevel(baseLevel: number, steps: RefiningRouteStep[]) {
+  return Number(baseLevel || 0) + steps.reduce((sum, step) => sum + Number(step.levelGain || 0), 0);
+}
+
+function estimateCombatPowerFromLevel(currentCombatPower: number, currentLevel: number, finalLevel: number, role: CombatRole, correction = 1) {
+  const levelGain = Math.max(0, Number(finalLevel || 0) - Number(currentLevel || 0));
+  if (!currentCombatPower || !levelGain) return currentCombatPower || 0;
+  const roleCoefficient = role === "support" ? 0.0068 : 0.0085;
+  return currentCombatPower * (1 + levelGain * roleCoefficient * Math.max(0.1, correction || 1));
+}
+
+function makeCombatPowerDetails(): CombatPowerDetails {
+  return {
+    combatLevel: 70,
+    pureBaseAttack: 0,
+    maxHp: 0,
+    weaponQualityBonusPct: 0,
+    arkEvolutionPoints: 0,
+    arkEnlightenmentPoints: 0,
+    arkLeapPoints: 0,
+    evolutionKarmaRanks: 0,
+    enlightenmentKarmaRanks: 0,
+    leapKarmaRanks: 0,
+    transcendenceGradeSum: 0,
+    t4GemLevelSum: 0,
+    engravingBonusPct: 0,
+    accessoryBonusPct: 0,
+    braceletBonusPct: 0,
+    elixirBonusPct: 0,
+    miscBonusPct: 0,
+    supportCareBonusPct: 0,
+    supportBuffBonusPct: 0,
+  };
+}
+
+function makeDefaultCombatUpgradeSettings(): Record<CombatUpgradeSystemKey, CombatUpgradeSetting> {
+  return {
+    avatar: { current: 0, target: 1, costPerStep: 50000, powerGainPerStep: 80 },
+    bracelet: { current: 0, target: 3, costPerStep: 50000, powerGainPerStep: 55 },
+    gem: { current: 0, target: 96, costPerStep: 115000, powerGainPerStep: 20 },
+    engraving: { current: 0, target: 5, costPerStep: 30000, powerGainPerStep: 35 },
+    arkGrid: { current: 0, target: 12, costPerStep: 40000, powerGainPerStep: 25 },
+    arkPassive: { current: 0, target: 340, costPerStep: 35000, powerGainPerStep: 18 },
+    accessory: { current: 0, target: 6, costPerStep: 50000, powerGainPerStep: 45 },
+  };
+}
+
+function buildCombatUpgradeCandidates(
+  settings: Record<CombatUpgradeSystemKey, CombatUpgradeSetting>,
+  currentPower: number,
+  targetPower: number,
+  equipmentSimulation: { finalLevel: number; combatPower: number; estimate: GrowthEstimate } | null
+) {
+  const candidates: CombatUpgradeCandidate[] = COMBAT_UPGRADE_META.map((meta) => {
+    const setting = settings[meta.key];
+    const steps = Math.max(0, Math.floor(Number(setting.target || 0) - Number(setting.current || 0)));
+    const cost = steps * Math.max(0, Number(setting.costPerStep || 0));
+    const powerGain = steps * Math.max(0, Number(setting.powerGainPerStep || 0));
+    return {
+      key: meta.key,
+      label: meta.label,
+      from: setting.current,
+      to: setting.target,
+      steps,
+      cost,
+      powerGain,
+      projectedPower: currentPower + powerGain,
+      note: meta.note,
+      details: buildCombatUpgradeDetails(meta.key, setting, steps, cost, powerGain),
+    };
+  }).filter((candidate) => candidate.steps > 0 && candidate.powerGain > 0);
+
+  if (equipmentSimulation) {
+    candidates.push({
+      key: "equipment",
+      label: "장비 강화",
+      from: 0,
+      to: equipmentSimulation.finalLevel,
+      steps: equipmentSimulation.estimate.routeSteps.length,
+      cost: equipmentSimulation.estimate.totalSpendGold,
+      powerGain: Math.max(0, equipmentSimulation.combatPower - currentPower),
+      projectedPower: equipmentSimulation.combatPower,
+      note: "기존 목표 레벨 강화 계산 결과",
+      details: equipmentSimulation.estimate.routeSteps.slice(0, 8).map((step) => `${step.slotLabel} ${step.fromLevel} -> ${step.toLevel} (${formatGold(step.averageCost)})`),
+    });
+  }
+
+  const sorted = candidates.sort((a, b) => a.cost / Math.max(1, a.powerGain) - b.cost / Math.max(1, b.powerGain));
+  const selected: CombatUpgradeCandidate[] = [];
+  let projectedPower = currentPower;
+  let totalCost = 0;
+
+  for (const candidate of sorted) {
+    if (targetPower > 0 && projectedPower >= targetPower) break;
+    selected.push({ ...candidate, projectedPower: projectedPower + candidate.powerGain });
+    projectedPower += candidate.powerGain;
+    totalCost += candidate.cost;
+  }
+
+  return {
+    candidates: sorted,
+    selected,
+    projectedPower,
+    totalCost,
+    remainingPower: Math.max(0, targetPower - projectedPower),
+  };
+}
+
+function buildCombatUpgradeDetails(
+  key: CombatUpgradeSystemKey,
+  setting: CombatUpgradeSetting,
+  steps: number,
+  cost: number,
+  powerGain: number
+) {
+  const perStepCost = Math.max(0, Number(setting.costPerStep || 0));
+  const detailsByKey: Record<CombatUpgradeSystemKey, string[]> = {
+    avatar: [
+      `영웅 아바타 상의 -> 전설 아바타 상의: ${formatGold(perStepCost)}`,
+      `나머지 아바타 부위도 같은 단가로 ${steps}단계 계산`,
+    ],
+    bracelet: [`팔찌 유효 옵션 1단계 상승/교체: ${formatGold(perStepCost)}`, "치피/치적/특화/신속 등 유효 옵션 기준으로 직접 보정"],
+    gem: [`4티어 보석 레벨 합 +1: ${formatGold(perStepCost)}`, "공식 보석 탭에서 읽은 레벨 합을 현재값으로 사용"],
+    engraving: [
+      `각인 포인트 또는 유효 각인 1단계 보정: ${formatGold(perStepCost)}`,
+      "전투정보실 각인 효과에서 읽은 각인 수를 현재값으로 사용",
+    ],
+    arkGrid: [`아크그리드 코어/노드 1단계: ${formatGold(perStepCost)}`, "공격력/아군 피해 강화/낙인력 등 표시값 기준"],
+    arkPassive: [`진화/깨달음/도약 포인트 +1: ${formatGold(perStepCost)}`, "공식 페이지 아크패시브 포인트 합을 현재값으로 사용"],
+    accessory: [`악세 상/중/하 옵션 또는 품질 1단계: ${formatGold(perStepCost)}`, "목걸이/귀걸이/반지 유효 옵션 기준으로 보정"],
+  };
+  return [
+    ...detailsByKey[key],
+    `총 ${steps}단계 / 예상 전투력 +${Math.round(powerGain).toLocaleString()} / 총 비용 ${formatGold(cost)}`,
+  ];
+}
+
+function pctMultiplier(value: number) {
+  return 1 + Math.max(0, Number(value || 0)) / 100;
+}
+
+function arkPointMultiplier(points: number, perPoint: number) {
+  return 1 + Math.max(0, Number(points || 0)) * perPoint;
+}
+
+function karmaMultiplier(ranks: number, perRank: number) {
+  return 1 + Math.max(0, Number(ranks || 0)) * perRank;
+}
+
+function calculateFormulaCombatPower(details: CombatPowerDetails, role: CombatRole) {
+  const commonMultiplier =
+    pctMultiplier(details.weaponQualityBonusPct) *
+    pctMultiplier(details.engravingBonusPct) *
+    pctMultiplier(details.accessoryBonusPct) *
+    pctMultiplier(details.braceletBonusPct) *
+    pctMultiplier(details.elixirBonusPct) *
+    pctMultiplier(details.miscBonusPct) *
+    arkPointMultiplier(details.arkEvolutionPoints, 0.0015) *
+    arkPointMultiplier(details.arkEnlightenmentPoints, 0.0012) *
+    arkPointMultiplier(details.arkLeapPoints, 0.001) *
+    karmaMultiplier(details.evolutionKarmaRanks, 0.003) *
+    karmaMultiplier(details.enlightenmentKarmaRanks, 0.0025) *
+    karmaMultiplier(details.leapKarmaRanks, 0.002) *
+    (1 + Math.max(0, details.transcendenceGradeSum) * 0.0018) *
+    (1 + Math.max(0, details.t4GemLevelSum) * 0.001);
+
+  const levelMultiplier = 1 + Math.max(0, details.combatLevel - 60) * 0.002;
+
+  if (role === "support") {
+    const carePower = Math.max(0, details.maxHp) * 0.12 * pctMultiplier(details.supportCareBonusPct);
+    const buffPower = Math.max(0, details.pureBaseAttack) * 1.24 * pctMultiplier(details.supportBuffBonusPct);
+    return (carePower + buffPower) * commonMultiplier * levelMultiplier;
+  }
+
+  return Math.max(0, details.pureBaseAttack) * 2.88 * commonMultiplier * levelMultiplier;
+}
+
+function buildCombatSimulation(
+  planner: GrowthPlannerState,
+  targetCombatPower: number,
+  currentCombatPower: number,
+  role: CombatRole,
+  correction: number,
+  details: CombatPowerDetails,
+  estimateGrowthPlan: EstimateGrowthPlanFn
+) {
+  const minimumTargetLevel = Math.max(Number(planner.character.targetItemLevel || 0), Number(planner.character.currentItemLevel || 0));
+  const baseLevel = Number(planner.character.currentItemLevel || 0);
+  const formulaCurrent = calculateFormulaCombatPower(details, role);
+  const calibration = formulaCurrent > 0 && currentCombatPower > 0 ? currentCombatPower / formulaCurrent : 1;
+  let best: { targetLevel: number; finalLevel: number; combatPower: number; estimate: GrowthEstimate } | null = null;
+
+  for (let offset = 0; offset <= 40; offset += 2) {
+    const targetLevel = minimumTargetLevel + offset;
+    const candidateState = cloneState(planner);
+    candidateState.character.targetItemLevel = targetLevel;
+    const estimate = estimateGrowthPlan(candidateState);
+    const finalLevel = routeFinalItemLevel(baseLevel, estimate.routeSteps);
+    const formulaPower = formulaCurrent > 0 ? formulaCurrent * calibration : currentCombatPower;
+    const combatPower = estimateCombatPowerFromLevel(formulaPower, baseLevel, finalLevel, role, correction);
+    if (finalLevel + 0.0001 >= minimumTargetLevel && combatPower + 0.0001 >= targetCombatPower) {
+      if (!best || estimate.totalSpendGold < best.estimate.totalSpendGold) {
+        best = { targetLevel, finalLevel, combatPower, estimate };
+      }
+    }
+  }
+
+  return best;
+}
+
 export default function GrowthPlannerPage() {
   const todoState = useMemo(() => DEFAULT_TODO_STATE.load() ?? DEFAULT_TODO_STATE.make(), []);
   const [planner, setPlanner] = useState<GrowthPlannerState>(() => {
@@ -1197,6 +1493,18 @@ export default function GrowthPlannerPage() {
   const [profileNickname, setProfileNickname] = useState("");
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileSummary, setProfileSummary] = useState<CharacterImportResponse | null>(null);
+  const [simulatorMode, setSimulatorMode] = useState<GrowthSimulatorMode>("level");
+  const [combatRole, setCombatRole] = useState<CombatRole>("dealer");
+  const [currentCombatPower, setCurrentCombatPower] = useState(0);
+  const [targetCombatPower, setTargetCombatPower] = useState(0);
+  const [combatLevelCorrection, setCombatLevelCorrection] = useState(1);
+  const [combatDetails, setCombatDetails] = useState<CombatPowerDetails>(() => makeCombatPowerDetails());
+  const [combatUpgradeSettings, setCombatUpgradeSettings] = useState<Record<CombatUpgradeSystemKey, CombatUpgradeSetting>>(() =>
+    makeDefaultCombatUpgradeSettings()
+  );
+  const [estimateGrowthPlanFn, setEstimateGrowthPlanFn] = useState<EstimateGrowthPlanFn | null>(null);
+  const [growthEngineLoading, setGrowthEngineLoading] = useState(false);
+  const [growthEngineError, setGrowthEngineError] = useState("");
   const [confirmedDraft, setConfirmedDraft] = useState<ConfirmedUpgradeDraft>({
     slot: "weapon",
     action: "advanced",
@@ -1232,6 +1540,20 @@ export default function GrowthPlannerPage() {
     width: number;
     height: number;
   } | null>(null);
+
+  function loadGrowthEngine() {
+    if (estimateGrowthPlanFn || growthEngineLoading) return;
+    setGrowthEngineLoading(true);
+    import("../lib/growthPlanner")
+      .then((module) => {
+        setEstimateGrowthPlanFn(() => module.estimateGrowthPlan);
+        setGrowthEngineError("");
+      })
+      .catch((error) => {
+        setGrowthEngineError(error instanceof Error ? error.message : "성장 계산 엔진을 불러오지 못했어.");
+      })
+      .finally(() => setGrowthEngineLoading(false));
+  }
 
   const selectedTable = todoState.tables.find((table) => table.id === getInitialTableId(todoState.tables, planner));
   const selectedCharacter = selectedTable?.characters.find((character) => character.id === planner.character.charId);
@@ -1275,8 +1597,53 @@ export default function GrowthPlannerPage() {
       },
     };
   }, [currentRaidGold.tradableGold, planner, targetRaidGold.tradableGold, tradableOnlyEstimate]);
-  const estimate = useMemo(() => estimateGrowthPlan(estimateInput), [estimateInput]);
-  const displayRouteSteps = useMemo(() => groupRouteStepsForDisplay(estimate.routeSteps), [estimate.routeSteps]);
+  const canRunGrowthEstimate = Number(estimateInput.character.currentItemLevel || 0) > 0 && Number(estimateInput.character.targetItemLevel || 0) > 0;
+  const estimate = useMemo(() => {
+    if (!estimateGrowthPlanFn) return makeEmptyGrowthEstimate();
+    return canRunGrowthEstimate
+      ? estimateGrowthPlanFn(estimateInput)
+      : estimateGrowthPlanFn({
+          ...estimateInput,
+          character: {
+            ...estimateInput.character,
+            currentItemLevel: 1720,
+            targetItemLevel: 1720,
+          },
+        });
+  }, [canRunGrowthEstimate, estimateGrowthPlanFn, estimateInput]);
+  const combatSimulation = useMemo(
+    () =>
+      COMBAT_SIMULATOR_ENABLED && simulatorMode === "combat" && estimateGrowthPlanFn && canRunGrowthEstimate && targetCombatPower > 0
+        ? buildCombatSimulation(estimateInput, targetCombatPower, currentCombatPower, combatRole, combatLevelCorrection, combatDetails, estimateGrowthPlanFn)
+        : null,
+    [
+      canRunGrowthEstimate,
+      combatDetails,
+      combatLevelCorrection,
+      combatRole,
+      currentCombatPower,
+      estimateGrowthPlanFn,
+      estimateInput,
+      simulatorMode,
+      targetCombatPower,
+    ]
+  );
+  const formulaCombatPower = useMemo(() => calculateFormulaCombatPower(combatDetails, combatRole), [combatDetails, combatRole]);
+  const combatUpgradePlan = useMemo(
+    () =>
+      COMBAT_SIMULATOR_ENABLED
+        ? buildCombatUpgradeCandidates(combatUpgradeSettings, currentCombatPower, targetCombatPower, combatSimulation)
+        : {
+            candidates: [],
+            selected: [],
+            projectedPower: currentCombatPower,
+            totalCost: 0,
+            remainingPower: 0,
+          },
+    [combatSimulation, combatUpgradeSettings, currentCombatPower, targetCombatPower]
+  );
+  const activeEstimate = simulatorMode === "combat" && combatSimulation ? combatSimulation.estimate : estimate;
+  const displayRouteSteps = useMemo(() => groupRouteStepsForDisplay(activeEstimate.routeSteps), [activeEstimate.routeSteps]);
   const confirmedRouteSteps = useMemo(() => displayRouteSteps.filter((step) => step.confirmed), [displayRouteSteps]);
   const confirmedRouteMaterialLines = useMemo(() => {
     const materials: RefiningRouteStep["expectedMaterials"] = {};
@@ -1287,10 +1654,10 @@ export default function GrowthPlannerPage() {
   }, [confirmedRouteSteps]);
   const usedMaterialRows = useMemo(
     () =>
-      ROUTE_MATERIAL_USAGE_FIELDS.map((field) => [field.label, Number(estimate.requiredMaterials[field.key] || 0)] as const).filter(
+      ROUTE_MATERIAL_USAGE_FIELDS.map((field) => [field.label, Number(activeEstimate.requiredMaterials[field.key] || 0)] as const).filter(
         ([, value]) => Math.round(value) > 0
       ),
-    [estimate.requiredMaterials]
+    [activeEstimate.requiredMaterials]
   );
   const displayedCurrentItemLevel = useMemo(() => {
     const pieceLevels = planner.character.pieces.map(deriveEquipmentItemLevel).filter((level) => level > 0);
@@ -1311,8 +1678,8 @@ export default function GrowthPlannerPage() {
   const confirmedDraftPiece = planner.character.pieces.find((piece) => piece.slot === confirmedDraft.slot);
   const confirmedDraftCurrentLevel = confirmedCurrentLevel(confirmedDraftPiece, confirmedDraft.action);
   const visibleMarketLabels = useMemo(
-    () => MARKET_LABELS.filter(([key]) => shouldShowMarketField(key, estimate.requiredMaterials) || shouldShowSupportBookMarketField(key, planner)),
-    [estimate.requiredMaterials, planner]
+    () => MARKET_LABELS.filter(([key]) => shouldShowMarketField(key, activeEstimate.requiredMaterials) || shouldShowSupportBookMarketField(key, planner)),
+    [activeEstimate.requiredMaterials, planner]
   );
   const selectedOcrField = planner.ocr.fields.find((field) => field.id === planner.ocr.selectedFieldId) ?? planner.ocr.fields[0] ?? null;
 
@@ -1616,6 +1983,92 @@ export default function GrowthPlannerPage() {
     });
   }
 
+  function patchCombatDetails(patch: Partial<CombatPowerDetails>) {
+    setCombatDetails((prev) => ({ ...prev, ...patch }));
+  }
+
+  function patchCombatUpgradeSetting(key: CombatUpgradeSystemKey, patch: Partial<CombatUpgradeSetting>) {
+    setCombatUpgradeSettings((prev) => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        ...patch,
+      },
+    }));
+  }
+
+  function applyImportedCombatInfo(data: CharacterImportResponse) {
+    if (data.inferredRole) setCombatRole(data.inferredRole);
+    const importedCombatPower = Number(data.combatPower || 0);
+    if (importedCombatPower > 0) {
+      setCurrentCombatPower(importedCombatPower);
+      setTargetCombatPower((prev) => (prev > importedCombatPower ? prev : Math.ceil(importedCombatPower * 1.05)));
+    }
+    if (data.combatDetails) {
+      setCombatDetails((prev) => ({ ...prev, ...data.combatDetails }));
+    }
+    if (data.combatSystems || data.combatDetails) {
+      const systems = data.combatSystems;
+      setCombatUpgradeSettings((prev) => ({
+        ...prev,
+        gem: {
+          ...prev.gem,
+          current: Math.max(prev.gem.current, Number(systems?.gemLevelSum || data.combatDetails?.t4GemLevelSum || 0)),
+          target: Math.max(prev.gem.target, Number(systems?.gemLevelSum || data.combatDetails?.t4GemLevelSum || 0) + 11),
+        },
+        arkPassive: {
+          ...prev.arkPassive,
+          current: Math.max(
+            prev.arkPassive.current,
+            Number(systems?.arkPassivePoints || 0) ||
+              Number(data.combatDetails?.arkEvolutionPoints || 0) +
+                Number(data.combatDetails?.arkEnlightenmentPoints || 0) +
+                Number(data.combatDetails?.arkLeapPoints || 0)
+          ),
+          target: Math.max(
+            prev.arkPassive.target,
+            (Number(systems?.arkPassivePoints || 0) ||
+              Number(data.combatDetails?.arkEvolutionPoints || 0) +
+                Number(data.combatDetails?.arkEnlightenmentPoints || 0) +
+                Number(data.combatDetails?.arkLeapPoints || 0)) + 10
+          ),
+        },
+        arkGrid: {
+          ...prev.arkGrid,
+          current: Math.max(
+            prev.arkGrid.current,
+            Number(systems?.arkGridPoints || 0) ||
+              Number(data.combatDetails?.evolutionKarmaRanks || 0) +
+                Number(data.combatDetails?.enlightenmentKarmaRanks || 0) +
+                Number(data.combatDetails?.leapKarmaRanks || 0)
+          ),
+          target: Math.max(
+            prev.arkGrid.target,
+            (Number(systems?.arkGridPoints || 0) ||
+              Number(data.combatDetails?.evolutionKarmaRanks || 0) +
+                Number(data.combatDetails?.enlightenmentKarmaRanks || 0) +
+                Number(data.combatDetails?.leapKarmaRanks || 0)) + 10
+          ),
+        },
+        engraving: {
+          ...prev.engraving,
+          current: Math.max(prev.engraving.current, Number(systems?.engravingCount || 0)),
+          target: Math.max(prev.engraving.target, Number(systems?.engravingCount || 0)),
+        },
+        accessory: {
+          ...prev.accessory,
+          current: Math.max(prev.accessory.current, Number(systems?.accessoryCount || 0)),
+          target: Math.max(prev.accessory.target, Number(systems?.accessoryCount || 0) + 1),
+        },
+        avatar: {
+          ...prev.avatar,
+          current: Math.max(prev.avatar.current, Number(systems?.avatarGradeLevel || 0)),
+          target: Math.max(prev.avatar.target, Number(systems?.avatarGradeLevel || 0)),
+        },
+      }));
+    }
+  }
+
   function patchOcrField(fieldId: string, patch: Partial<OcrFieldBox>) {
     patchPlanner((draft) => {
       draft.ocr.fields = draft.ocr.fields.map((field) => (field.id === fieldId ? { ...field, ...patch } : field));
@@ -1663,6 +2116,7 @@ export default function GrowthPlannerPage() {
       }
 
       setProfileSummary(data);
+      applyImportedCombatInfo(data);
       const importedAverageLevel = averageImportedPieceLevel(data.pieces);
       const importedCurrentLevel = importedAverageLevel ?? data.currentItemLevel;
       patchPlanner((draft) => {
@@ -1710,6 +2164,7 @@ export default function GrowthPlannerPage() {
       }
 
       setProfileSummary(data);
+      applyImportedCombatInfo(data);
 
       patchPlanner((draft) => {
         draft.character.characterName = buildCharacterName(selectedCharacter, nickname);
@@ -2263,6 +2718,37 @@ export default function GrowthPlannerPage() {
         </div>
       </section>
 
+      <section className="growthCard simulatorTabsCard">
+        <div className="resourceTabsHeader">
+          <div className="resourceTabs">
+            <button type="button" className={simulatorMode === "level" ? "active" : ""} onClick={() => setSimulatorMode("level")}>
+              목표 레벨 시뮬레이터
+            </button>
+            <button
+              type="button"
+              className={simulatorMode === "combat" ? "active" : ""}
+              onClick={() => {
+                window.alert("목표 레벨+전투력 시뮬레이터는 추후 구현 예정이야.");
+                setSimulatorMode("level");
+              }}
+            >
+              목표 레벨+전투력 시뮬레이터
+            </button>
+          </div>
+          <div className="growthEngineStatus">
+            {estimateGrowthPlanFn ? (
+              <span>계산 엔진 준비됨</span>
+            ) : (
+              <button type="button" onClick={loadGrowthEngine} disabled={growthEngineLoading}>
+                {growthEngineLoading ? "계산 엔진 로딩 중" : "계산 엔진 불러오기"}
+              </button>
+            )}
+          </div>
+        </div>
+        {growthEngineError ? <div className="growthError">{growthEngineError}</div> : null}
+        <div className="growthEmpty">목표 레벨+전투력 시뮬레이터는 추후 구현 예정이야.</div>
+      </section>
+
       <div className="growthTopGrid">
         <section className="growthCard setupCard">
           <h3 className="growthCardTitle">대상 캐릭터</h3>
@@ -2382,7 +2868,55 @@ export default function GrowthPlannerPage() {
               <div className="growthSummaryBox">
                 <div>마지막 불러오기: {profileSummary.nickname} / {formatDateTime(profileSummary.fetchedAt)}</div>
                 <div>사용 소스: {profileSummary.source === "official" ? "공식 전투정보실" : "KLOA 보조"}</div>
+                <div>직업/타입: {profileSummary.className || "-"} / {combatRole === "support" ? "서포터" : "딜러"}</div>
                 <div>아이템레벨: {profileSummary.currentItemLevel?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "-"}</div>
+                <div>전투력: {profileSummary.combatPower?.toLocaleString() ?? "-"}</div>
+                <div>
+                  공격력/생명력: {profileSummary.combatDetails?.pureBaseAttack?.toLocaleString() ?? "-"} /{" "}
+                  {profileSummary.combatDetails?.maxHp?.toLocaleString() ?? "-"}
+                </div>
+                <div>
+                  아크패시브: 진화 {profileSummary.combatDetails?.arkEvolutionPoints ?? "-"} / 깨달음{" "}
+                  {profileSummary.combatDetails?.arkEnlightenmentPoints ?? "-"} / 도약 {profileSummary.combatDetails?.arkLeapPoints ?? "-"}
+                </div>
+                {profileSummary.combatSystems ? (
+                  <>
+                    <div>
+                      각인: {profileSummary.combatSystems.engravingNames.length ? profileSummary.combatSystems.engravingNames.join(" / ") : "-"}
+                    </div>
+                    <div>
+                      보석: {profileSummary.combatSystems.gemCount || "-"}개, 합 {profileSummary.combatSystems.gemLevelSum || "-"} / 아크그리드:{" "}
+                      {profileSummary.combatSystems.arkGridPoints || "-"} / 악세: {profileSummary.combatSystems.accessoryCount || "-"}개 / 아바타:{" "}
+                      {profileSummary.combatSystems.avatarGradeLevel === 2
+                        ? "스페셜"
+                        : profileSummary.combatSystems.avatarGradeLevel === 1
+                          ? "전설"
+                          : profileSummary.combatSystems.avatarCount
+                            ? "장착 확인"
+                            : "-"}
+                    </div>
+                    <div className="growthChipRow">
+                      {(profileSummary.combatSystems.gems ?? []).slice(0, 11).map((gem, index) => (
+                        <span key={`${gem.name}-${gem.level}-${index}`} className="growthChip">
+                          {gem.name} {gem.level}레벨 {gem.type}
+                        </span>
+                      ))}
+                      {(profileSummary.combatSystems.accessories ?? []).map((accessory, index) => (
+                        <span key={`${accessory.name}-${index}`} className="growthChip">
+                          {accessory.name}
+                          {accessory.effects.length ? ` ${accessory.effects.slice(0, 2).join(" / ")}` : ""}
+                        </span>
+                      ))}
+                      {(profileSummary.combatSystems.avatars ?? []).map((avatar, index) => (
+                        <span key={`${avatar.name}-${index}`} className="growthChip">
+                          {avatar.grade ? `${avatar.grade} ` : ""}
+                          {avatar.name}
+                          {avatar.effect ? ` ${avatar.effect}` : ""}
+                        </span>
+                      ))}
+                    </div>
+                  </>
+                ) : null}
                 <div className="growthChipRow">
                   {profileSummary.pieces.map((piece) => (
                     <span key={piece.slot} className="growthChip">
@@ -2918,52 +3452,68 @@ export default function GrowthPlannerPage() {
         <div className="estimateCharacterSummary">
           <span>{planner.character.characterName || "선택 캐릭터"}</span>
           <strong>
-            {formatItemLevel(displayedCurrentItemLevel)} -&gt; {formatItemLevel(planner.character.targetItemLevel)}
+            {formatItemLevel(displayedCurrentItemLevel)} -&gt;{" "}
+            {formatItemLevel(simulatorMode === "combat" && combatSimulation ? combatSimulation.finalLevel : planner.character.targetItemLevel)}
           </strong>
         </div>
+        {COMBAT_SIMULATOR_ENABLED && simulatorMode === "combat" ? (
+          <div className="combatResultPanel">
+            <div>
+              <span className="resultLabel">전투력 목표 결과</span>
+              <strong>
+                {currentCombatPower ? Math.round(currentCombatPower).toLocaleString() : "-"} -&gt;{" "}
+                {combatSimulation ? Math.round(combatSimulation.combatPower).toLocaleString() : "-"}
+              </strong>
+            </div>
+            <div>
+              <span className="resultLabel">추천 목표 레벨</span>
+              <strong>{combatSimulation ? formatItemLevel(combatSimulation.finalLevel) : "달성 조합 없음"}</strong>
+            </div>
+          </div>
+        ) : null}
         <div className="resultHero">
           <div className="resultCard">
             <span className="resultLabel">총 추정 지출</span>
-            <div className="resultValue">{formatGold(estimate.totalSpendGold)}</div>
+            <div className="resultValue">{formatGold(activeEstimate.totalSpendGold)}</div>
           </div>
           <div className="resultCard">
             <span className="resultLabel">회수 예상</span>
-            <div className="resultValue">{estimate.paybackWeeks == null ? "-" : `${estimate.paybackWeeks.toLocaleString()}주`}</div>
+            <div className="resultValue">{activeEstimate.paybackWeeks == null ? "-" : `${activeEstimate.paybackWeeks.toLocaleString()}주`}</div>
           </div>
         </div>
         <div className="resultGrid">
           <div className="resultCard">
             <span className="resultLabel">총 누르는 골드</span>
-            <strong>{formatGold(estimate.directGoldCost)}</strong>
+            <strong>{formatGold(activeEstimate.directGoldCost)}</strong>
           </div>
           <div className="resultCard">
             <span className="resultLabel">추가 재료 구매</span>
-            <strong>{formatGold(estimate.materialPurchaseCost)}</strong>
+            <strong>{formatGold(activeEstimate.materialPurchaseCost)}</strong>
           </div>
           <div className="resultCard">
             <span className="resultLabel">귀속 절감 추정</span>
-            <strong>{formatGold(estimate.boundMaterialOffset)}</strong>
+            <strong>{formatGold(activeEstimate.boundMaterialOffset)}</strong>
           </div>
           <div className="resultCard">
             <span className="resultLabel">주간 추가 골드</span>
-            <strong>{formatGold(estimate.additionalWeeklyGold)}</strong>
+            <strong>{formatGold(activeEstimate.additionalWeeklyGold)}</strong>
           </div>
         </div>
         <div className="recommendGrid">
           <div className="recommendBox">
             <div className="resultLabel">지금 바로 올릴 때</div>
             <div className="resultList">
-              <div>귀속골드 사용: {formatGold(estimate.boundGoldUsableNow)}</div>
-              <div>유통골드 필요: {formatGold(estimate.tradableGoldNeededNow)}</div>
-              <div>귀속골드만으로 직접골드 충당: {estimate.boundGoldAffordableWeeks == null ? "-" : `${estimate.boundGoldAffordableWeeks}주`}</div>
+              <div>귀속골드 사용: {formatGold(activeEstimate.boundGoldUsableNow)}</div>
+              <div>유통골드 필요: {formatGold(activeEstimate.tradableGoldNeededNow)}</div>
+              <div>귀속골드만으로 직접골드 충당: {activeEstimate.boundGoldAffordableWeeks == null ? "-" : `${activeEstimate.boundGoldAffordableWeeks}주`}</div>
             </div>
           </div>
           <div className="recommendBox">
             <div className="resultLabel">추천 대기 시점</div>
             <div className="resultList">
-              <div>추천 대기 주차: {estimate.recommendedWaitWeeks}주</div>
-              <div>귀속골드 사용: {formatGold(estimate.recommendedBoundGoldUse)}</div>
-              <div>유통골드 사용: {formatGold(estimate.recommendedTradableGoldUse)}</div>
+              <div>추천 대기 주차: {activeEstimate.recommendedWaitWeeks}주</div>
+              <div>귀속골드 사용: {formatGold(activeEstimate.recommendedBoundGoldUse)}</div>
+              <div>유통골드 사용: {formatGold(activeEstimate.recommendedTradableGoldUse)}</div>
             </div>
           </div>
         </div>

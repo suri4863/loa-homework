@@ -77,6 +77,37 @@ html[data-theme="dark"] .appHeader {
     color: var(--muted) !important;
 }
 
+.appHeaderInner {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 16px;
+}
+
+.appHeaderTools,
+.appBrand,
+.appNav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.appBrand {
+    min-width: 0;
+}
+
+.appLogo {
+    width: 36px;
+    height: 36px;
+    flex: 0 0 auto;
+    border-radius: 18px;
+    background: #111827;
+}
+
+html[data-theme="dark"] .appLogo {
+    background: #1f2937;
+}
+
 /* =========================
    Top nav buttons (보석/숙제)
    - 라이트/다크 둘 다 "버튼"처럼 확실히 보이게 대비 강화
@@ -145,6 +176,18 @@ html[data-theme="dark"] .navBtn {
 
 html[data-theme="dark"] .navBtn:hover {
     background: #162443 !important;
+}
+
+@media (max-width: 720px) {
+    .appHeaderInner {
+        grid-template-columns: 1fr;
+        align-items: start;
+    }
+
+    .appHeaderTools,
+    .appNav {
+        flex-wrap: wrap;
+    }
 }
 
 
