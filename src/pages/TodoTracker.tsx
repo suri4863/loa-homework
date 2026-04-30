@@ -292,6 +292,7 @@ export default function TodoTracker() {
   const [scheduleCreateMode, setScheduleCreateMode] = useState<"NEW" | "EXISTING">("NEW");
   const [schedulePlanningMode, setSchedulePlanningMode] = useState<"CURRENT" | "NEXT_RESET">("CURRENT");
   const [newScheduleTitle, setNewScheduleTitle] = useState("일정표");
+  const [importScheduleSourceId, setImportScheduleSourceId] = useState<string>("");
   const [dragScheduleItem, setDragScheduleItem] = useState<{
     scheduleId: string;
     itemId: string;
@@ -1117,6 +1118,134 @@ export default function TodoTracker() {
     setManualKkanbuPairs([{ myKey: "", friendKey: "", selectedRaids: null }]);
 
     alert(`기존 일정표에 추가 완료! (${targetDay}요일)`);
+  }
+
+  function cloneScheduleItemsForImport(
+    items: SharedWeeklyScheduleItem[],
+    orderOffset = 0
+  ): SharedWeeklyScheduleItem[] {
+    return items.map((item, index) => ({
+      ...item,
+      id: `import_${Date.now()}_${index}_${Math.random().toString(16).slice(2)}`,
+      order: orderOffset + index,
+      myClearedRaidNames: [],
+      friendClearedRaidNames: [],
+      avgPower: recalcScheduleItemAvgPower(item),
+    }));
+  }
+
+  async function importPreviousWeeklySchedule() {
+    if (!SERVER_MODE) {
+      alert("서버 모드에서만 이전 일정 불러오기가 가능해.");
+      return;
+    }
+
+    if (!selectedFriendCode) {
+      alert("먼저 친구를 선택해줘.");
+      return;
+    }
+
+    const candidates = weeklySchedules
+      .filter(
+        (schedule) =>
+          schedule.targetFriendCode === selectedFriendCode ||
+          schedule.ownerFriendCode === selectedFriendCode
+      )
+      .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+
+    if (!candidates.length) {
+      alert("불러올 이전 일정표가 없어.");
+      return;
+    }
+
+    const choiceText = candidates
+      .map((schedule, index) => {
+        const title = getDisplayWeeklyScheduleTitle(schedule);
+        const week = schedule.weekStartDate ? ` / ${schedule.weekStartDate}` : "";
+        return `${index + 1}. ${title}${week} (${schedule.items.length}개)`;
+      })
+      .join("\n");
+
+    const rawChoice = prompt(
+      `불러올 이전 일정표 번호를 입력해줘.\n\n${choiceText}`,
+      "1"
+    );
+    if (!rawChoice) return;
+
+    const selectedIndex = Number(rawChoice.trim()) - 1;
+    const source = candidates[selectedIndex];
+    if (!source) {
+      alert("올바른 번호를 입력해줘.");
+      return;
+    }
+
+    if (!source.items.length) {
+      alert("선택한 일정표에 불러올 항목이 없어.");
+      return;
+    }
+
+    setImportScheduleSourceId(source.id);
+  }
+
+  async function confirmImportPreviousWeeklySchedule(mode: "CURRENT" | "NEW") {
+    const source = weeklySchedules.find((schedule) => schedule.id === importScheduleSourceId);
+    if (!source) {
+      setImportScheduleSourceId("");
+      alert("불러올 일정표를 찾을 수 없어.");
+      return;
+    }
+
+    if (mode === "CURRENT") {
+      if (!selectedScheduleId) {
+        alert("현재 일정표에 추가하려면 먼저 일정표를 선택해줘.");
+        return;
+      }
+
+      const target = weeklySchedules.find((schedule) => schedule.id === selectedScheduleId);
+      if (!target) {
+        alert("현재 선택한 일정표를 찾을 수 없어.");
+        return;
+      }
+
+      const importedItems = cloneScheduleItemsForImport(source.items, target.items.length);
+      const nextSchedule: SharedWeeklySchedule = {
+        ...target,
+        items: [...target.items, ...importedItems],
+      };
+
+      await saveWeeklySchedule(nextSchedule);
+      setSelectedScheduleId(target.id);
+      setImportScheduleSourceId("");
+      alert("현재 일정표에 이전 일정 추가 완료!");
+      return;
+    }
+
+    const defaultTitle = `${stripNextResetSuffix(source.title || "이전 일정")} 복사`;
+    const nextTitle = prompt("새 일정표 이름", defaultTitle)?.trim() || defaultTitle;
+    const importedItems = cloneScheduleItemsForImport(source.items);
+    const payload = {
+      title:
+        schedulePlanningMode === "NEXT_RESET"
+          ? `${stripNextResetSuffix(nextTitle)} (다음 주)`
+          : stripNextResetSuffix(nextTitle),
+      weekStartDate: getScheduleWeekStartDate(schedulePlanningMode),
+      items: importedItems,
+    };
+
+    const created = await apiFetch2("/api/weekly-schedules", {
+      method: "POST",
+      body: JSON.stringify({
+        targetFriendCode: selectedFriendCode,
+        title: payload.title,
+        weekStartDate: payload.weekStartDate,
+        scheduleJson: JSON.stringify(payload),
+      }),
+    });
+
+    await refreshWeeklySchedules();
+    if (created?.id) setSelectedScheduleId(String(created.id));
+    setImportScheduleSourceId("");
+    alert("새 일정표로 이전 일정 불러오기 완료!");
   }
 
   async function renameWeeklySchedule(scheduleId: string, nextTitle: string) {
@@ -3572,6 +3701,19 @@ export default function TodoTracker() {
                     </option>
                   ))}
               </select>
+              {SERVER_MODE && (
+                <button
+                  type="button"
+                  className="mini"
+                  onClick={() => {
+                    importPreviousWeeklySchedule().catch((e) => {
+                      alert(`이전 일정 불러오기 실패: ${String(e)}`);
+                    });
+                  }}
+                >
+                  이전 일정 불러오기
+                </button>
+              )}
               {selectedScheduleId && (
                 <div className="weeklyScheduleHeaderRight">
                   <button
@@ -4479,6 +4621,70 @@ export default function TodoTracker() {
             </div>
           </div>
         </>
+        {importScheduleSourceId ? (() => {
+          const source = weeklySchedules.find((schedule) => schedule.id === importScheduleSourceId);
+          if (!source) return null;
+
+          return (
+            <div
+              className="kkanbuShareOverlay"
+              onClick={() => setImportScheduleSourceId("")}
+            >
+              <div
+                className="kkanbuShareModal importScheduleModal"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="kkanbuShareHead">
+                  <div className="kkanbuShareTitle">이전 일정 불러오기</div>
+                  <button
+                    type="button"
+                    className="mini"
+                    onClick={() => setImportScheduleSourceId("")}
+                    aria-label="닫기"
+                  >
+                    X
+                  </button>
+                </div>
+
+                <div className="importScheduleBody">
+                  <div className="importScheduleSource">
+                    {getDisplayWeeklyScheduleTitle(source)}
+                    {source.weekStartDate ? ` / ${source.weekStartDate}` : ""}
+                  </div>
+                  <div className="importScheduleHint">
+                    이 일정의 요일, 캐릭터, 레이드 구성을 불러오고 완료 체크는 초기화해.
+                  </div>
+                </div>
+
+                <div className="importScheduleActions">
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={!selectedScheduleId}
+                    onClick={() => {
+                      confirmImportPreviousWeeklySchedule("CURRENT").catch((e) => {
+                        alert(`현재 일정표에 추가 실패: ${String(e)}`);
+                      });
+                    }}
+                  >
+                    현재 일정표에 추가
+                  </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => {
+                      confirmImportPreviousWeeklySchedule("NEW").catch((e) => {
+                        alert(`새 일정표 만들기 실패: ${String(e)}`);
+                      });
+                    }}
+                  >
+                    새 일정표로 만들기
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })() : null}
         {shareKkanbuOpen ? (
           <div className="kkanbuShareOverlay" onClick={() => setShareKkanbuOpen(false)}>
             <div

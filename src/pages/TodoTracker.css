@@ -3338,6 +3338,38 @@ html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
   margin-top: 12px;
 }
 
+.importScheduleModal {
+  width: min(520px, 100%);
+}
+
+.importScheduleBody {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--soft);
+  padding: 12px;
+}
+
+.importScheduleSource {
+  font-weight: 900;
+  color: var(--text);
+}
+
+.importScheduleHint {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.importScheduleActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
 /*일정표*/
 .weeklyScheduleSection {
   margin-top: 18px;
