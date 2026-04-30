@@ -58,6 +58,9 @@ export default function AccountPage() {
   const [legacyLinkInfo, setLegacyLinkInfo] = useState<LegacyLinkInfo | null>(null);
   const [resetPassword, setResetPassword] = useState("");
   const [resetMessage, setResetMessage] = useState("");
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteMessage, setDeleteMessage] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [accountInfo, setAccountInfo] = useState<AccountInfo | null>(null);
 
   const profile = useMemo(() => DEFAULT_TODO_STATE.load()?.profile ?? DEFAULT_TODO_STATE.make().profile, []);
@@ -404,6 +407,39 @@ export default function AccountPage() {
     }
   }
 
+  async function deleteAccount() {
+    if (!isLoggedIn) return;
+    if (!deletePassword) {
+      setDeleteMessage("비밀번호를 입력해줘.");
+      return;
+    }
+    const ok = confirm(
+      "회원탈퇴를 진행할까요? 서버의 계정, 친구 관계, 공유 일정표, 남은 레이드 스냅샷, 서버 백업이 삭제돼."
+    );
+    if (!ok) return;
+
+    setDeleteBusy(true);
+    setDeleteMessage("");
+    try {
+      await authedFetch("/api/auth/delete-account", {
+        method: "DELETE",
+        body: JSON.stringify({ password: deletePassword }),
+      });
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+      localStorage.removeItem(AUTH_LOGIN_ID_KEY);
+      setAuthToken("");
+      setSignedInLoginId("");
+      setAccountInfo(null);
+      setLegacyLinkInfo(null);
+      setDeletePassword("");
+      setDeleteMessage("회원탈퇴가 완료됐어.");
+    } catch (e: any) {
+      setDeleteMessage(e?.message || String(e));
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
   function moveFriendCodeToAccount(nextAuthMode: AuthMode) {
     setAccessMode("account");
     setAuthMode(nextAuthMode);
@@ -509,6 +545,25 @@ export default function AccountPage() {
                       비밀번호 변경
                     </button>
                     {resetMessage && <div className="accountHint">{resetMessage}</div>}
+                  </div>
+                </section>
+
+                <section className="accountBox">
+                  <div className="accountBoxTitle">회원탈퇴</div>
+                  <div className="accountHint">
+                    탈퇴하면 서버에 저장된 계정, 친구 관계, 공유 일정표, 남은 레이드 스냅샷, 서버 백업이 삭제돼.
+                  </div>
+                  <div className="accountStack">
+                    <input
+                      type="password"
+                      value={deletePassword}
+                      onChange={(e) => setDeletePassword(e.target.value)}
+                      placeholder="현재 비밀번호"
+                    />
+                    <button className="accountAction" onClick={deleteAccount} disabled={deleteBusy}>
+                      {deleteBusy ? "탈퇴 처리 중..." : "회원탈퇴"}
+                    </button>
+                    {deleteMessage && <div className="accountHint">{deleteMessage}</div>}
                   </div>
                 </section>
 

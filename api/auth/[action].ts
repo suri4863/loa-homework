@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
+  deleteAccountWithPassword,
   loginWithCredentials,
   logoutWithSession,
   registerWithCredentials,
@@ -66,6 +67,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const user = await requireAuthUser(req);
       const password = String(req.body?.password ?? "");
       await updateLoginPassword(user.id, password);
+      return sendJson(res, { ok: true });
+    }
+
+    if (action === "delete-account") {
+      if (req.method !== "DELETE") return res.status(405).send("Method Not Allowed");
+      const password = String(req.body?.password ?? "");
+      await deleteAccountWithPassword(req, password);
       return sendJson(res, { ok: true });
     }
 

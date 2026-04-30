@@ -422,3 +422,49 @@ export async function updateLoginPassword(userId: number, password: string) {
   `;
   return { ok: true };
 }
+
+export async function deleteAccountWithPassword(req: VercelRequest, password: string) {
+  const user = await requireAuthUser(req);
+  if (!password) {
+    const err = new Error("Password is required");
+    (err as any).status = 400;
+    throw err;
+  }
+
+  const auth = await sql<{
+    id: number;
+    friend_code: string;
+    login_pw_salt: string | null;
+    login_pw_hash: string | null;
+  }>`
+    select id, friend_code, login_pw_salt, login_pw_hash
+    from users
+    where id=${user.id}
+  `;
+  const row = auth.rows[0];
+  if (!row?.login_pw_salt || !row?.login_pw_hash) {
+    const err = new Error("Password login is not configured for this account");
+    (err as any).status = 400;
+    throw err;
+  }
+
+  const { hashB64 } = scryptHash(password, row.login_pw_salt);
+  const a = Buffer.from(hashB64, "base64");
+  const b = Buffer.from(row.login_pw_hash, "base64");
+  const same = a.length === b.length && crypto.timingSafeEqual(a, b);
+  if (!same) {
+    const err = new Error("Invalid password");
+    (err as any).status = 401;
+    throw err;
+  }
+
+  await sql`delete from shared_weekly_schedules where owner_user_id=${row.id} or target_user_id=${row.id}`;
+  await sql`delete from friend_requests where from_user_id=${row.id} or to_user_id=${row.id}`;
+  await sql`delete from friendships where user_a=${row.id} or user_b=${row.id}`;
+  await sql`delete from raid_left_snapshots where user_id=${row.id}`;
+  await sql`delete from state_backups where user_id=${row.id}`;
+  await sql`delete from friend_raid_plans where friend_code=${row.friend_code}`;
+  await sql`delete from users where id=${row.id}`;
+
+  return { ok: true };
+}
