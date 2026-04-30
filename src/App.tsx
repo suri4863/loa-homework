@@ -42,7 +42,7 @@ export default function App() {
             <div className="h-9 w-9 rounded-2xl bg-neutral-900" />
             <div className="min-w-0">
               <h1 className="appTitle truncate text-lg font-semibold">로스트아크 트래커</h1>
-              <p className="appSub truncate text-sm">원정대 보석 현황 + 숙제 체크리스트 + 성장 플래너</p>
+              <p className="appSub truncate text-sm">숙제 체크리스트, 일정표, 성장 플래너</p>
             </div>
           </div>
 
@@ -52,7 +52,7 @@ export default function App() {
               onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
               title="테마 전환"
             >
-              {theme === "dark" ? "☀️ 화이트모드" : "🌙 다크모드"}
+              {theme === "dark" ? "☀️" : "🌙"}
             </button>
             <NavLink to="/account">로그인</NavLink>
             <NavLink to="/gems">보석</NavLink>
@@ -77,8 +77,7 @@ export default function App() {
 
       <footer className="appFooter border-t">
         <div className={`${shell} py-4 text-sm appSub`}>
-          <span className="font-medium appTitle">Tip</span> : 오늘은 성장 플래너의 첫 버전을 넣어뒀고, 다음 단계에서 OCR과
-          실시간 화면 스캔을 이어붙일 수 있어.
+          <span className="font-medium appTitle"></span> 
         </div>
       </footer>
     </div>

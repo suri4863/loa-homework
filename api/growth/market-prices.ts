@@ -85,14 +85,14 @@ const ICEPENG_ITEM_NAMES = {
   metallurgyUpheaval15: "야금술 : 업화 [15-18]",
   enhancedTailoringUpheaval19: "강화 재봉술 : 업화 [19-20]",
   enhancedMetallurgyUpheaval19: "강화 야금술 : 업화 [19-20]",
-  artisanTailoring1: "장인의 재봉술: 1단계",
-  artisanTailoring2: "장인의 재봉술: 2단계",
-  artisanTailoring3: "장인의 재봉술: 3단계",
-  artisanTailoring4: "장인의 재봉술: 4단계",
-  artisanMetallurgy1: "장인의 야금술: 1단계",
-  artisanMetallurgy2: "장인의 야금술: 2단계",
-  artisanMetallurgy3: "장인의 야금술: 3단계",
-  artisanMetallurgy4: "장인의 야금술: 4단계",
+  artisanTailoring1: "장인의 재봉술 : 1단계",
+  artisanTailoring2: "장인의 재봉술 : 2단계",
+  artisanTailoring3: "장인의 재봉술 : 3단계",
+  artisanTailoring4: "장인의 재봉술 : 4단계",
+  artisanMetallurgy1: "장인의 야금술 : 1단계",
+  artisanMetallurgy2: "장인의 야금술 : 2단계",
+  artisanMetallurgy3: "장인의 야금술 : 3단계",
+  artisanMetallurgy4: "장인의 야금술 : 4단계",
 };
 
 function normalizeItemName(name: string) {

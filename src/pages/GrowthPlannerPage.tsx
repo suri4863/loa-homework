@@ -4,6 +4,7 @@ import { DEFAULT_TODO_STATE, type Character, type TodoTable } from "../store/tod
 import {
   estimateGrowthPlan,
   makeEmptyPlannerState,
+  type ConfirmedUpgrade,
   type EquipmentSlot,
   type GrowthPlannerState,
   type MaterialInventory,
@@ -209,14 +210,14 @@ const MARKET_LABELS: Array<[keyof MarketPriceSnapshot, string]> = [
   ["upheavalMetallurgyBook19Price", "야금술: 업화 [19-20] 시세"],
   ["enhancedTailoringBookPrice", "강화 재봉술: 업화 [19-20] 시세"],
   ["enhancedMetallurgyBookPrice", "강화 야금술: 업화 [19-20] 시세"],
-  ["artisanTailoringBook1Price", "장인의 재봉술 1단계 시세"],
-  ["artisanMetallurgyBook1Price", "장인의 야금술 1단계 시세"],
-  ["artisanTailoringBook2Price", "장인의 재봉술 2단계 시세"],
-  ["artisanMetallurgyBook2Price", "장인의 야금술 2단계 시세"],
-  ["artisanTailoringBook3Price", "장인의 재봉술 3단계 시세"],
-  ["artisanMetallurgyBook3Price", "장인의 야금술 3단계 시세"],
-  ["artisanTailoringBook4Price", "장인의 재봉술 4단계 시세"],
-  ["artisanMetallurgyBook4Price", "장인의 야금술 4단계 시세"],
+  ["artisanTailoringBook1Price", "장인의 재봉술 : 1단계 시세"],
+  ["artisanMetallurgyBook1Price", "장인의 야금술 : 1단계 시세"],
+  ["artisanTailoringBook2Price", "장인의 재봉술 : 2단계 시세"],
+  ["artisanMetallurgyBook2Price", "장인의 야금술 : 2단계 시세"],
+  ["artisanTailoringBook3Price", "장인의 재봉술 : 3단계 시세"],
+  ["artisanMetallurgyBook3Price", "장인의 야금술 : 3단계 시세"],
+  ["artisanTailoringBook4Price", "장인의 재봉술 : 4단계 시세"],
+  ["artisanMetallurgyBook4Price", "장인의 야금술 : 4단계 시세"],
 ];
 type CharacterImportPiece = {
   slot: EquipmentSlot;
@@ -498,8 +499,18 @@ function formatGold(value: number) {
   return `${Math.round(value).toLocaleString()} G`;
 }
 
+function formatItemLevel(value: number) {
+  return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
 type DisplayRouteStep = RefiningRouteStep & {
   originalIndexes: number[];
+};
+
+type ConfirmedUpgradeDraft = {
+  slot: EquipmentSlot;
+  action: ConfirmedUpgrade["action"];
+  targetLevel: number;
 };
 
 function getAdvancedGroupEnd(fromLevel: number) {
@@ -629,6 +640,30 @@ const ROUTE_MATERIAL_USAGE_FIELDS: Array<{
   { key: "lavaBreaths", label: "용암의 숨결", boundKey: "boundLavaBreaths", tradableKey: "tradableLavaBreaths" },
   { key: "tailoringBooks", label: "재봉술", singleInventoryKey: "tailoringBooks", singleInventoryLabel: "보유" },
   { key: "metallurgyBooks", label: "야금술", singleInventoryKey: "metallurgyBooks", singleInventoryLabel: "보유" },
+  { key: "artisanTailoringBook1", label: "장인의 재봉술 : 1단계", singleInventoryKey: "artisanTailoringBook1", singleInventoryLabel: "보유" },
+  { key: "artisanMetallurgyBook1", label: "장인의 야금술 : 1단계", singleInventoryKey: "artisanMetallurgyBook1", singleInventoryLabel: "보유" },
+  { key: "artisanTailoringBook2", label: "장인의 재봉술 : 2단계", singleInventoryKey: "artisanTailoringBook2", singleInventoryLabel: "보유" },
+  { key: "artisanMetallurgyBook2", label: "장인의 야금술 : 2단계", singleInventoryKey: "artisanMetallurgyBook2", singleInventoryLabel: "보유" },
+  { key: "artisanTailoringBook3", label: "장인의 재봉술 : 3단계", singleInventoryKey: "artisanTailoringBook3", singleInventoryLabel: "보유" },
+  { key: "artisanMetallurgyBook3", label: "장인의 야금술 : 3단계", singleInventoryKey: "artisanMetallurgyBook3", singleInventoryLabel: "보유" },
+  { key: "artisanTailoringBook4", label: "장인의 재봉술 : 4단계", singleInventoryKey: "artisanTailoringBook4", singleInventoryLabel: "보유" },
+  { key: "artisanMetallurgyBook4", label: "장인의 야금술 : 4단계", singleInventoryKey: "artisanMetallurgyBook4", singleInventoryLabel: "보유" },
+  { key: "upheavalTailoringBook15", label: "재봉술 : 업화 [15-18]", singleInventoryKey: "upheavalTailoringBook15", singleInventoryLabel: "보유" },
+  { key: "upheavalMetallurgyBook15", label: "야금술 : 업화 [15-18]", singleInventoryKey: "upheavalMetallurgyBook15", singleInventoryLabel: "보유" },
+  { key: "upheavalTailoringBook19", label: "재봉술 : 업화 [19-20]", singleInventoryKey: "upheavalTailoringBook19", singleInventoryLabel: "보유" },
+  { key: "upheavalMetallurgyBook19", label: "야금술 : 업화 [19-20]", singleInventoryKey: "upheavalMetallurgyBook19", singleInventoryLabel: "보유" },
+  {
+    key: "enhancedUpheavalTailoringBook19",
+    label: "강화 재봉술 : 업화 [19-20]",
+    singleInventoryKey: "enhancedUpheavalTailoringBook19",
+    singleInventoryLabel: "보유",
+  },
+  {
+    key: "enhancedUpheavalMetallurgyBook19",
+    label: "강화 야금술 : 업화 [19-20]",
+    singleInventoryKey: "enhancedUpheavalMetallurgyBook19",
+    singleInventoryLabel: "보유",
+  },
 ];
 
 function formatCount(value: number) {
@@ -809,11 +844,10 @@ function maxBreathPerTryForStep(step: DisplayRouteStep) {
 
 function getRouteSupportTimingGuides(step: DisplayRouteStep, rows: RouteMaterialUsageRow[]) {
   const breathKey = step.slot === "weapon" ? "lavaBreaths" : "iceBreaths";
-  const bookKey = step.slot === "weapon" ? "metallurgyBooks" : "tailoringBooks";
   const breathLabel = step.slot === "weapon" ? "용암의 숨결" : "빙하의 숨결";
-  const bookLabel = supportBookNameForStep(step);
   const breathRow = rows.find((row) => row.key === breathKey);
-  const bookRow = rows.find((row) => row.key === bookKey);
+  const bookRow = rows.find((row) => (step.slot === "weapon" ? row.label.includes("야금술") : row.label.includes("재봉술")));
+  const bookLabel = bookRow?.label || supportBookNameForStep(step);
   const usesBreath = Boolean(breathRow && breathRow.required > 0);
   const usesBook = Boolean(bookRow && bookRow.required > 0);
   const maxBreath = maxBreathPerTryForStep(step);
@@ -860,14 +894,14 @@ const SUPPORT_REWARD_SOURCES: SupportRewardSource[] = [
   {
     raidName: "3막",
     diffs: ["하드"],
-    rewardNames: ["장인의 재봉술: 2단계", "장인의 야금술: 2단계"],
+    rewardNames: ["장인의 재봉술 : 2단계", "장인의 야금술 : 2단계"],
     quantity: 1,
     quantityLabel: "0~1개",
   },
   {
     raidName: "4막",
     diffs: ["노말"],
-    rewardNames: ["장인의 재봉술: 2단계", "장인의 야금술: 2단계"],
+    rewardNames: ["장인의 재봉술 : 2단계", "장인의 야금술 : 2단계"],
     quantity: 1,
     quantityLabel: "0~1개",
   },
@@ -902,28 +936,28 @@ const SUPPORT_REWARD_SOURCES: SupportRewardSource[] = [
   {
     raidName: "세르카",
     diffs: ["노말"],
-    rewardNames: ["장인의 재봉술: 3단계", "장인의 야금술: 3단계"],
+    rewardNames: ["장인의 재봉술 : 3단계", "장인의 야금술 : 3단계"],
     quantity: 1,
     quantityLabel: "0~1개",
   },
   {
     raidName: "지평의 성당",
     diffs: ["2단계"],
-    rewardNames: ["장인의 재봉술: 3단계", "장인의 야금술: 3단계"],
+    rewardNames: ["장인의 재봉술 : 3단계", "장인의 야금술 : 3단계"],
     quantity: 1,
     quantityLabel: "0~1개",
   },
   {
     raidName: "세르카",
     diffs: ["하드", "나이트메어"],
-    rewardNames: ["장인의 재봉술: 4단계", "장인의 야금술: 4단계"],
+    rewardNames: ["장인의 재봉술 : 4단계", "장인의 야금술 : 4단계"],
     quantity: 1,
     quantityLabel: "0~1개",
   },
   {
     raidName: "지평의 성당",
     diffs: ["3단계"],
-    rewardNames: ["장인의 재봉술: 4단계", "장인의 야금술: 4단계"],
+    rewardNames: ["장인의 재봉술 : 4단계", "장인의 야금술 : 4단계"],
     quantity: 1,
     quantityLabel: "0~1개",
   },
@@ -1057,8 +1091,20 @@ function shouldShowMarketField(key: keyof MarketPriceSnapshot, required: ReturnT
   if (key === "lavaBreathPrice") return required.lavaBreaths > 0;
   if (key === "tailoringBookPrice") return required.tailoringBooks > 0;
   if (key === "metallurgyBookPrice") return required.metallurgyBooks > 0;
-  if (key === "enhancedTailoringBookPrice") return required.tailoringBooks > 0;
-  if (key === "enhancedMetallurgyBookPrice") return required.metallurgyBooks > 0;
+  if (key === "enhancedTailoringBookPrice") return required.enhancedUpheavalTailoringBook19 > 0;
+  if (key === "enhancedMetallurgyBookPrice") return required.enhancedUpheavalMetallurgyBook19 > 0;
+  if (key === "artisanTailoringBook1Price") return required.artisanTailoringBook1 > 0;
+  if (key === "artisanTailoringBook2Price") return required.artisanTailoringBook2 > 0;
+  if (key === "artisanTailoringBook3Price") return required.artisanTailoringBook3 > 0;
+  if (key === "artisanTailoringBook4Price") return required.artisanTailoringBook4 > 0;
+  if (key === "artisanMetallurgyBook1Price") return required.artisanMetallurgyBook1 > 0;
+  if (key === "artisanMetallurgyBook2Price") return required.artisanMetallurgyBook2 > 0;
+  if (key === "artisanMetallurgyBook3Price") return required.artisanMetallurgyBook3 > 0;
+  if (key === "artisanMetallurgyBook4Price") return required.artisanMetallurgyBook4 > 0;
+  if (key === "upheavalTailoringBook15Price") return required.upheavalTailoringBook15 > 0;
+  if (key === "upheavalMetallurgyBook15Price") return required.upheavalMetallurgyBook15 > 0;
+  if (key === "upheavalTailoringBook19Price") return required.upheavalTailoringBook19 > 0;
+  if (key === "upheavalMetallurgyBook19Price") return required.upheavalMetallurgyBook19 > 0;
   return false;
 }
 
@@ -1125,6 +1171,14 @@ function buildCharacterName(selectedCharacter?: Character, plannerName?: string)
   return selectedCharacter?.name || plannerName || "";
 }
 
+function confirmedCurrentLevel(
+  piece: GrowthPlannerState["character"]["pieces"][number] | undefined,
+  action: ConfirmedUpgrade["action"]
+) {
+  if (!piece) return 0;
+  return action === "normal" ? piece.honingLevel || 0 : piece.advancedRefiningLevel || 0;
+}
+
 function averageImportedPieceLevel(pieces: CharacterImportPiece[]) {
   const levels = pieces.map(deriveEquipmentItemLevel).filter((value) => Number.isFinite(value) && value > 0);
   return levels.length === 6 ? levels.reduce((sum, value) => sum + value, 0) / 6 : null;
@@ -1143,6 +1197,11 @@ export default function GrowthPlannerPage() {
   const [profileNickname, setProfileNickname] = useState("");
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileSummary, setProfileSummary] = useState<CharacterImportResponse | null>(null);
+  const [confirmedDraft, setConfirmedDraft] = useState<ConfirmedUpgradeDraft>({
+    slot: "weapon",
+    action: "advanced",
+    targetLevel: 40,
+  });
   const [marketLoading, setMarketLoading] = useState(false);
   const [marketSummary, setMarketSummary] = useState<MarketAutoFillResponse | null>(null);
   const [marketError, setMarketError] = useState("");
@@ -1218,6 +1277,28 @@ export default function GrowthPlannerPage() {
   }, [currentRaidGold.tradableGold, planner, targetRaidGold.tradableGold, tradableOnlyEstimate]);
   const estimate = useMemo(() => estimateGrowthPlan(estimateInput), [estimateInput]);
   const displayRouteSteps = useMemo(() => groupRouteStepsForDisplay(estimate.routeSteps), [estimate.routeSteps]);
+  const confirmedRouteSteps = useMemo(() => displayRouteSteps.filter((step) => step.confirmed), [displayRouteSteps]);
+  const confirmedRouteMaterialLines = useMemo(() => {
+    const materials: RefiningRouteStep["expectedMaterials"] = {};
+    confirmedRouteSteps.forEach((step) => addRouteMaterials(materials, inferRouteMaterials(step)));
+    return ROUTE_MATERIAL_USAGE_FIELDS.map((field) => [field.label, Number(materials[field.key] || 0)] as const).filter(
+      ([, value]) => Math.round(value) > 0
+    );
+  }, [confirmedRouteSteps]);
+  const usedMaterialRows = useMemo(
+    () =>
+      ROUTE_MATERIAL_USAGE_FIELDS.map((field) => [field.label, Number(estimate.requiredMaterials[field.key] || 0)] as const).filter(
+        ([, value]) => Math.round(value) > 0
+      ),
+    [estimate.requiredMaterials]
+  );
+  const displayedCurrentItemLevel = useMemo(() => {
+    const pieceLevels = planner.character.pieces.map(deriveEquipmentItemLevel).filter((level) => level > 0);
+    if (pieceLevels.length === 6) {
+      return pieceLevels.reduce((sum, level) => sum + level, 0) / 6;
+    }
+    return Number(planner.character.currentItemLevel || 0);
+  }, [planner.character.currentItemLevel, planner.character.pieces]);
   const selectedRouteStep = displayRouteSteps[Math.min(selectedRouteIndex, Math.max(0, displayRouteSteps.length - 1))] ?? null;
   const selectedRouteUsageRows = useMemo(
     () => getSequentialRouteMaterialUsageRows(displayRouteSteps, Math.min(selectedRouteIndex, Math.max(0, displayRouteSteps.length - 1)), planner.materials),
@@ -1227,6 +1308,8 @@ export default function GrowthPlannerPage() {
     () => (selectedRouteStep ? getRouteSupportTimingGuides(selectedRouteStep, selectedRouteUsageRows) : []),
     [selectedRouteStep, selectedRouteUsageRows]
   );
+  const confirmedDraftPiece = planner.character.pieces.find((piece) => piece.slot === confirmedDraft.slot);
+  const confirmedDraftCurrentLevel = confirmedCurrentLevel(confirmedDraftPiece, confirmedDraft.action);
   const visibleMarketLabels = useMemo(
     () => MARKET_LABELS.filter(([key]) => shouldShowMarketField(key, estimate.requiredMaterials) || shouldShowSupportBookMarketField(key, planner)),
     [estimate.requiredMaterials, planner]
@@ -1502,6 +1585,35 @@ export default function GrowthPlannerPage() {
         pieces: prev.character.pieces.map((piece) => (piece.slot === slot ? { ...piece, ...patch } : piece)),
       },
     }));
+  }
+
+  function addConfirmedUpgrade() {
+    const piece = planner.character.pieces.find((entry) => entry.slot === confirmedDraft.slot);
+    const currentLevel = confirmedCurrentLevel(piece, confirmedDraft.action);
+    const targetLevel = Math.floor(Number(confirmedDraft.targetLevel || 0));
+    if (!piece || targetLevel <= currentLevel) return;
+
+    const nextUpgrade: ConfirmedUpgrade = {
+      id: `confirm_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+      slot: confirmedDraft.slot,
+      action: confirmedDraft.action,
+      targetLevel,
+    };
+
+    patchPlanner((draft) => {
+      draft.character.confirmedUpgrades = [
+        ...(draft.character.confirmedUpgrades ?? []).filter(
+          (upgrade) => !(upgrade.slot === nextUpgrade.slot && upgrade.action === nextUpgrade.action)
+        ),
+        nextUpgrade,
+      ];
+    });
+  }
+
+  function removeConfirmedUpgrade(id: string) {
+    patchPlanner((draft) => {
+      draft.character.confirmedUpgrades = (draft.character.confirmedUpgrades ?? []).filter((upgrade) => upgrade.id !== id);
+    });
   }
 
   function patchOcrField(fieldId: string, patch: Partial<OcrFieldBox>) {
@@ -2632,9 +2744,107 @@ export default function GrowthPlannerPage() {
           </div>
         </section>
 
+        <section className="growthCard confirmedUpgradeCard">
+          <h3 className="growthCardTitle">스펙업 확정</h3>
+          <div className="growthHint">무조건 진행할 스펙업을 먼저 넣으면, 그 다음 남은 목표 레벨을 최저 비용으로 다시 추천해.</div>
+          <div className="growthFieldGrid confirmedUpgradeControls">
+            <label>
+              <span>장비</span>
+              <select
+                value={confirmedDraft.slot}
+                onChange={(event) => setConfirmedDraft((prev) => ({ ...prev, slot: event.target.value as EquipmentSlot }))}
+              >
+                {SLOT_ORDER.map((slot) => (
+                  <option key={slot} value={slot}>
+                    {SLOT_NAMES[slot]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>종류</span>
+              <select
+                value={confirmedDraft.action}
+                onChange={(event) =>
+                  setConfirmedDraft((prev) => ({ ...prev, action: event.target.value as ConfirmedUpgrade["action"] }))
+                }
+              >
+                <option value="advanced">상급 재련</option>
+                <option value="normal">강화</option>
+              </select>
+            </label>
+            <label>
+              <span>목표 단계</span>
+              <input
+                type="number"
+                value={confirmedDraft.targetLevel || ""}
+                onChange={(event) => setConfirmedDraft((prev) => ({ ...prev, targetLevel: Number(event.target.value) || 0 }))}
+              />
+            </label>
+            <button
+              type="button"
+              className="growthAction"
+              onClick={addConfirmedUpgrade}
+              disabled={confirmedDraft.targetLevel <= confirmedDraftCurrentLevel}
+            >
+              적용
+            </button>
+          </div>
+          <div className="growthHint">
+            현재 기준: {SLOT_NAMES[confirmedDraft.slot]}{" "}
+            {confirmedDraft.action === "normal" ? `+${confirmedDraftCurrentLevel}` : `x${confirmedDraftCurrentLevel}`}
+            {confirmedDraft.targetLevel > confirmedDraftCurrentLevel ? ` -> ${confirmedDraft.targetLevel}` : ""}
+          </div>
+          {(planner.character.confirmedUpgrades ?? []).length ? (
+            <div className="confirmedUpgradeList">
+              {(planner.character.confirmedUpgrades ?? []).map((upgrade) => {
+                const piece = planner.character.pieces.find((entry) => entry.slot === upgrade.slot);
+                const fromLevel = confirmedCurrentLevel(piece, upgrade.action);
+                return (
+                  <div className="confirmedUpgradeItem" key={upgrade.id}>
+                    <span>
+                      {SLOT_NAMES[upgrade.slot]} {upgrade.action === "normal" ? "강화" : "상급재련"} {fromLevel} -&gt; {upgrade.targetLevel}
+                    </span>
+                    <button type="button" className="growthAction secondary" onClick={() => removeConfirmedUpgrade(upgrade.id)}>
+                      삭제
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="growthEmpty">확정한 스펙업이 없으면 기존처럼 최저가 경로만 계산돼.</div>
+          )}
+        </section>
+
         <details className="growthDetails routePanel" open>
           <summary className="growthDetailsSummary">추천 강화순서</summary>
           <section className="growthCard compact routePanelInner">
+          {confirmedRouteSteps.length ? (
+            <div className="confirmedRouteSummary">
+              <div className="routeMaterialHeader">
+                <strong>확정 스펙업</strong>
+                <span>아래 추천 순서보다 먼저 반영돼.</span>
+              </div>
+              {confirmedRouteSteps.map((step, index) => (
+                <div className="routeUsageRow" key={`${step.slot}-${step.action}-${step.fromLevel}-${step.toLevel}-${index}`}>
+                  <span>
+                    {step.slotLabel} {formatRouteAction(step)}
+                  </span>
+                  <strong>{formatGold(step.averageCost)}</strong>
+                </div>
+              ))}
+              {confirmedRouteMaterialLines.length ? (
+                <div className="confirmedRouteMaterials">
+                  {confirmedRouteMaterialLines.map(([label, value]) => (
+                    <span key={label}>
+                      {label} {formatCount(value)}개
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           {displayRouteSteps.length ? (
             <>
               <div className="compactRouteList">
@@ -2705,6 +2915,12 @@ export default function GrowthPlannerPage() {
       <div className="plannerBottomGrid">
       <section className="growthCard estimateResultCard">
         <h3 className="growthCardTitle">추정 결과</h3>
+        <div className="estimateCharacterSummary">
+          <span>{planner.character.characterName || "선택 캐릭터"}</span>
+          <strong>
+            {formatItemLevel(displayedCurrentItemLevel)} -&gt; {formatItemLevel(planner.character.targetItemLevel)}
+          </strong>
+        </div>
         <div className="resultHero">
           <div className="resultCard">
             <span className="resultLabel">총 추정 지출</span>
@@ -2751,57 +2967,19 @@ export default function GrowthPlannerPage() {
             </div>
           </div>
         </div>
-        <div className="resultMaterialTable">
-          <div className="resultCard">
-            <span className="resultLabel">필요 파편</span>
-            <strong>{estimate.requiredMaterials.shards.toLocaleString()}</strong>
+        <div className="resultSectionTitle">사용된 재화</div>
+        {usedMaterialRows.length ? (
+          <div className="resultMaterialTable">
+            {usedMaterialRows.map(([label, value]) => (
+              <div className="resultCard" key={label}>
+                <span className="resultLabel">{label}</span>
+                <strong>{formatCount(value)}개</strong>
+              </div>
+            ))}
           </div>
-          <div className="resultCard">
-            <span className="resultLabel">필요 돌파석</span>
-            <strong>{estimate.requiredMaterials.leapstones.toLocaleString()}</strong>
-          </div>
-          <div className="resultCard">
-            <span className="resultLabel">필요 수호석</span>
-            <strong>{estimate.requiredMaterials.protectionStones.toLocaleString()}</strong>
-          </div>
-          <div className="resultCard">
-            <span className="resultLabel">필요 파괴석</span>
-            <strong>{estimate.requiredMaterials.destructionStones.toLocaleString()}</strong>
-          </div>
-          <div className="resultCard">
-            <span className="resultLabel">필요 융화재료</span>
-            <strong>{estimate.requiredMaterials.fusion.toLocaleString()}</strong>
-          </div>
-          <div className="resultCard">
-            <span className="resultLabel">필요 상급 돌파석</span>
-            <strong>{estimate.requiredMaterials.successorLeapstones.toLocaleString()}</strong>
-          </div>
-          <div className="resultCard">
-            <span className="resultLabel">필요 상급 수호석</span>
-            <strong>{estimate.requiredMaterials.successorProtectionStones.toLocaleString()}</strong>
-          </div>
-          <div className="resultCard">
-            <span className="resultLabel">필요 상급 파괴석</span>
-            <strong>{estimate.requiredMaterials.successorDestructionStones.toLocaleString()}</strong>
-          </div>
-          <div className="resultCard">
-            <span className="resultLabel">필요 상급 융화재료</span>
-            <strong>{estimate.requiredMaterials.superiorFusion.toLocaleString()}</strong>
-          </div>
-          <div className="resultCard">
-            <span className="resultLabel">필요 숨결</span>
-            <strong>
-              빙하 {estimate.requiredMaterials.iceBreaths.toLocaleString()} / 용암 {estimate.requiredMaterials.lavaBreaths.toLocaleString()}
-            </strong>
-          </div>
-          <div className="resultCard">
-            <span className="resultLabel">필요 보조 책</span>
-            <strong>
-              재봉술 {estimate.requiredMaterials.tailoringBooks.toLocaleString()} / 야금술{" "}
-              {estimate.requiredMaterials.metallurgyBooks.toLocaleString()}
-            </strong>
-          </div>
-        </div>
+        ) : (
+          <div className="growthEmpty">사용된 재화가 없으면 여기는 비워져.</div>
+        )}
       </section>
       <section className="growthCard weeklyRewardTabsCard">
         <div className="resourceTabsHeader">
@@ -2854,6 +3032,3 @@ export default function GrowthPlannerPage() {
     </div>
   );
 }
-
-
-

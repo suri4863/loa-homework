@@ -33,6 +33,14 @@ export type CharacterGrowthState = {
   targetWeeklyGold: number;
   preferredMode: RefiningMode;
   pieces: EquipmentPieceState[];
+  confirmedUpgrades?: ConfirmedUpgrade[];
+};
+
+export type ConfirmedUpgrade = {
+  id: string;
+  slot: EquipmentSlot;
+  action: "normal" | "advanced";
+  targetLevel: number;
 };
 
 export type MaterialInventory = {
@@ -155,6 +163,20 @@ export type MaterialNeedBreakdown = {
   lavaBreaths: number;
   tailoringBooks: number;
   metallurgyBooks: number;
+  artisanTailoringBook1: number;
+  artisanTailoringBook2: number;
+  artisanTailoringBook3: number;
+  artisanTailoringBook4: number;
+  artisanMetallurgyBook1: number;
+  artisanMetallurgyBook2: number;
+  artisanMetallurgyBook3: number;
+  artisanMetallurgyBook4: number;
+  upheavalTailoringBook15: number;
+  upheavalMetallurgyBook15: number;
+  upheavalTailoringBook19: number;
+  upheavalMetallurgyBook19: number;
+  enhancedUpheavalTailoringBook19: number;
+  enhancedUpheavalMetallurgyBook19: number;
 };
 
 export type RefiningRouteStep = {
@@ -174,6 +196,7 @@ export type RefiningRouteStep = {
   supportWorthUsing: boolean | null;
   supportSavedGold: number;
   notes: string[];
+  confirmed?: boolean;
 };
 
 export type GrowthEstimate = {
@@ -273,6 +296,20 @@ function emptyNeeds(): MaterialNeedBreakdown {
     lavaBreaths: 0,
     tailoringBooks: 0,
     metallurgyBooks: 0,
+    artisanTailoringBook1: 0,
+    artisanTailoringBook2: 0,
+    artisanTailoringBook3: 0,
+    artisanTailoringBook4: 0,
+    artisanMetallurgyBook1: 0,
+    artisanMetallurgyBook2: 0,
+    artisanMetallurgyBook3: 0,
+    artisanMetallurgyBook4: 0,
+    upheavalTailoringBook15: 0,
+    upheavalMetallurgyBook15: 0,
+    upheavalTailoringBook19: 0,
+    upheavalMetallurgyBook19: 0,
+    enhancedUpheavalTailoringBook19: 0,
+    enhancedUpheavalMetallurgyBook19: 0,
   };
 }
 
@@ -536,8 +573,7 @@ function materialPatchCost(patch: MaterialNeedPatch, market: MarketPriceSnapshot
     (patch.superiorFusion || 0) * market.superiorFusionPrice +
     (patch.iceBreaths || 0) * market.iceBreathPrice +
     (patch.lavaBreaths || 0) * market.lavaBreathPrice +
-    (patch.tailoringBooks || 0) * market.tailoringBookPrice +
-    (patch.metallurgyBooks || 0) * market.metallurgyBookPrice
+    supportBookCost(patch, market)
   );
 }
 
@@ -590,6 +626,96 @@ function supportMaterialPrice(marketPrice: number, ownedAmount: number) {
   return ownedAmount > 0 ? 0 : Number.POSITIVE_INFINITY;
 }
 
+function normalizeSupportMaterialName(name: string) {
+  return String(name || "").replace(/\s+/g, "").replace(/[：]/g, ":").trim();
+}
+
+type SupportMaterialMapping = {
+  materialKey: keyof MaterialNeedBreakdown;
+  inventoryKey: keyof MaterialInventory;
+  marketKey: keyof MarketPriceSnapshot;
+  label: string;
+};
+
+function supportBookMappingByName(name: string, piece: EquipmentPieceState): SupportMaterialMapping | null {
+  const normalized = normalizeSupportMaterialName(name);
+  const weapon = isWeapon(piece);
+
+  if (normalized.includes("장인의재봉술1단계")) {
+    return { materialKey: "artisanTailoringBook1", inventoryKey: "artisanTailoringBook1", marketKey: "artisanTailoringBook1Price", label: "장인의 재봉술 : 1단계" };
+  }
+  if (normalized.includes("장인의재봉술2단계")) {
+    return { materialKey: "artisanTailoringBook2", inventoryKey: "artisanTailoringBook2", marketKey: "artisanTailoringBook2Price", label: "장인의 재봉술 : 2단계" };
+  }
+  if (normalized.includes("장인의재봉술3단계")) {
+    return { materialKey: "artisanTailoringBook3", inventoryKey: "artisanTailoringBook3", marketKey: "artisanTailoringBook3Price", label: "장인의 재봉술 : 3단계" };
+  }
+  if (normalized.includes("장인의재봉술4단계")) {
+    return { materialKey: "artisanTailoringBook4", inventoryKey: "artisanTailoringBook4", marketKey: "artisanTailoringBook4Price", label: "장인의 재봉술 : 4단계" };
+  }
+  if (normalized.includes("장인의야금술1단계")) {
+    return { materialKey: "artisanMetallurgyBook1", inventoryKey: "artisanMetallurgyBook1", marketKey: "artisanMetallurgyBook1Price", label: "장인의 야금술 : 1단계" };
+  }
+  if (normalized.includes("장인의야금술2단계")) {
+    return { materialKey: "artisanMetallurgyBook2", inventoryKey: "artisanMetallurgyBook2", marketKey: "artisanMetallurgyBook2Price", label: "장인의 야금술 : 2단계" };
+  }
+  if (normalized.includes("장인의야금술3단계")) {
+    return { materialKey: "artisanMetallurgyBook3", inventoryKey: "artisanMetallurgyBook3", marketKey: "artisanMetallurgyBook3Price", label: "장인의 야금술 : 3단계" };
+  }
+  if (normalized.includes("장인의야금술4단계")) {
+    return { materialKey: "artisanMetallurgyBook4", inventoryKey: "artisanMetallurgyBook4", marketKey: "artisanMetallurgyBook4Price", label: "장인의 야금술 : 4단계" };
+  }
+
+  if (normalized.includes("강화재봉술") && normalized.includes("업화[19-20]")) {
+    return { materialKey: "enhancedUpheavalTailoringBook19", inventoryKey: "enhancedUpheavalTailoringBook19", marketKey: "enhancedTailoringBookPrice", label: "강화 재봉술 : 업화 [19-20]" };
+  }
+  if (normalized.includes("강화야금술") && normalized.includes("업화[19-20]")) {
+    return { materialKey: "enhancedUpheavalMetallurgyBook19", inventoryKey: "enhancedUpheavalMetallurgyBook19", marketKey: "enhancedMetallurgyBookPrice", label: "강화 야금술 : 업화 [19-20]" };
+  }
+  if (normalized.includes("재봉술업화B") || (normalized.includes("재봉술") && normalized.includes("업화[15-18]"))) {
+    return { materialKey: "upheavalTailoringBook15", inventoryKey: "upheavalTailoringBook15", marketKey: "upheavalTailoringBook15Price", label: "재봉술 : 업화 [15-18]" };
+  }
+  if (normalized.includes("야금술업화B") || (normalized.includes("야금술") && normalized.includes("업화[15-18]"))) {
+    return { materialKey: "upheavalMetallurgyBook15", inventoryKey: "upheavalMetallurgyBook15", marketKey: "upheavalMetallurgyBook15Price", label: "야금술 : 업화 [15-18]" };
+  }
+  if (normalized.includes("재봉술업화C") || (normalized.includes("재봉술") && normalized.includes("업화[19-20]"))) {
+    return { materialKey: "upheavalTailoringBook19", inventoryKey: "upheavalTailoringBook19", marketKey: "upheavalTailoringBook19Price", label: "재봉술 : 업화 [19-20]" };
+  }
+  if (normalized.includes("야금술업화C") || (normalized.includes("야금술") && normalized.includes("업화[19-20]"))) {
+    return { materialKey: "upheavalMetallurgyBook19", inventoryKey: "upheavalMetallurgyBook19", marketKey: "upheavalMetallurgyBook19Price", label: "야금술 : 업화 [19-20]" };
+  }
+
+  if (normalized.includes("재봉술") && !weapon) {
+    return { materialKey: "tailoringBooks", inventoryKey: "tailoringBooks", marketKey: "tailoringBookPrice", label: "재봉술" };
+  }
+  if (normalized.includes("야금술") && weapon) {
+    return { materialKey: "metallurgyBooks", inventoryKey: "metallurgyBooks", marketKey: "metallurgyBookPrice", label: "야금술" };
+  }
+
+  return null;
+}
+
+function supportBookCost(patch: MaterialNeedPatch, market: MarketPriceSnapshot) {
+  return (
+    (patch.tailoringBooks || 0) * market.tailoringBookPrice +
+    (patch.metallurgyBooks || 0) * market.metallurgyBookPrice +
+    (patch.artisanTailoringBook1 || 0) * market.artisanTailoringBook1Price +
+    (patch.artisanTailoringBook2 || 0) * market.artisanTailoringBook2Price +
+    (patch.artisanTailoringBook3 || 0) * market.artisanTailoringBook3Price +
+    (patch.artisanTailoringBook4 || 0) * market.artisanTailoringBook4Price +
+    (patch.artisanMetallurgyBook1 || 0) * market.artisanMetallurgyBook1Price +
+    (patch.artisanMetallurgyBook2 || 0) * market.artisanMetallurgyBook2Price +
+    (patch.artisanMetallurgyBook3 || 0) * market.artisanMetallurgyBook3Price +
+    (patch.artisanMetallurgyBook4 || 0) * market.artisanMetallurgyBook4Price +
+    (patch.upheavalTailoringBook15 || 0) * market.upheavalTailoringBook15Price +
+    (patch.upheavalMetallurgyBook15 || 0) * market.upheavalMetallurgyBook15Price +
+    (patch.upheavalTailoringBook19 || 0) * market.upheavalTailoringBook19Price +
+    (patch.upheavalMetallurgyBook19 || 0) * market.upheavalMetallurgyBook19Price +
+    (patch.enhancedUpheavalTailoringBook19 || 0) * market.enhancedTailoringBookPrice +
+    (patch.enhancedUpheavalMetallurgyBook19 || 0) * market.enhancedMetallurgyBookPrice
+  );
+}
+
 function buildAdvancedPriceTable(
   table: AdvancedRefineTable,
   piece: EquipmentPieceState,
@@ -630,10 +756,10 @@ function buildAdvancedPriceTable(
   });
 
   if (table.book) {
-    const ownedBooks = isWeapon(piece) ? materials?.metallurgyBooks || 0 : materials?.tailoringBooks || 0;
-    priceTable[table.book] = isWeapon(piece)
-      ? supportMaterialPrice(market.metallurgyBookPrice, ownedBooks)
-      : supportMaterialPrice(market.tailoringBookPrice, ownedBooks);
+    const mapping = supportBookMappingByName(table.book, piece);
+    if (mapping) {
+      priceTable[table.book] = supportMaterialPrice(Number(market[mapping.marketKey] || 0), Number(materials?.[mapping.inventoryKey] || 0));
+    }
   }
 
   return priceTable;
@@ -666,14 +792,16 @@ function mapAdvancedExpectedMaterials(
       return;
     }
     if (index === 4) return;
+    const mapping = supportBookMappingByName(material?.name || "", piece);
     const key =
-      index === 5
+      mapping?.materialKey ??
+      (index === 5
         ? isWeapon(piece)
           ? "lavaBreaths"
           : "iceBreaths"
         : isWeapon(piece)
           ? "metallurgyBooks"
-          : "tailoringBooks";
+          : "tailoringBooks");
     patch[key] = (patch[key] || 0) + amount;
   });
 
@@ -689,7 +817,13 @@ function getIcepengNormalRefineTable(piece: EquipmentPieceState, family: Materia
   return getRefineTable(isWeapon(piece) ? "weapon" : "armor", normalRefineGradeForFamily(family), targetLevel, false, false);
 }
 
-function buildNormalPriceTable(table: RefineTable, piece: EquipmentPieceState, family: MaterialFamily, market: MarketPriceSnapshot) {
+function buildNormalPriceTable(
+  table: RefineTable,
+  piece: EquipmentPieceState,
+  family: MaterialFamily,
+  market: MarketPriceSnapshot,
+  materials?: MaterialInventory
+) {
   const shardUnit = resolveShardPricePer1000(market) / 1000;
   const priceTable: Record<string, number> = {};
   const amountKeys = Object.keys(table.amount);
@@ -711,9 +845,12 @@ function buildNormalPriceTable(table: RefineTable, piece: EquipmentPieceState, f
   Object.keys(table.breath).forEach((key, index) => {
     const isArmor = ARMOR_SLOTS.has(piece.slot);
     const isBook = index > 0;
-      priceTable[key] = isArmor
-      ? (isBook ? market.tailoringBookPrice : market.iceBreathPrice)
-      : (isBook ? market.metallurgyBookPrice : market.lavaBreathPrice);
+    const mapping = supportBookMappingByName(key, piece);
+    priceTable[key] = mapping
+      ? supportMaterialPrice(Number(market[mapping.marketKey] || 0), Number(materials?.[mapping.inventoryKey] || 0))
+      : isArmor
+        ? (isBook ? market.tailoringBookPrice : market.iceBreathPrice)
+        : (isBook ? market.metallurgyBookPrice : market.lavaBreathPrice);
   });
 
   return priceTable;
@@ -749,18 +886,17 @@ function mapNormalExpectedMaterials(table: RefineTable, piece: EquipmentPieceSta
     breathEntries.forEach(([name], index) => {
       const amount = step.breathes?.[name] || 0;
       if (!amount) return;
+      const mapping = supportBookMappingByName(name, piece);
       const key =
-        index === 0
+        mapping?.materialKey ??
+        (index === 0
           ? ARMOR_SLOTS.has(piece.slot)
             ? "iceBreaths"
             : "lavaBreaths"
           : ARMOR_SLOTS.has(piece.slot)
             ? "tailoringBooks"
-            : "metallurgyBooks";
+            : "metallurgyBooks");
       patch[key] = (patch[key] || 0) + amount * reachProbability;
-      if (index > 0) {
-        // Same inventory bucket for now, but the note below exposes that this is a book choice.
-      }
     });
 
     reachProbability *= Math.max(0, 1 - step.totalProb);
@@ -804,6 +940,20 @@ function materialPatchPurchaseCost(patch: MaterialNeedPatch, materials: Material
   const buyLavaBreaths = Math.max(0, (patch.lavaBreaths || 0) - materials.boundLavaBreaths - materials.tradableLavaBreaths);
   const buyTailoring = Math.max(0, (patch.tailoringBooks || 0) - materials.tailoringBooks);
   const buyMetallurgy = Math.max(0, (patch.metallurgyBooks || 0) - materials.metallurgyBooks);
+  const buyArtisanTailoring1 = Math.max(0, (patch.artisanTailoringBook1 || 0) - materials.artisanTailoringBook1);
+  const buyArtisanTailoring2 = Math.max(0, (patch.artisanTailoringBook2 || 0) - materials.artisanTailoringBook2);
+  const buyArtisanTailoring3 = Math.max(0, (patch.artisanTailoringBook3 || 0) - materials.artisanTailoringBook3);
+  const buyArtisanTailoring4 = Math.max(0, (patch.artisanTailoringBook4 || 0) - materials.artisanTailoringBook4);
+  const buyArtisanMetallurgy1 = Math.max(0, (patch.artisanMetallurgyBook1 || 0) - materials.artisanMetallurgyBook1);
+  const buyArtisanMetallurgy2 = Math.max(0, (patch.artisanMetallurgyBook2 || 0) - materials.artisanMetallurgyBook2);
+  const buyArtisanMetallurgy3 = Math.max(0, (patch.artisanMetallurgyBook3 || 0) - materials.artisanMetallurgyBook3);
+  const buyArtisanMetallurgy4 = Math.max(0, (patch.artisanMetallurgyBook4 || 0) - materials.artisanMetallurgyBook4);
+  const buyUpheavalTailoring15 = Math.max(0, (patch.upheavalTailoringBook15 || 0) - materials.upheavalTailoringBook15);
+  const buyUpheavalMetallurgy15 = Math.max(0, (patch.upheavalMetallurgyBook15 || 0) - materials.upheavalMetallurgyBook15);
+  const buyUpheavalTailoring19 = Math.max(0, (patch.upheavalTailoringBook19 || 0) - materials.upheavalTailoringBook19);
+  const buyUpheavalMetallurgy19 = Math.max(0, (patch.upheavalMetallurgyBook19 || 0) - materials.upheavalMetallurgyBook19);
+  const buyEnhancedTailoring19 = Math.max(0, (patch.enhancedUpheavalTailoringBook19 || 0) - materials.enhancedUpheavalTailoringBook19);
+  const buyEnhancedMetallurgy19 = Math.max(0, (patch.enhancedUpheavalMetallurgyBook19 || 0) - materials.enhancedUpheavalMetallurgyBook19);
 
   return (
     (buyShards / 1000) * shardPrice +
@@ -818,7 +968,21 @@ function materialPatchPurchaseCost(patch: MaterialNeedPatch, materials: Material
     buyIceBreaths * market.iceBreathPrice +
     buyLavaBreaths * market.lavaBreathPrice +
     buyTailoring * market.tailoringBookPrice +
-    buyMetallurgy * market.metallurgyBookPrice
+    buyMetallurgy * market.metallurgyBookPrice +
+    buyArtisanTailoring1 * market.artisanTailoringBook1Price +
+    buyArtisanTailoring2 * market.artisanTailoringBook2Price +
+    buyArtisanTailoring3 * market.artisanTailoringBook3Price +
+    buyArtisanTailoring4 * market.artisanTailoringBook4Price +
+    buyArtisanMetallurgy1 * market.artisanMetallurgyBook1Price +
+    buyArtisanMetallurgy2 * market.artisanMetallurgyBook2Price +
+    buyArtisanMetallurgy3 * market.artisanMetallurgyBook3Price +
+    buyArtisanMetallurgy4 * market.artisanMetallurgyBook4Price +
+    buyUpheavalTailoring15 * market.upheavalTailoringBook15Price +
+    buyUpheavalMetallurgy15 * market.upheavalMetallurgyBook15Price +
+    buyUpheavalTailoring19 * market.upheavalTailoringBook19Price +
+    buyUpheavalMetallurgy19 * market.upheavalMetallurgyBook19Price +
+    buyEnhancedTailoring19 * market.enhancedTailoringBookPrice +
+    buyEnhancedMetallurgy19 * market.enhancedMetallurgyBookPrice
   );
 }
 
@@ -854,6 +1018,20 @@ function consumeMaterials(materials: MaterialInventory, patch: MaterialNeedPatch
   consumeMaterialPair(materials, "boundLavaBreaths", "tradableLavaBreaths", patch.lavaBreaths || 0);
   consumeSingleMaterial(materials, "tailoringBooks", patch.tailoringBooks || 0);
   consumeSingleMaterial(materials, "metallurgyBooks", patch.metallurgyBooks || 0);
+  consumeSingleMaterial(materials, "artisanTailoringBook1", patch.artisanTailoringBook1 || 0);
+  consumeSingleMaterial(materials, "artisanTailoringBook2", patch.artisanTailoringBook2 || 0);
+  consumeSingleMaterial(materials, "artisanTailoringBook3", patch.artisanTailoringBook3 || 0);
+  consumeSingleMaterial(materials, "artisanTailoringBook4", patch.artisanTailoringBook4 || 0);
+  consumeSingleMaterial(materials, "artisanMetallurgyBook1", patch.artisanMetallurgyBook1 || 0);
+  consumeSingleMaterial(materials, "artisanMetallurgyBook2", patch.artisanMetallurgyBook2 || 0);
+  consumeSingleMaterial(materials, "artisanMetallurgyBook3", patch.artisanMetallurgyBook3 || 0);
+  consumeSingleMaterial(materials, "artisanMetallurgyBook4", patch.artisanMetallurgyBook4 || 0);
+  consumeSingleMaterial(materials, "upheavalTailoringBook15", patch.upheavalTailoringBook15 || 0);
+  consumeSingleMaterial(materials, "upheavalMetallurgyBook15", patch.upheavalMetallurgyBook15 || 0);
+  consumeSingleMaterial(materials, "upheavalTailoringBook19", patch.upheavalTailoringBook19 || 0);
+  consumeSingleMaterial(materials, "upheavalMetallurgyBook19", patch.upheavalMetallurgyBook19 || 0);
+  consumeSingleMaterial(materials, "enhancedUpheavalTailoringBook19", patch.enhancedUpheavalTailoringBook19 || 0);
+  consumeSingleMaterial(materials, "enhancedUpheavalMetallurgyBook19", patch.enhancedUpheavalMetallurgyBook19 || 0);
 }
 
 function createCandidate(
@@ -874,7 +1052,7 @@ function createCandidate(
   if (action === "normal") {
     const table = getIcepengNormalRefineTable(piece, family);
     if (table) {
-      const priceTable = buildNormalPriceTable(table, piece, family, market);
+      const priceTable = buildNormalPriceTable(table, piece, family, market, materials);
       const optimized = optimizeNormalRefine(table, priceTable, {}, Math.max(0, piece.currentRefiningExp || 0) / 100, Math.max(0, piece.artisanEnergy || 0) / 100);
       if (Number.isFinite(optimized.price)) {
         const { patch: expectedMaterials, directGold } = mapNormalExpectedMaterials(table, piece, family, optimized.path);
@@ -1068,6 +1246,28 @@ function candidateItemLevelGain(candidate: RefiningActionCandidate) {
   return candidate.action === "normal" ? 5 : 1;
 }
 
+function routeStepFromCandidate(candidate: RefiningActionCandidate, confirmed = false): RefiningRouteStep {
+  return {
+    slot: candidate.piece.slot,
+    slotLabel: SLOT_LABELS[candidate.piece.slot],
+    itemName: itemName(candidate.piece),
+    action: candidate.action,
+    fromLevel: candidate.fromLevel,
+    toLevel: candidate.toLevel,
+    materialFamily: candidate.materialFamily,
+    averageCost: round(candidate.averageCost),
+    directGold: round(candidate.directGold),
+    expectedMaterials: candidate.expectedMaterials,
+    levelGain: candidate.levelGain,
+    efficiency: round(candidate.efficiency),
+    supportName: candidate.supportName,
+    supportWorthUsing: candidate.supportWorthUsing,
+    supportSavedGold: round(candidate.supportSavedGold),
+    notes: confirmed ? ["확정 스펙업", ...candidate.notes] : candidate.notes,
+    confirmed,
+  };
+}
+
 function planCheapestRoute(input: GrowthPlannerState) {
   const pieces = input.character.pieces.map(clonePiece);
   const remainingMaterials: MaterialInventory = { ...input.materials };
@@ -1083,6 +1283,29 @@ function planCheapestRoute(input: GrowthPlannerState) {
   let materialPurchaseCost = 0;
   const maxSteps = 160;
   const targetEpsilon = 0.000001;
+
+  for (const upgrade of input.character.confirmedUpgrades ?? []) {
+    const targetPiece = pieces.find((piece) => piece.slot === upgrade.slot);
+    if (!targetPiece) continue;
+
+    const getCurrentLevel = () => (upgrade.action === "normal" ? targetPiece.honingLevel : targetPiece.advancedRefiningLevel);
+    let guard = 0;
+
+    while (getCurrentLevel() < upgrade.targetLevel && guard < maxSteps) {
+      guard += 1;
+      const candidate = createCandidate(targetPiece, upgrade.action, input.market, remainingMaterials);
+      if (!candidate) break;
+
+      addNeeds(requiredMaterials, candidate.expectedMaterials);
+      directGoldCost += candidate.directGold;
+      materialPurchaseCost += materialPatchPurchaseCost(candidate.expectedMaterials, remainingMaterials, input.market);
+      gainedLevel += candidate.levelGain;
+      gainedItemLevel += candidateItemLevelGain(candidate);
+      steps.push(routeStepFromCandidate(candidate, true));
+      consumeMaterials(remainingMaterials, candidate.expectedMaterials);
+      applyCandidate(targetPiece, candidate);
+    }
+  }
 
   for (let i = 0; i < maxSteps && gainedItemLevel + targetEpsilon < targetGapItemLevel; i += 1) {
     const candidates = pieces
@@ -1115,24 +1338,7 @@ function planCheapestRoute(input: GrowthPlannerState) {
     materialPurchaseCost += materialPatchPurchaseCost(best.expectedMaterials, remainingMaterials, input.market);
     gainedLevel += best.levelGain;
     gainedItemLevel += candidateItemLevelGain(best);
-    steps.push({
-      slot: best.piece.slot,
-      slotLabel: SLOT_LABELS[best.piece.slot],
-      itemName: itemName(best.piece),
-      action: best.action,
-      fromLevel: best.fromLevel,
-      toLevel: best.toLevel,
-      materialFamily: best.materialFamily,
-      averageCost: round(best.averageCost),
-      directGold: round(best.directGold),
-      expectedMaterials: best.expectedMaterials,
-      levelGain: best.levelGain,
-      efficiency: round(best.efficiency),
-      supportName: best.supportName,
-      supportWorthUsing: best.supportWorthUsing,
-      supportSavedGold: round(best.supportSavedGold),
-      notes: best.notes,
-    });
+    steps.push(routeStepFromCandidate(best));
     consumeMaterials(remainingMaterials, best.expectedMaterials);
     applyCandidate(targetPiece, best);
   }
@@ -1161,7 +1367,21 @@ function calculateBoundOffset(needs: MaterialNeedBreakdown, input: GrowthPlanner
     Math.min(needs.iceBreaths, input.materials.boundIceBreaths) * input.market.iceBreathPrice +
     Math.min(needs.lavaBreaths, input.materials.boundLavaBreaths) * input.market.lavaBreathPrice +
     Math.min(needs.tailoringBooks, input.materials.tailoringBooks) * input.market.tailoringBookPrice +
-    Math.min(needs.metallurgyBooks, input.materials.metallurgyBooks) * input.market.metallurgyBookPrice
+    Math.min(needs.metallurgyBooks, input.materials.metallurgyBooks) * input.market.metallurgyBookPrice +
+    Math.min(needs.artisanTailoringBook1, input.materials.artisanTailoringBook1) * input.market.artisanTailoringBook1Price +
+    Math.min(needs.artisanTailoringBook2, input.materials.artisanTailoringBook2) * input.market.artisanTailoringBook2Price +
+    Math.min(needs.artisanTailoringBook3, input.materials.artisanTailoringBook3) * input.market.artisanTailoringBook3Price +
+    Math.min(needs.artisanTailoringBook4, input.materials.artisanTailoringBook4) * input.market.artisanTailoringBook4Price +
+    Math.min(needs.artisanMetallurgyBook1, input.materials.artisanMetallurgyBook1) * input.market.artisanMetallurgyBook1Price +
+    Math.min(needs.artisanMetallurgyBook2, input.materials.artisanMetallurgyBook2) * input.market.artisanMetallurgyBook2Price +
+    Math.min(needs.artisanMetallurgyBook3, input.materials.artisanMetallurgyBook3) * input.market.artisanMetallurgyBook3Price +
+    Math.min(needs.artisanMetallurgyBook4, input.materials.artisanMetallurgyBook4) * input.market.artisanMetallurgyBook4Price +
+    Math.min(needs.upheavalTailoringBook15, input.materials.upheavalTailoringBook15) * input.market.upheavalTailoringBook15Price +
+    Math.min(needs.upheavalMetallurgyBook15, input.materials.upheavalMetallurgyBook15) * input.market.upheavalMetallurgyBook15Price +
+    Math.min(needs.upheavalTailoringBook19, input.materials.upheavalTailoringBook19) * input.market.upheavalTailoringBook19Price +
+    Math.min(needs.upheavalMetallurgyBook19, input.materials.upheavalMetallurgyBook19) * input.market.upheavalMetallurgyBook19Price +
+    Math.min(needs.enhancedUpheavalTailoringBook19, input.materials.enhancedUpheavalTailoringBook19) * input.market.enhancedTailoringBookPrice +
+    Math.min(needs.enhancedUpheavalMetallurgyBook19, input.materials.enhancedUpheavalMetallurgyBook19) * input.market.enhancedMetallurgyBookPrice
   );
 }
 
@@ -1186,6 +1406,20 @@ function calculateMaterialPurchase(needs: MaterialNeedBreakdown, input: GrowthPl
   const buyLavaBreaths = Math.max(0, needs.lavaBreaths - input.materials.boundLavaBreaths - input.materials.tradableLavaBreaths);
   const buyTailoring = Math.max(0, needs.tailoringBooks - input.materials.tailoringBooks);
   const buyMetallurgy = Math.max(0, needs.metallurgyBooks - input.materials.metallurgyBooks);
+  const buyArtisanTailoring1 = Math.max(0, needs.artisanTailoringBook1 - input.materials.artisanTailoringBook1);
+  const buyArtisanTailoring2 = Math.max(0, needs.artisanTailoringBook2 - input.materials.artisanTailoringBook2);
+  const buyArtisanTailoring3 = Math.max(0, needs.artisanTailoringBook3 - input.materials.artisanTailoringBook3);
+  const buyArtisanTailoring4 = Math.max(0, needs.artisanTailoringBook4 - input.materials.artisanTailoringBook4);
+  const buyArtisanMetallurgy1 = Math.max(0, needs.artisanMetallurgyBook1 - input.materials.artisanMetallurgyBook1);
+  const buyArtisanMetallurgy2 = Math.max(0, needs.artisanMetallurgyBook2 - input.materials.artisanMetallurgyBook2);
+  const buyArtisanMetallurgy3 = Math.max(0, needs.artisanMetallurgyBook3 - input.materials.artisanMetallurgyBook3);
+  const buyArtisanMetallurgy4 = Math.max(0, needs.artisanMetallurgyBook4 - input.materials.artisanMetallurgyBook4);
+  const buyUpheavalTailoring15 = Math.max(0, needs.upheavalTailoringBook15 - input.materials.upheavalTailoringBook15);
+  const buyUpheavalMetallurgy15 = Math.max(0, needs.upheavalMetallurgyBook15 - input.materials.upheavalMetallurgyBook15);
+  const buyUpheavalTailoring19 = Math.max(0, needs.upheavalTailoringBook19 - input.materials.upheavalTailoringBook19);
+  const buyUpheavalMetallurgy19 = Math.max(0, needs.upheavalMetallurgyBook19 - input.materials.upheavalMetallurgyBook19);
+  const buyEnhancedTailoring19 = Math.max(0, needs.enhancedUpheavalTailoringBook19 - input.materials.enhancedUpheavalTailoringBook19);
+  const buyEnhancedMetallurgy19 = Math.max(0, needs.enhancedUpheavalMetallurgyBook19 - input.materials.enhancedUpheavalMetallurgyBook19);
 
   return (
     (buyShards / 1000) * shardPrice +
@@ -1200,7 +1434,21 @@ function calculateMaterialPurchase(needs: MaterialNeedBreakdown, input: GrowthPl
     buyIceBreaths * input.market.iceBreathPrice +
     buyLavaBreaths * input.market.lavaBreathPrice +
     buyTailoring * input.market.tailoringBookPrice +
-    buyMetallurgy * input.market.metallurgyBookPrice
+    buyMetallurgy * input.market.metallurgyBookPrice +
+    buyArtisanTailoring1 * input.market.artisanTailoringBook1Price +
+    buyArtisanTailoring2 * input.market.artisanTailoringBook2Price +
+    buyArtisanTailoring3 * input.market.artisanTailoringBook3Price +
+    buyArtisanTailoring4 * input.market.artisanTailoringBook4Price +
+    buyArtisanMetallurgy1 * input.market.artisanMetallurgyBook1Price +
+    buyArtisanMetallurgy2 * input.market.artisanMetallurgyBook2Price +
+    buyArtisanMetallurgy3 * input.market.artisanMetallurgyBook3Price +
+    buyArtisanMetallurgy4 * input.market.artisanMetallurgyBook4Price +
+    buyUpheavalTailoring15 * input.market.upheavalTailoringBook15Price +
+    buyUpheavalMetallurgy15 * input.market.upheavalMetallurgyBook15Price +
+    buyUpheavalTailoring19 * input.market.upheavalTailoringBook19Price +
+    buyUpheavalMetallurgy19 * input.market.upheavalMetallurgyBook19Price +
+    buyEnhancedTailoring19 * input.market.enhancedTailoringBookPrice +
+    buyEnhancedMetallurgy19 * input.market.enhancedMetallurgyBookPrice
   );
 }
 
@@ -1223,6 +1471,7 @@ export function makeEmptyPlannerState(): GrowthPlannerState {
       currentWeeklyBoundGold: 0,
       targetWeeklyGold: 0,
       preferredMode: "hybrid",
+      confirmedUpgrades: [],
       pieces: PIECE_SLOTS.map((slot) => ({
         slot,
         itemLevel: 0,
@@ -1429,6 +1678,20 @@ export function estimateGrowthPlan(input: GrowthPlannerState): GrowthEstimate {
       lavaBreaths: round(requiredMaterials.lavaBreaths),
       tailoringBooks: round(requiredMaterials.tailoringBooks),
       metallurgyBooks: round(requiredMaterials.metallurgyBooks),
+      artisanTailoringBook1: round(requiredMaterials.artisanTailoringBook1),
+      artisanTailoringBook2: round(requiredMaterials.artisanTailoringBook2),
+      artisanTailoringBook3: round(requiredMaterials.artisanTailoringBook3),
+      artisanTailoringBook4: round(requiredMaterials.artisanTailoringBook4),
+      artisanMetallurgyBook1: round(requiredMaterials.artisanMetallurgyBook1),
+      artisanMetallurgyBook2: round(requiredMaterials.artisanMetallurgyBook2),
+      artisanMetallurgyBook3: round(requiredMaterials.artisanMetallurgyBook3),
+      artisanMetallurgyBook4: round(requiredMaterials.artisanMetallurgyBook4),
+      upheavalTailoringBook15: round(requiredMaterials.upheavalTailoringBook15),
+      upheavalMetallurgyBook15: round(requiredMaterials.upheavalMetallurgyBook15),
+      upheavalTailoringBook19: round(requiredMaterials.upheavalTailoringBook19),
+      upheavalMetallurgyBook19: round(requiredMaterials.upheavalMetallurgyBook19),
+      enhancedUpheavalTailoringBook19: round(requiredMaterials.enhancedUpheavalTailoringBook19),
+      enhancedUpheavalMetallurgyBook19: round(requiredMaterials.enhancedUpheavalMetallurgyBook19),
     },
     routeSteps: route.steps,
     additionalWeeklyGold,

@@ -211,7 +211,7 @@ export default function GemTracker() {
               초기화
             </button>
             <button className="gemBtn" onClick={toggleTheme} title="테마 전환">
-              {theme === "dark" ? "☀️ 화이트모드" : "🌙 다크모드"}
+              {theme === "dark" ? "☀️" : "🌙"}
             </button>
           </div>
         </div>

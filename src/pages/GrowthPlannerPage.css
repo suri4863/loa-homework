@@ -162,14 +162,23 @@
 
 .equipmentStateCard {
   grid-column: 1;
+  grid-row: 1;
+}
+
+.confirmedUpgradeCard {
+  grid-column: 1;
+  grid-row: 2;
+  align-content: start;
 }
 
 .routePanel {
   grid-column: 2;
+  grid-row: 1 / span 2;
 }
 
 .estimateResultCard {
   grid-column: 3;
+  grid-row: 1 / span 2;
 }
 
 .weeklyRewardTabsCard {
@@ -984,6 +993,33 @@
   gap: 12px;
 }
 
+.estimateCharacterSummary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 10px 12px;
+}
+
+.estimateCharacterSummary span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.estimateCharacterSummary strong {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.resultSectionTitle {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 900;
+}
+
 .resultCard {
   display: grid;
   gap: 4px;
@@ -1260,6 +1296,74 @@
   font-size: 12px;
 }
 
+.confirmedUpgradeControls {
+  align-items: end;
+}
+
+.confirmedUpgradeControls .growthAction {
+  align-self: end;
+  min-height: 42px;
+}
+
+.confirmedUpgradeList {
+  display: grid;
+  gap: 8px;
+}
+
+.confirmedUpgradeItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 10px 12px;
+}
+
+.confirmedUpgradeItem span {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.confirmedRouteSummary {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--primary);
+  border-radius: 14px;
+  background: var(--primary-soft);
+  padding: 12px;
+}
+
+.confirmedRouteSummary .routeUsageRow {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  background: var(--card);
+}
+
+.confirmedRouteSummary .routeUsageRow span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.confirmedRouteMaterials {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.confirmedRouteMaterials span {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--text);
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .routeSupportGuide {
   display: grid;
   gap: 6px;
@@ -1409,6 +1513,11 @@
     flex-direction: column;
   }
 
+  .estimateCharacterSummary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
   .resourceTabsHeader {
     align-items: flex-start;
     flex-direction: column;
@@ -1439,6 +1548,15 @@
   .routeStepItem {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .confirmedUpgradeItem {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .confirmedRouteSummary .routeUsageRow {
+    grid-template-columns: 1fr;
   }
 
   .routeStepMeta {
