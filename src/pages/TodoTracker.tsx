@@ -1270,6 +1270,12 @@ export default function TodoTracker() {
           (candidate) => String(candidate.name ?? "").trim() === normalizedName
         );
         if (ch) return `${table.id}|${ch.id}`;
+
+        const placeholderIndex = Number(normalizedName.match(/(\d+)$/)?.[1] ?? 0);
+        if (placeholderIndex > 0 && placeholderIndex <= table.characters.length) {
+          const fallbackChar = table.characters[placeholderIndex - 1];
+          if (fallbackChar) return `${table.id}|${fallbackChar.id}`;
+        }
       }
     }
 
@@ -1309,8 +1315,10 @@ export default function TodoTracker() {
   ) {
     const name = String(snapshot?.name ?? charName ?? "").trim();
     const table = String(snapshot?.tableName ?? tableName ?? "").trim();
+    const localKey = resolveLocalScheduleCharKeyForItem(charKey, snapshot, charName, tableName);
 
     return compactScheduleKeysForItem([
+      localKey,
       charKey,
       snapshot?.key,
       name,
@@ -1575,12 +1583,27 @@ export default function TodoTracker() {
 
         const targetDayCount = schedule.items.filter((item) => item.day === targetDay).length;
 
-        const scheduledRaidSet = new Set(
-          schedule.items
-            .filter((item) => item.myCharKey === me.key)
-            .flatMap((item) => item.baseRaidNames ?? [])
-            .map((raid) => normalizeRaidName(raid))
-        );
+        const scheduledRaidSet = new Set<string>();
+        for (const item of schedule.items) {
+          const myItemKeys = getScheduleCandidateKeysForItem(
+            item.myCharKey,
+            item.myTableName,
+            item.myCharName,
+            item.mySnapshot
+          );
+          const friendItemKeys = getScheduleCandidateKeysForItem(
+            item.friendCharKey,
+            item.friendTableName,
+            item.friendCharName,
+            item.friendSnapshot
+          );
+
+          if (!myItemKeys.includes(me.key) && !friendItemKeys.includes(me.key)) continue;
+
+          for (const raid of getScheduleItemRaidNames(item)) {
+            scheduledRaidSet.add(normalizeRaidName(raid));
+          }
+        }
 
         const baseRaids =
           Array.isArray(selectedRaidNames) && selectedRaidNames.length > 0
@@ -1601,6 +1624,7 @@ export default function TodoTracker() {
           myCharName: me.name,
           myTableName: me.tableName ?? null,
           myCharPower: me.power ?? null,
+          mySnapshot: buildScheduleCharacterSnapshot(me),
           myWeeklyRaidPickKey: weeklyCharKey(me.tableId, me.charId), // 4/22 일정표 레이드 난이도 표시용
 
           friendCharKey: null,
@@ -2090,6 +2114,7 @@ export default function TodoTracker() {
     const isStaleFriendSnapshot = Boolean(snap?.isStaleAfterWeeklyReset);
 
     type FriendSnapshotRow = {
+      charKey?: string;
       charName: string;
       charItemLevel?: string;
       charPower?: string;
@@ -2183,6 +2208,7 @@ export default function TodoTracker() {
             );
 
             return {
+              charKey: row?.charKey ? String(row.charKey) : undefined,
               charName: String(row?.charName ?? ""),
               charItemLevel: row?.charItemLevel ? String(row.charItemLevel) : undefined,
               charPower: row?.charPower ? String(row.charPower) : undefined,
@@ -2212,6 +2238,7 @@ export default function TodoTracker() {
 
             return {
               ...row,
+              charKey: row?.charKey ? String(row.charKey) : undefined,
               charName: String(row?.charName ?? ""),
               charItemLevel: row?.charItemLevel ? String(row.charItemLevel) : undefined,
               charPower: row?.charPower ? String(row.charPower) : undefined,
@@ -2318,28 +2345,51 @@ export default function TodoTracker() {
 
     const schedule = weeklySchedules.find((s) => s.id === selectedScheduleId);
 
+    function getScheduledRaidSetForMyScheduleCandidate(
+      schedule: SharedWeeklySchedule,
+      me: MyCandidate
+    ) {
+      const scheduledRaidSet = new Set<string>();
+
+      for (const item of schedule.items) {
+        const itemKeys = getScheduleCandidateKeys(
+          item.myCharKey,
+          item.myTableName,
+          item.myCharName,
+          item.mySnapshot
+        );
+        const friendItemKeys = getScheduleCandidateKeys(
+          item.friendCharKey,
+          item.friendTableName,
+          item.friendCharName,
+          item.friendSnapshot
+        );
+
+        if (!itemKeys.includes(me.key) && !friendItemKeys.includes(me.key)) continue;
+
+        for (const raid of getScheduleItemRaidNames(item)) {
+          scheduledRaidSet.add(normalizeRaidName(raid));
+        }
+      }
+
+      return scheduledRaidSet;
+    }
+
+    function getAvailableRaidsForMyScheduleCandidate(
+      schedule: SharedWeeklySchedule,
+      me: MyCandidate
+    ) {
+      const scheduledRaidSet = getScheduledRaidSetForMyScheduleCandidate(schedule, me);
+
+      return me.activeRaids.filter(
+        (raid) => !scheduledRaidSet.has(normalizeRaidName(raid))
+      );
+    }
+
     const selectableMyScheduleCandidates = myCandidates.filter((me) => {
       if (!schedule) return false;
 
-      const scheduledRaidSet = new Set(
-        schedule.items
-          .filter((item) =>
-            getScheduleCandidateKeys(
-              item.myCharKey,
-              item.myTableName,
-              item.myCharName,
-              item.mySnapshot
-            ).includes(me.key)
-          )
-          .flatMap((item) => item.baseRaidNames ?? [])
-          .map((raid) => normalizeRaidName(raid))
-      );
-
-      const remainingSchedulableRaids = me.activeRaids.filter(
-        (raid) => !scheduledRaidSet.has(normalizeRaidName(raid))
-      );
-
-      return remainingSchedulableRaids.length > 0;
+      return getAvailableRaidsForMyScheduleCandidate(schedule, me).length > 0;
     });
 
     // 공유 일정표에 이미 들어간 레이드 표시용
@@ -2504,7 +2554,7 @@ export default function TodoTracker() {
           schedulePlanningMode === "NEXT_RESET" ? allRaids : remainingRaids;
 
         return {
-          key: `${row.tableName ?? ""}|${row.charName ?? ""}`,
+          key: String(row.charKey ?? "").trim() || `${row.tableName ?? ""}|${row.charName ?? ""}`,
           tableName: row.tableName ?? "",
           name: row.charName ?? "",
           ilvl,
@@ -2686,6 +2736,12 @@ export default function TodoTracker() {
             (candidate) => String(candidate.name ?? "").trim() === normalizedName
           );
           if (ch) return `${table.id}|${ch.id}`;
+
+          const placeholderIndex = Number(normalizedName.match(/(\d+)$/)?.[1] ?? 0);
+          if (placeholderIndex > 0 && placeholderIndex <= table.characters.length) {
+            const fallbackChar = table.characters[placeholderIndex - 1];
+            if (fallbackChar) return `${table.id}|${fallbackChar.id}`;
+          }
         }
       }
 
@@ -2725,8 +2781,10 @@ export default function TodoTracker() {
     ) {
       const name = String(snapshot?.name ?? charName ?? "").trim();
       const table = String(snapshot?.tableName ?? tableName ?? "").trim();
+      const localKey = resolveLocalScheduleCharKey(charKey, snapshot, charName, tableName);
 
       return compactScheduleKeys([
+        localKey,
         charKey,
         snapshot?.key,
         name,
@@ -3415,16 +3473,7 @@ export default function TodoTracker() {
 
                 if (!selectedMe || !schedule) return null;
 
-                const scheduledRaidSet = new Set(
-                  schedule.items
-                    .filter((item) => item.myCharKey === selectedMe.key)
-                    .flatMap((item) => item.baseRaidNames ?? [])
-                    .map((raid) => normalizeRaidName(raid))
-                );
-
-                const availableRaids = selectedMe.activeRaids.filter(
-                  (raid) => !scheduledRaidSet.has(normalizeRaidName(raid))
-                );
+                const availableRaids = getAvailableRaidsForMyScheduleCandidate(schedule, selectedMe);
 
                 if (!availableRaids.length) return null;
 
@@ -3469,16 +3518,7 @@ export default function TodoTracker() {
                     return;
                   }
 
-                  const scheduledRaidSet = new Set(
-                    schedule.items
-                      .filter((item) => item.myCharKey === me.key)
-                      .flatMap((item) => item.baseRaidNames ?? [])
-                      .map((raid) => normalizeRaidName(raid))
-                  );
-
-                  const availableRaids = me.activeRaids.filter(
-                    (raid) => !scheduledRaidSet.has(normalizeRaidName(raid))
-                  );
+                  const availableRaids = getAvailableRaidsForMyScheduleCandidate(schedule, me);
 
                   setSelectedMyScheduleRaidNames(availableRaids);
                 }}

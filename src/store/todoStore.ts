@@ -109,6 +109,7 @@ export type RaidLeftSnapshotPayload = {
   scope?: "ALL_TABLES" | "ONE_TABLE";
 
   data: Array<{
+    charKey?: string;
     charName: string;
     charItemLevel?: string;
     charPower?: string;
@@ -135,6 +136,7 @@ export type FriendRaidPlanPayload = {
   scope?: "ALL_TABLES" | "ONE_TABLE";
 
   data: Array<{
+    charKey?: string;
     charName: string;
     charItemLevel?: string;
     charPower?: string;
@@ -530,6 +532,7 @@ export function exportFriendRaidPlan(
       if (!selectedRaidTitles.length) continue;
 
       rows.push({
+        charKey: `${table.id}|${ch.id}`,
         charName: ch.name,
         charItemLevel: ch.itemLevel || "",
         charPower: ch.power || "",
@@ -573,6 +576,7 @@ export function importFriendRaidPlan(raw: any): FriendRaidPlanPayload {
   parsed.data = Array.isArray(parsed.data) ? parsed.data : [];
 
   parsed.data = parsed.data.map((r: any) => ({
+    charKey: r?.charKey ? String(r.charKey) : undefined,
     charName: String(r?.charName ?? ""),
     charItemLevel: r?.charItemLevel ? String(r.charItemLevel) : undefined,
     charPower: r?.charPower ? String(r.charPower) : undefined,
@@ -1115,6 +1119,7 @@ export function exportRaidLeftSnapshot(
       }
 
       rows.push({
+        charKey: `${table.id}|${ch.id}`,
         charName: ch.name,
         charItemLevel: ch.itemLevel || "",
         charPower: ch.power || "",
@@ -1175,6 +1180,7 @@ export function importRaidLeftSnapshot(raw: any): RaidLeftSnapshotPayload {
 
   // row 단위 정규화 (v1/v2 공통 처리)
   parsed.data = parsed.data.map((r: any) => ({
+    charKey: r?.charKey ? String(r.charKey) : undefined,
     charName: String(r?.charName ?? ""),
     charItemLevel: r?.charItemLevel ? String(r.charItemLevel) : undefined,
     charPower: r?.charPower ? String(r.charPower) : undefined,
