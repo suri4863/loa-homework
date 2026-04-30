@@ -685,6 +685,11 @@ type RouteMaterialUsageRow = {
   singleInventoryLabel?: string;
 };
 
+type UsedMaterialDisplayRow = {
+  label: string;
+  value: number;
+};
+
 type BonusRewardItem = {
   name: string;
   quantity: number;
@@ -857,6 +862,32 @@ function getRouteMaterialUsageRows(step: DisplayRouteStep, inventory: MaterialIn
       tradableUsed,
       purchaseNeeded: Math.max(0, required - boundUsed - tradableUsed),
     });
+  });
+
+  return rows;
+}
+
+function getUsedMaterialDisplayRows(requiredMaterials: GrowthEstimate["requiredMaterials"], inventory: MaterialInventory): UsedMaterialDisplayRow[] {
+  const rows: UsedMaterialDisplayRow[] = [];
+
+  ROUTE_MATERIAL_USAGE_FIELDS.forEach((field) => {
+    const required = Math.ceil(Math.max(0, Number(requiredMaterials[field.key] || 0)));
+    if (!required) return;
+
+    if (field.singleInventoryKey) {
+      const owned = Math.max(0, Number(inventory[field.singleInventoryKey] || 0));
+      const ownedUsed = Math.min(required, owned);
+      const purchaseNeeded = Math.max(0, required - ownedUsed);
+      if (ownedUsed > 0) rows.push({ label: `${field.label}(${field.singleInventoryLabel || "보유"})`, value: ownedUsed });
+      if (purchaseNeeded > 0) rows.push({ label: `${field.label}(구매)`, value: purchaseNeeded });
+      return;
+    }
+
+    const boundOwned = field.boundKey ? Math.max(0, Number(inventory[field.boundKey] || 0)) : 0;
+    const boundUsed = Math.min(required, boundOwned);
+    const purchaseNeeded = Math.max(0, required - boundUsed);
+    if (boundUsed > 0) rows.push({ label: `${field.label}(귀속)`, value: boundUsed });
+    if (purchaseNeeded > 0) rows.push({ label: `${field.label}(구매)`, value: purchaseNeeded });
   });
 
   return rows;
@@ -1657,11 +1688,8 @@ export default function GrowthPlannerPage() {
     );
   }, [confirmedRouteSteps]);
   const usedMaterialRows = useMemo(
-    () =>
-      ROUTE_MATERIAL_USAGE_FIELDS.map((field) => [field.label, Number(activeEstimate.requiredMaterials[field.key] || 0)] as const).filter(
-        ([, value]) => Math.round(value) > 0
-      ),
-    [activeEstimate.requiredMaterials]
+    () => getUsedMaterialDisplayRows(activeEstimate.requiredMaterials, estimateInput.materials),
+    [activeEstimate.requiredMaterials, estimateInput.materials]
   );
   const displayedCurrentItemLevel = useMemo(() => {
     const pieceLevels = planner.character.pieces.map(deriveEquipmentItemLevel).filter((level) => level > 0);
@@ -3464,7 +3492,7 @@ export default function GrowthPlannerPage() {
         <div className="resultSectionTitle">사용된 재화</div>
         {usedMaterialRows.length ? (
           <div className="resultMaterialTable">
-            {usedMaterialRows.map(([label, value]) => (
+            {usedMaterialRows.map(({ label, value }) => (
               <div className="resultCard" key={label}>
                 <span className="resultLabel">{label}</span>
                 <strong>{formatCount(value)}개</strong>
