@@ -4593,17 +4593,6 @@ export default function TodoTracker() {
               {displayFriendCandidates.length ? (
                 <div className="manualRemainList">
                   {displayFriendCandidates.map((fr: FriendCandidate) => {
-                    const visibleFriendRaids =
-                      schedulePlanningMode === "NEXT_RESET"
-                        ? fr.allRaids.length > 0
-                          ? fr.allRaids
-                          : fr.activeRaids.length > 0
-                            ? fr.activeRaids
-                            : fr.remainingRaids
-                        : fr.activeRaids.length > 0
-                          ? fr.activeRaids
-                          : fr.remainingRaids;
-
                     // 4/26 다음 주 초기화 기준은 친구 클리어 기록은 무시하고, 새 일정표에 넣은 레이드만 흑백 처리
                     const clearedRaidSet = new Set(
                       schedulePlanningMode === "NEXT_RESET"
@@ -4621,6 +4610,37 @@ export default function TodoTracker() {
                       "FRIEND"
                     );
                     scheduleClearedRaidSet.forEach((raid) => clearedRaidSet.add(raid));
+
+                    const scheduleDisplayBaseRaids =
+                      fr.allRaids.length > 0
+                        ? fr.allRaids
+                        : [
+                          ...fr.activeRaids,
+                          ...fr.remainingRaids,
+                          ...(fr.clearedRaids ?? []),
+                        ];
+
+                    const scheduleDisplayState = getRemainScheduleState(
+                      fr.key,
+                      scheduleDisplayBaseRaids,
+                      scheduledFriendRaidSetByChar,
+                      [fr.name, getScheduleSnapshotCandidateKey(fr.tableName, fr.name)]
+                    );
+
+                    const currentVisibleFriendRaids = uniqueCanonicalRaidNames([
+                      ...(fr.activeRaids.length > 0 ? fr.activeRaids : fr.remainingRaids),
+                      ...scheduleDisplayState.scheduledRaids,
+                      ...Array.from(clearedRaidSet),
+                    ]);
+
+                    const visibleFriendRaids =
+                      schedulePlanningMode === "NEXT_RESET"
+                        ? fr.allRaids.length > 0
+                          ? fr.allRaids
+                          : fr.activeRaids.length > 0
+                            ? fr.activeRaids
+                            : fr.remainingRaids
+                        : currentVisibleFriendRaids;
 
                     const scheduleState = getRemainScheduleState(
                       fr.key,
