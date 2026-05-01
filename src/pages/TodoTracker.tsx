@@ -4557,8 +4557,12 @@ export default function TodoTracker() {
                 <div className="manualRemainList">
                   {displayFriendCandidates.map((fr: FriendCandidate) => {
                     const visibleFriendRaids =
-                      fr.allRaids.length > 0
-                        ? fr.allRaids
+                      schedulePlanningMode === "NEXT_RESET"
+                        ? fr.allRaids.length > 0
+                          ? fr.allRaids
+                          : fr.activeRaids.length > 0
+                            ? fr.activeRaids
+                            : fr.remainingRaids
                         : fr.activeRaids.length > 0
                           ? fr.activeRaids
                           : fr.remainingRaids;
