@@ -2651,6 +2651,43 @@ export default function TodoTracker() {
       };
     }
 
+    function getClearedScheduleRaidSetForKeys(
+      schedule: SharedWeeklySchedule | undefined,
+      keys: string[],
+      side: "MY" | "FRIEND"
+    ) {
+      const clearedSet = new Set<string>();
+      if (!schedule) return clearedSet;
+
+      const keySet = new Set(compactScheduleKeys(keys));
+      for (const item of schedule.items) {
+        const itemKeys =
+          side === "MY"
+            ? getScheduleCandidateKeys(
+              item.myCharKey,
+              item.myTableName,
+              item.myCharName,
+              item.mySnapshot
+            )
+            : getScheduleCandidateKeys(
+              item.friendCharKey,
+              item.friendTableName,
+              item.friendCharName,
+              item.friendSnapshot
+            );
+
+        if (!itemKeys.some((key) => keySet.has(key))) continue;
+
+        for (const raid of getScheduleItemRaidNames(item)) {
+          if (isScheduleRaidCleared(schedule, item, raid)) {
+            clearedSet.add(normalizeRaidName(getScheduleRaidBaseName(raid)));
+          }
+        }
+      }
+
+      return clearedSet;
+    }
+
     const friendCandidates = rows
       .filter((row: any) => {
         const tableName = String(row.tableName ?? "").trim();
@@ -4573,6 +4610,17 @@ export default function TodoTracker() {
                         ? []
                         : (fr.clearedRaids ?? []).map((raid: string) => normalizeRaidName(raid))
                     );
+                    const friendKeys = compactScheduleKeys([
+                      fr.key,
+                      fr.name,
+                      getScheduleSnapshotCandidateKey(fr.tableName, fr.name),
+                    ]);
+                    const scheduleClearedRaidSet = getClearedScheduleRaidSetForKeys(
+                      schedule,
+                      friendKeys,
+                      "FRIEND"
+                    );
+                    scheduleClearedRaidSet.forEach((raid) => clearedRaidSet.add(raid));
 
                     const scheduleState = getRemainScheduleState(
                       fr.key,
