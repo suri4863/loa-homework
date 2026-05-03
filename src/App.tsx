@@ -1,10 +1,10 @@
-import React, { Suspense, lazy, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 
-const GemTracker = lazy(() => import("./components/GemTracker"));
-const TodoTracker = lazy(() => import("./pages/TodoTracker"));
-const AccountPage = lazy(() => import("./pages/AccountPage"));
-const GrowthPlannerPage = lazy(() => import("./pages/GrowthPlannerPage"));
+import GemTracker from "./components/GemTracker";
+import TodoTracker from "./pages/TodoTracker";
+import AccountPage from "./pages/AccountPage";
+import GrowthPlannerPage from "./pages/GrowthPlannerPage";
 
 const THEME_KEY = "todoTheme";
 
@@ -66,16 +66,14 @@ export default function App() {
       </header>
 
       <main className={`${shell} py-6`}>
-        <Suspense fallback={<div className="appSub py-8 text-sm">불러오는 중...</div>}>
-          <Routes>
-            <Route path="/" element={<Navigate to="/todo" replace />} />
-            <Route path="/account" element={<AccountPage />} />
-            <Route path="/gems" element={<GemTracker />} />
-            <Route path="/todo" element={<TodoTracker />} />
-            <Route path="/growth" element={<GrowthPlannerPage />} />
-            <Route path="*" element={<Navigate to="/todo" replace />} />
-          </Routes>
-        </Suspense>
+        <Routes>
+          <Route path="/" element={<Navigate to="/todo" replace />} />
+          <Route path="/account" element={<AccountPage />} />
+          <Route path="/gems" element={<GemTracker />} />
+          <Route path="/todo" element={<TodoTracker />} />
+          <Route path="/growth" element={<GrowthPlannerPage />} />
+          <Route path="*" element={<Navigate to="/todo" replace />} />
+        </Routes>
       </main>
 
       <footer className="appFooter border-t">

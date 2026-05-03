@@ -1030,6 +1030,24 @@
   font-size: 18px;
 }
 
+.resultMaterialDetail {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.waitWeekControl {
+  display: grid;
+  grid-template-columns: 1fr 90px;
+  gap: 8px;
+  align-items: center;
+}
+
+.waitWeekControl input {
+  min-height: 34px;
+  padding: 7px 9px;
+}
+
 .resultList,
 .resultMaterialTable {
   display: grid;
@@ -1618,10 +1636,104 @@
   white-space: nowrap;
 }
 
+.materialInputHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+
+.materialBoundCheck {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.materialBoundCheck input {
+  width: 14px;
+  min-height: 14px;
+  padding: 0;
+  margin: 0;
+}
+
 .materialPairRow input {
   min-height: 34px;
   padding: 7px 9px;
   border-radius: 10px;
+}
+
+.cathedralExchangeBox {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 12px;
+}
+
+.cathedralExchangeHeader,
+.cathedralExchangeResult {
+  display: grid;
+  gap: 4px;
+}
+
+.cathedralExchangeHeader strong,
+.cathedralExchangeResult strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.cathedralExchangeControls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.cathedralCheck {
+  display: flex !important;
+  min-height: 36px;
+  grid-template-columns: none !important;
+  align-items: center;
+  gap: 8px !important;
+  white-space: nowrap;
+}
+
+.cathedralCheck input {
+  width: 16px;
+  min-height: 16px;
+}
+
+.cathedralExchangeSummary,
+.cathedralExchangeResult div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cathedralExchangeSummary span {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--soft-2);
+  padding: 4px 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.cathedralExchangeResult div {
+  justify-content: space-between;
+  border-top: 1px solid var(--border);
+  padding-top: 7px;
+}
+
+.cathedralExchangeResult b {
+  color: var(--text);
+  font-size: 12px;
 }
 
 .plannerSideColumn .resourceTabsHeader {

@@ -1,4 +1,15 @@
 {
+  "headers": [
+    {
+      "source": "/((?!api/|assets/).*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0, must-revalidate"
+        }
+      ]
+    }
+  ],
   "rewrites": [
     {
       "source": "/((?!api/|@vite/|@react-refresh|@id/|@fs/|src/|assets/|node_modules/).*)",

@@ -2,17 +2,15 @@
 import "./GrowthPlannerPage.css";
 import { DEFAULT_TODO_STATE, type Character, type TodoTable } from "../store/todoStore";
 import {
-  makeEmptyGrowthEstimate,
+  estimateGrowthPlan,
   makeEmptyPlannerState,
-  type ConfirmedUpgrade,
   type EquipmentSlot,
-  type GrowthEstimate,
   type GrowthPlannerState,
   type MaterialInventory,
   type MarketPriceSnapshot,
   type RefiningRouteStep,
   type RefiningMode,
-} from "../lib/growthPlannerLight";
+} from "../lib/growthPlanner";
 import { OCR_SCREEN_TEMPLATES, type OcrFieldBox } from "../lib/refiningData";
 import {
   buildPlannerRaidSelections,
@@ -26,7 +24,6 @@ import {
 } from "../lib/raidGold";
 
 const STORAGE_KEY = "loa-growth-planner:v1";
-const COMBAT_SIMULATOR_ENABLED = false;
 
 const SLOT_ORDER: EquipmentSlot[] = ["helmet", "shoulder", "chest", "pants", "gloves", "weapon"];
 
@@ -185,12 +182,32 @@ const MATERIAL_FIELD_GROUPS: Array<Array<[keyof MaterialInventory, string]>> = [
     ["enhancedUpheavalTailoringBook19", "강화 재봉술: 업화 [19-20]"],
     ["enhancedUpheavalMetallurgyBook19", "강화 야금술: 업화 [19-20]"],
   ],
+  [["graceFragments", "은총의 파편"]],
   [
     ["gold", "현재 골드"],
     ["boundGold", "현재 캐릭터 귀속골드"],
   ],
-  [["silver", "현재 실링"]],
 ];
+
+const TRADABLE_AS_BOUND_PAIRS: Partial<Record<keyof MaterialInventory, keyof MaterialInventory>> = {
+  tradableShards: "boundShards",
+  tradableLeapstones: "boundLeapstones",
+  tradableProtectionStones: "boundProtectionStones",
+  tradableDestructionStones: "boundDestructionStones",
+  tradableFusion: "boundFusion",
+  tradableSuccessorLeapstones: "boundSuccessorLeapstones",
+  tradableSuccessorProtectionStones: "boundSuccessorProtectionStones",
+  tradableSuccessorDestructionStones: "boundSuccessorDestructionStones",
+  tradableSuperiorFusion: "boundSuperiorFusion",
+  tradableIceBreaths: "boundIceBreaths",
+  tradableLavaBreaths: "boundLavaBreaths",
+};
+
+function makeDefaultTradableAsBoundFlags(): Partial<Record<keyof MaterialInventory, boolean>> {
+  return Object.fromEntries(
+    Object.keys(TRADABLE_AS_BOUND_PAIRS).map((key) => [key, key !== "tradableIceBreaths" && key !== "tradableLavaBreaths"])
+  ) as Partial<Record<keyof MaterialInventory, boolean>>;
+}
 
 const MARKET_LABELS: Array<[keyof MarketPriceSnapshot, string]> = [
   ["shardPricePer1000", "운명의 파편 주머니 최저 환산(1000개)"],
@@ -212,14 +229,14 @@ const MARKET_LABELS: Array<[keyof MarketPriceSnapshot, string]> = [
   ["upheavalMetallurgyBook19Price", "야금술: 업화 [19-20] 시세"],
   ["enhancedTailoringBookPrice", "강화 재봉술: 업화 [19-20] 시세"],
   ["enhancedMetallurgyBookPrice", "강화 야금술: 업화 [19-20] 시세"],
-  ["artisanTailoringBook1Price", "장인의 재봉술 : 1단계 시세"],
-  ["artisanMetallurgyBook1Price", "장인의 야금술 : 1단계 시세"],
-  ["artisanTailoringBook2Price", "장인의 재봉술 : 2단계 시세"],
-  ["artisanMetallurgyBook2Price", "장인의 야금술 : 2단계 시세"],
-  ["artisanTailoringBook3Price", "장인의 재봉술 : 3단계 시세"],
-  ["artisanMetallurgyBook3Price", "장인의 야금술 : 3단계 시세"],
-  ["artisanTailoringBook4Price", "장인의 재봉술 : 4단계 시세"],
-  ["artisanMetallurgyBook4Price", "장인의 야금술 : 4단계 시세"],
+  ["artisanTailoringBook1Price", "장인의 재봉술 1단계 시세"],
+  ["artisanMetallurgyBook1Price", "장인의 야금술 1단계 시세"],
+  ["artisanTailoringBook2Price", "장인의 재봉술 2단계 시세"],
+  ["artisanMetallurgyBook2Price", "장인의 야금술 2단계 시세"],
+  ["artisanTailoringBook3Price", "장인의 재봉술 3단계 시세"],
+  ["artisanMetallurgyBook3Price", "장인의 야금술 3단계 시세"],
+  ["artisanTailoringBook4Price", "장인의 재봉술 4단계 시세"],
+  ["artisanMetallurgyBook4Price", "장인의 야금술 4단계 시세"],
 ];
 type CharacterImportPiece = {
   slot: EquipmentSlot;
@@ -235,31 +252,6 @@ type CharacterImportResponse = {
   sourceUrl: string;
   nickname: string;
   fetchedAt: string;
-  className?: string | null;
-  combatPower?: number | null;
-  inferredRole?: CombatRole;
-  combatDetails?: Partial<CombatPowerDetails>;
-  combatSystems?: {
-    engravingCount: number;
-    engravingNames: string[];
-    engravings?: Array<{ name: string; level?: number; points?: number }>;
-    gemLevelSum: number;
-    gemCount: number;
-    gems?: Array<{ name: string; level: number; type: string }>;
-    arkPassivePoints: number;
-    arkPassive?: {
-      evolution: number;
-      enlightenment: number;
-      leap: number;
-    };
-    arkGridPoints: number;
-    arkGrid?: Array<{ name: string; points: number }>;
-    accessoryCount: number;
-    accessories?: Array<{ name: string; quality?: number; effects: string[] }>;
-    avatarCount: number;
-    avatarGradeLevel: number;
-    avatars?: Array<{ name: string; grade: string; slot?: string; effect?: string }>;
-  } | null;
   currentItemLevel: number | null;
   pieces: CharacterImportPiece[];
   warnings: string[];
@@ -273,63 +265,6 @@ type CharacterImportResponse = {
     fallbackLevelSnippet: string;
   };
 };
-
-type GrowthSimulatorMode = "level" | "combat";
-type CombatRole = "dealer" | "support";
-
-type CombatPowerDetails = {
-  combatLevel: number;
-  pureBaseAttack: number;
-  maxHp: number;
-  weaponQualityBonusPct: number;
-  arkEvolutionPoints: number;
-  arkEnlightenmentPoints: number;
-  arkLeapPoints: number;
-  evolutionKarmaRanks: number;
-  enlightenmentKarmaRanks: number;
-  leapKarmaRanks: number;
-  transcendenceGradeSum: number;
-  t4GemLevelSum: number;
-  engravingBonusPct: number;
-  accessoryBonusPct: number;
-  braceletBonusPct: number;
-  elixirBonusPct: number;
-  miscBonusPct: number;
-  supportCareBonusPct: number;
-  supportBuffBonusPct: number;
-};
-
-type CombatUpgradeSystemKey = "avatar" | "bracelet" | "gem" | "engraving" | "arkGrid" | "arkPassive" | "accessory";
-
-type CombatUpgradeSetting = {
-  current: number;
-  target: number;
-  costPerStep: number;
-  powerGainPerStep: number;
-};
-
-type CombatUpgradeCandidate = {
-  key: CombatUpgradeSystemKey | "equipment";
-  label: string;
-  from: number;
-  to: number;
-  steps: number;
-  cost: number;
-  powerGain: number;
-  projectedPower: number;
-  note: string;
-  details: string[];
-};
-
-const COMBAT_UPGRADE_META: Array<{ key: CombatUpgradeSystemKey; label: string; note: string }> = [
-  { key: "avatar", label: "아바타", note: "영웅/전설/스페셜 아바타 단계 보정" },
-  { key: "bracelet", label: "팔찌", note: "유효 옵션 교체/상승 보정" },
-  { key: "gem", label: "보석", note: "4티어 보석 레벨 합 기준" },
-  { key: "engraving", label: "각인", note: "각인 포인트/유효 각인 보정" },
-  { key: "arkGrid", label: "아크그리드", note: "코어/노드 합산 단계 보정" },
-  { key: "arkPassive", label: "아크패시브", note: "진화/깨달음/도약 포인트 보정" },
-  { key: "accessory", label: "악세", note: "상/중/하 옵션 및 품질 보정" },
-];
 
 type MarketAutoFillResponse = {
   ok: boolean;
@@ -361,6 +296,17 @@ function parseNumber(input: string | number | undefined | null) {
 
 function cloneState(state: GrowthPlannerState): GrowthPlannerState {
   return JSON.parse(JSON.stringify(state));
+}
+
+function applyTradableAsBound(materials: MaterialInventory, flags: Partial<Record<keyof MaterialInventory, boolean>>) {
+  const next = { ...materials };
+  Object.entries(TRADABLE_AS_BOUND_PAIRS).forEach(([tradableKey, boundKey]) => {
+    const typedTradableKey = tradableKey as keyof MaterialInventory;
+    if (!flags[typedTradableKey] || !boundKey) return;
+    next[boundKey] = 1_000_000_000 as never;
+    next[typedTradableKey] = 0 as never;
+  });
+  return next;
 }
 
 function toPersistedPlannerState(state: GrowthPlannerState) {
@@ -583,20 +529,8 @@ function formatGold(value: number) {
   return `${Math.round(value).toLocaleString()} G`;
 }
 
-function formatItemLevel(value: number) {
-  return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
-}
-
 type DisplayRouteStep = RefiningRouteStep & {
   originalIndexes: number[];
-};
-
-type EstimateGrowthPlanFn = (input: GrowthPlannerState) => GrowthEstimate;
-
-type ConfirmedUpgradeDraft = {
-  slot: EquipmentSlot;
-  action: ConfirmedUpgrade["action"];
-  targetLevel: number;
 };
 
 function getAdvancedGroupEnd(fromLevel: number) {
@@ -685,11 +619,6 @@ type RouteMaterialUsageRow = {
   singleInventoryLabel?: string;
 };
 
-type UsedMaterialDisplayRow = {
-  label: string;
-  value: number;
-};
-
 type BonusRewardItem = {
   name: string;
   quantity: number;
@@ -708,6 +637,30 @@ type BonusRewardRaidRow = {
   tradableRewardGold: number;
   totalGoldValue: number;
   rewards: BonusRewardItem[];
+};
+
+type CathedralStage = "none" | "1" | "2" | "3";
+
+const CATHEDRAL_FRAGMENT_REWARDS: Record<CathedralStage, number> = { none: 0, "1": 10, "2": 30, "3": 60 };
+const CATHEDRAL_EXCHANGE_OPTIONS: Array<{
+  key: keyof MaterialInventory;
+  marketKey: keyof MarketPriceSnapshot;
+  label: string;
+  amountPerExchange: number;
+}> = [
+  { key: "upheavalTailoringBook19", marketKey: "upheavalTailoringBook19Price", label: "재봉술 : 업화 [19-20]", amountPerExchange: 3 },
+  { key: "artisanTailoringBook3", marketKey: "artisanTailoringBook3Price", label: "장인의 재봉술 : 3단계", amountPerExchange: 6 },
+  { key: "artisanTailoringBook4", marketKey: "artisanTailoringBook4Price", label: "장인의 재봉술 : 4단계", amountPerExchange: 3 },
+  { key: "upheavalMetallurgyBook19", marketKey: "upheavalMetallurgyBook19Price", label: "야금술 : 업화 [19-20]", amountPerExchange: 1 },
+  { key: "artisanMetallurgyBook3", marketKey: "artisanMetallurgyBook3Price", label: "장인의 야금술 : 3단계", amountPerExchange: 2 },
+  { key: "artisanMetallurgyBook4", marketKey: "artisanMetallurgyBook4Price", label: "장인의 야금술 : 4단계", amountPerExchange: 1 },
+];
+
+type CathedralExchangePlan = {
+  weeklyFragments: number;
+  totalFragments: number;
+  exchangeCount: number;
+  entries: Array<{ key: keyof MaterialInventory; label: string; amount: number }>;
 };
 
 const ROUTE_MATERIAL_USAGE_FIELDS: Array<{
@@ -743,22 +696,45 @@ const ROUTE_MATERIAL_USAGE_FIELDS: Array<{
   { key: "upheavalMetallurgyBook15", label: "야금술 : 업화 [15-18]", singleInventoryKey: "upheavalMetallurgyBook15", singleInventoryLabel: "보유" },
   { key: "upheavalTailoringBook19", label: "재봉술 : 업화 [19-20]", singleInventoryKey: "upheavalTailoringBook19", singleInventoryLabel: "보유" },
   { key: "upheavalMetallurgyBook19", label: "야금술 : 업화 [19-20]", singleInventoryKey: "upheavalMetallurgyBook19", singleInventoryLabel: "보유" },
-  {
-    key: "enhancedUpheavalTailoringBook19",
-    label: "강화 재봉술 : 업화 [19-20]",
-    singleInventoryKey: "enhancedUpheavalTailoringBook19",
-    singleInventoryLabel: "보유",
-  },
-  {
-    key: "enhancedUpheavalMetallurgyBook19",
-    label: "강화 야금술 : 업화 [19-20]",
-    singleInventoryKey: "enhancedUpheavalMetallurgyBook19",
-    singleInventoryLabel: "보유",
-  },
+  { key: "enhancedUpheavalTailoringBook19", label: "강화 재봉술 : 업화 [19-20]", singleInventoryKey: "enhancedUpheavalTailoringBook19", singleInventoryLabel: "보유" },
+  { key: "enhancedUpheavalMetallurgyBook19", label: "강화 야금술 : 업화 [19-20]", singleInventoryKey: "enhancedUpheavalMetallurgyBook19", singleInventoryLabel: "보유" },
 ];
 
 function formatCount(value: number) {
   return Math.ceil(Math.max(0, value)).toLocaleString();
+}
+
+function getRequiredMaterialCards(materials: RefiningRouteStep["expectedMaterials"], inventory: MaterialInventory, market: MarketPriceSnapshot) {
+  return ROUTE_MATERIAL_USAGE_FIELDS.map((field) => {
+    const required = Math.ceil(Math.max(0, Number(materials[field.key] || 0)));
+    if (!required) return null;
+
+    if (field.singleInventoryKey) {
+      const owned = Math.max(0, Number(inventory[field.singleInventoryKey] || 0));
+      const ownedUsed = Math.min(required, owned);
+      const purchaseNeeded = Math.max(0, required - ownedUsed);
+      const purchaseGold = purchaseNeeded * marketUnitPriceForRouteKey(field.key, market);
+      const parts = [
+        ownedUsed > 0 ? `${formatCount(ownedUsed)}개(보유)` : "",
+        purchaseNeeded > 0 ? `${formatCount(purchaseNeeded)}개(구매 ${formatGold(purchaseGold)})` : "",
+      ].filter(Boolean);
+      return { label: field.label, value: required, detail: parts.join(" + ") };
+    }
+
+    const boundOwned = field.boundKey ? Math.max(0, Number(inventory[field.boundKey] || 0)) : 0;
+    const tradableOwned = field.tradableKey ? Math.max(0, Number(inventory[field.tradableKey] || 0)) : 0;
+    const boundUsed = Math.min(required, boundOwned);
+    const tradableUsed = Math.min(Math.max(0, required - boundUsed), tradableOwned);
+    const purchaseNeeded = Math.max(0, required - boundUsed - tradableUsed);
+    const purchaseGold = purchaseNeeded * marketUnitPriceForRouteKey(field.key, market);
+    const parts = [
+      boundUsed > 0 ? `${formatCount(boundUsed)}개(귀속)` : "",
+      tradableUsed > 0 ? `${formatCount(tradableUsed)}개(거래가능)` : "",
+      purchaseNeeded > 0 ? `${formatCount(purchaseNeeded)}개(구매 ${formatGold(purchaseGold)})` : "",
+    ].filter(Boolean);
+
+    return { label: field.label, value: required, detail: parts.join(" + ") };
+  }).filter((row): row is { label: string; value: number; detail: string } => Boolean(row));
 }
 
 function inferRouteMaterials(step: DisplayRouteStep): RefiningRouteStep["expectedMaterials"] {
@@ -867,32 +843,6 @@ function getRouteMaterialUsageRows(step: DisplayRouteStep, inventory: MaterialIn
   return rows;
 }
 
-function getUsedMaterialDisplayRows(requiredMaterials: GrowthEstimate["requiredMaterials"], inventory: MaterialInventory): UsedMaterialDisplayRow[] {
-  const rows: UsedMaterialDisplayRow[] = [];
-
-  ROUTE_MATERIAL_USAGE_FIELDS.forEach((field) => {
-    const required = Math.ceil(Math.max(0, Number(requiredMaterials[field.key] || 0)));
-    if (!required) return;
-
-    if (field.singleInventoryKey) {
-      const owned = Math.max(0, Number(inventory[field.singleInventoryKey] || 0));
-      const ownedUsed = Math.min(required, owned);
-      const purchaseNeeded = Math.max(0, required - ownedUsed);
-      if (ownedUsed > 0) rows.push({ label: `${field.label}(${field.singleInventoryLabel || "보유"})`, value: ownedUsed });
-      if (purchaseNeeded > 0) rows.push({ label: `${field.label}(구매)`, value: purchaseNeeded });
-      return;
-    }
-
-    const boundOwned = field.boundKey ? Math.max(0, Number(inventory[field.boundKey] || 0)) : 0;
-    const boundUsed = Math.min(required, boundOwned);
-    const purchaseNeeded = Math.max(0, required - boundUsed);
-    if (boundUsed > 0) rows.push({ label: `${field.label}(귀속)`, value: boundUsed });
-    if (purchaseNeeded > 0) rows.push({ label: `${field.label}(구매)`, value: purchaseNeeded });
-  });
-
-  return rows;
-}
-
 function readInventoryValue(inventory: MaterialInventory, key: keyof MaterialInventory) {
   return Math.max(0, Number(inventory[key] || 0));
 }
@@ -959,12 +909,138 @@ function maxBreathPerTryForStep(step: DisplayRouteStep) {
   return 24;
 }
 
-function getRouteSupportTimingGuides(step: DisplayRouteStep, rows: RouteMaterialUsageRow[]) {
+function marketUnitPriceForRouteKey(key: keyof RefiningRouteStep["expectedMaterials"], market: MarketPriceSnapshot) {
+  switch (key) {
+    case "shards":
+      return market.shardPricePer1000 / 1000;
+    case "leapstones":
+      return market.leapstonePrice;
+    case "protectionStones":
+      return market.protectionStonePricePer10 / 10;
+    case "destructionStones":
+      return market.destructionStonePricePer10 / 10;
+    case "fusion":
+      return market.fusionPrice;
+    case "successorLeapstones":
+      return market.successorLeapstonePrice;
+    case "successorProtectionStones":
+      return market.successorProtectionStonePricePer10 / 10;
+    case "successorDestructionStones":
+      return market.successorDestructionStonePricePer10 / 10;
+    case "superiorFusion":
+      return market.superiorFusionPrice;
+    case "iceBreaths":
+      return market.iceBreathPrice;
+    case "lavaBreaths":
+      return market.lavaBreathPrice;
+    case "tailoringBooks":
+      return market.tailoringBookPrice;
+    case "metallurgyBooks":
+      return market.metallurgyBookPrice;
+    case "artisanTailoringBook1":
+      return market.artisanTailoringBook1Price;
+    case "artisanTailoringBook2":
+      return market.artisanTailoringBook2Price;
+    case "artisanTailoringBook3":
+      return market.artisanTailoringBook3Price;
+    case "artisanTailoringBook4":
+      return market.artisanTailoringBook4Price;
+    case "artisanMetallurgyBook1":
+      return market.artisanMetallurgyBook1Price;
+    case "artisanMetallurgyBook2":
+      return market.artisanMetallurgyBook2Price;
+    case "artisanMetallurgyBook3":
+      return market.artisanMetallurgyBook3Price;
+    case "artisanMetallurgyBook4":
+      return market.artisanMetallurgyBook4Price;
+    case "upheavalTailoringBook15":
+      return market.upheavalTailoringBook15Price;
+    case "upheavalMetallurgyBook15":
+      return market.upheavalMetallurgyBook15Price;
+    case "upheavalTailoringBook19":
+      return market.upheavalTailoringBook19Price;
+    case "upheavalMetallurgyBook19":
+      return market.upheavalMetallurgyBook19Price;
+    case "enhancedUpheavalTailoringBook19":
+      return market.enhancedTailoringBookPrice;
+    case "enhancedUpheavalMetallurgyBook19":
+      return market.enhancedMetallurgyBookPrice;
+    default:
+      return 0;
+  }
+}
+
+function getDisplayMaterialPurchaseCost(rows: RouteMaterialUsageRow[], market: MarketPriceSnapshot) {
+  return rows.reduce((sum, row) => sum + row.purchaseNeeded * marketUnitPriceForRouteKey(row.key, market), 0);
+}
+
+function getRequiredMaterialPurchaseCost(
+  requiredMaterials: RefiningRouteStep["expectedMaterials"],
+  inventory: MaterialInventory,
+  market: MarketPriceSnapshot
+) {
+  return ROUTE_MATERIAL_USAGE_FIELDS.reduce((sum, field) => {
+    const required = Math.ceil(Math.max(0, Number(requiredMaterials[field.key] || 0)));
+    if (!required) return sum;
+
+    if (field.singleInventoryKey) {
+      const owned = Math.max(0, Number(inventory[field.singleInventoryKey] || 0));
+      return sum + Math.max(0, required - owned) * marketUnitPriceForRouteKey(field.key, market);
+    }
+
+    const boundOwned = field.boundKey ? Math.max(0, Number(inventory[field.boundKey] || 0)) : 0;
+    const tradableOwned = field.tradableKey ? Math.max(0, Number(inventory[field.tradableKey] || 0)) : 0;
+    return sum + Math.max(0, required - boundOwned - tradableOwned) * marketUnitPriceForRouteKey(field.key, market);
+  }, 0);
+}
+
+function buildCathedralExchangePlan(
+  requiredMaterials: RefiningRouteStep["expectedMaterials"],
+  inventory: MaterialInventory,
+  market: MarketPriceSnapshot,
+  stage: CathedralStage,
+  includeExtraReward: boolean
+): CathedralExchangePlan {
+  const weeklyFragments = CATHEDRAL_FRAGMENT_REWARDS[stage] * (includeExtraReward ? 2 : 1);
+  const totalFragments = Math.max(0, Math.floor(Number(inventory.graceFragments || 0) + weeklyFragments));
+  const exchangeCount = Math.floor(totalFragments / 10);
+  const entries: CathedralExchangePlan["entries"] = [];
+  let remaining = exchangeCount;
+
+  while (remaining > 0) {
+    const best = CATHEDRAL_EXCHANGE_OPTIONS.map((option) => {
+      const required = Math.ceil(Math.max(0, Number(requiredMaterials[option.key as keyof RefiningRouteStep["expectedMaterials"]] || 0)));
+      const owned = Math.max(0, Number(inventory[option.key] || 0)) + entries.filter((entry) => entry.key === option.key).reduce((sum, entry) => sum + entry.amount, 0);
+      const usable = Math.min(option.amountPerExchange, Math.max(0, required - owned));
+      return { ...option, usable, value: usable * Number(market[option.marketKey] || 0) };
+    }).sort((a, b) => b.value - a.value)[0];
+
+    if (!best || best.usable <= 0) break;
+    const existing = entries.find((entry) => entry.key === best.key);
+    if (existing) existing.amount += best.usable;
+    else entries.push({ key: best.key, label: best.label, amount: best.usable });
+    remaining -= 1;
+  }
+
+  return { weeklyFragments, totalFragments, exchangeCount, entries };
+}
+
+function applyCathedralExchangePlan(materials: MaterialInventory, plan: CathedralExchangePlan): MaterialInventory {
+  if (!plan.entries.length) return materials;
+  const next = { ...materials };
+  plan.entries.forEach((entry) => {
+    next[entry.key] = (Number(next[entry.key] || 0) + entry.amount) as never;
+  });
+  return next;
+}
+
+function getRouteSupportTimingGuides(step: DisplayRouteStep, rows: RouteMaterialUsageRow[], market: MarketPriceSnapshot) {
   const breathKey = step.slot === "weapon" ? "lavaBreaths" : "iceBreaths";
+  const bookKey = step.slot === "weapon" ? "metallurgyBooks" : "tailoringBooks";
   const breathLabel = step.slot === "weapon" ? "용암의 숨결" : "빙하의 숨결";
+  const bookLabel = supportBookNameForStep(step);
   const breathRow = rows.find((row) => row.key === breathKey);
-  const bookRow = rows.find((row) => (step.slot === "weapon" ? row.label.includes("야금술") : row.label.includes("재봉술")));
-  const bookLabel = bookRow?.label || supportBookNameForStep(step);
+  const bookRow = rows.find((row) => row.key === bookKey);
   const usesBreath = Boolean(breathRow && breathRow.required > 0);
   const usesBook = Boolean(bookRow && bookRow.required > 0);
   const maxBreath = maxBreathPerTryForStep(step);
@@ -990,6 +1066,13 @@ function getRouteSupportTimingGuides(step: DisplayRouteStep, rows: RouteMaterial
     guides.push(`강화 시작부터 성공 전까지 ${breathLabel} 최대치(${maxBreath}개)를 넣는 기준이야.`);
   }
 
+  const breathPrice = marketUnitPriceForRouteKey(breathKey, market);
+  if (usesBreath && breathPrice > 0) {
+    guides.push(`${breathLabel}은 현재 입력가 기준 ${formatGold(breathPrice)} 이하일 때 구매해서 넣는 경로가 효율로 선택됩니다.`);
+  } else if (usesBreath) {
+    guides.push(`${breathLabel} 시세를 거래소 시세 탭에 입력하면 구매 효율 기준을 같이 보여줘.`);
+  }
+
   guides.push("표시된 필요 개수는 평균 소모량이라 실제 성공 타이밍에 따라 조금 달라질 수 있어.");
   return guides;
 }
@@ -1011,14 +1094,14 @@ const SUPPORT_REWARD_SOURCES: SupportRewardSource[] = [
   {
     raidName: "3막",
     diffs: ["하드"],
-    rewardNames: ["장인의 재봉술 : 2단계", "장인의 야금술 : 2단계"],
+    rewardNames: ["장인의 재봉술: 2단계", "장인의 야금술: 2단계"],
     quantity: 1,
     quantityLabel: "0~1개",
   },
   {
     raidName: "4막",
     diffs: ["노말"],
-    rewardNames: ["장인의 재봉술 : 2단계", "장인의 야금술 : 2단계"],
+    rewardNames: ["장인의 재봉술: 2단계", "장인의 야금술: 2단계"],
     quantity: 1,
     quantityLabel: "0~1개",
   },
@@ -1053,28 +1136,28 @@ const SUPPORT_REWARD_SOURCES: SupportRewardSource[] = [
   {
     raidName: "세르카",
     diffs: ["노말"],
-    rewardNames: ["장인의 재봉술 : 3단계", "장인의 야금술 : 3단계"],
+    rewardNames: ["장인의 재봉술: 3단계", "장인의 야금술: 3단계"],
     quantity: 1,
     quantityLabel: "0~1개",
   },
   {
     raidName: "지평의 성당",
     diffs: ["2단계"],
-    rewardNames: ["장인의 재봉술 : 3단계", "장인의 야금술 : 3단계"],
+    rewardNames: ["장인의 재봉술: 3단계", "장인의 야금술: 3단계"],
     quantity: 1,
     quantityLabel: "0~1개",
   },
   {
     raidName: "세르카",
     diffs: ["하드", "나이트메어"],
-    rewardNames: ["장인의 재봉술 : 4단계", "장인의 야금술 : 4단계"],
+    rewardNames: ["장인의 재봉술: 4단계", "장인의 야금술: 4단계"],
     quantity: 1,
     quantityLabel: "0~1개",
   },
   {
     raidName: "지평의 성당",
     diffs: ["3단계"],
-    rewardNames: ["장인의 재봉술 : 4단계", "장인의 야금술 : 4단계"],
+    rewardNames: ["장인의 재봉술: 4단계", "장인의 야금술: 4단계"],
     quantity: 1,
     quantityLabel: "0~1개",
   },
@@ -1194,7 +1277,7 @@ function sumBonusRows(rows: BonusRewardRaidRow[]) {
   );
 }
 
-function shouldShowMarketField(key: keyof MarketPriceSnapshot, required: GrowthEstimate["requiredMaterials"]) {
+function shouldShowMarketField(key: keyof MarketPriceSnapshot, required: ReturnType<typeof estimateGrowthPlan>["requiredMaterials"]) {
   if (key === "shardPricePer1000") return required.shards > 0;
   if (key === "leapstonePrice") return required.leapstones > 0;
   if (key === "protectionStonePricePer10") return required.protectionStones > 0;
@@ -1208,20 +1291,8 @@ function shouldShowMarketField(key: keyof MarketPriceSnapshot, required: GrowthE
   if (key === "lavaBreathPrice") return required.lavaBreaths > 0;
   if (key === "tailoringBookPrice") return required.tailoringBooks > 0;
   if (key === "metallurgyBookPrice") return required.metallurgyBooks > 0;
-  if (key === "enhancedTailoringBookPrice") return required.enhancedUpheavalTailoringBook19 > 0;
-  if (key === "enhancedMetallurgyBookPrice") return required.enhancedUpheavalMetallurgyBook19 > 0;
-  if (key === "artisanTailoringBook1Price") return required.artisanTailoringBook1 > 0;
-  if (key === "artisanTailoringBook2Price") return required.artisanTailoringBook2 > 0;
-  if (key === "artisanTailoringBook3Price") return required.artisanTailoringBook3 > 0;
-  if (key === "artisanTailoringBook4Price") return required.artisanTailoringBook4 > 0;
-  if (key === "artisanMetallurgyBook1Price") return required.artisanMetallurgyBook1 > 0;
-  if (key === "artisanMetallurgyBook2Price") return required.artisanMetallurgyBook2 > 0;
-  if (key === "artisanMetallurgyBook3Price") return required.artisanMetallurgyBook3 > 0;
-  if (key === "artisanMetallurgyBook4Price") return required.artisanMetallurgyBook4 > 0;
-  if (key === "upheavalTailoringBook15Price") return required.upheavalTailoringBook15 > 0;
-  if (key === "upheavalMetallurgyBook15Price") return required.upheavalMetallurgyBook15 > 0;
-  if (key === "upheavalTailoringBook19Price") return required.upheavalTailoringBook19 > 0;
-  if (key === "upheavalMetallurgyBook19Price") return required.upheavalMetallurgyBook19 > 0;
+  if (key === "enhancedTailoringBookPrice") return required.tailoringBooks > 0;
+  if (key === "enhancedMetallurgyBookPrice") return required.metallurgyBooks > 0;
   return false;
 }
 
@@ -1288,227 +1359,9 @@ function buildCharacterName(selectedCharacter?: Character, plannerName?: string)
   return selectedCharacter?.name || plannerName || "";
 }
 
-function confirmedCurrentLevel(
-  piece: GrowthPlannerState["character"]["pieces"][number] | undefined,
-  action: ConfirmedUpgrade["action"]
-) {
-  if (!piece) return 0;
-  return action === "normal" ? piece.honingLevel || 0 : piece.advancedRefiningLevel || 0;
-}
-
 function averageImportedPieceLevel(pieces: CharacterImportPiece[]) {
   const levels = pieces.map(deriveEquipmentItemLevel).filter((value) => Number.isFinite(value) && value > 0);
   return levels.length === 6 ? levels.reduce((sum, value) => sum + value, 0) / 6 : null;
-}
-
-function routeFinalItemLevel(baseLevel: number, steps: RefiningRouteStep[]) {
-  return Number(baseLevel || 0) + steps.reduce((sum, step) => sum + Number(step.levelGain || 0), 0);
-}
-
-function estimateCombatPowerFromLevel(currentCombatPower: number, currentLevel: number, finalLevel: number, role: CombatRole, correction = 1) {
-  const levelGain = Math.max(0, Number(finalLevel || 0) - Number(currentLevel || 0));
-  if (!currentCombatPower || !levelGain) return currentCombatPower || 0;
-  const roleCoefficient = role === "support" ? 0.0068 : 0.0085;
-  return currentCombatPower * (1 + levelGain * roleCoefficient * Math.max(0.1, correction || 1));
-}
-
-function makeCombatPowerDetails(): CombatPowerDetails {
-  return {
-    combatLevel: 70,
-    pureBaseAttack: 0,
-    maxHp: 0,
-    weaponQualityBonusPct: 0,
-    arkEvolutionPoints: 0,
-    arkEnlightenmentPoints: 0,
-    arkLeapPoints: 0,
-    evolutionKarmaRanks: 0,
-    enlightenmentKarmaRanks: 0,
-    leapKarmaRanks: 0,
-    transcendenceGradeSum: 0,
-    t4GemLevelSum: 0,
-    engravingBonusPct: 0,
-    accessoryBonusPct: 0,
-    braceletBonusPct: 0,
-    elixirBonusPct: 0,
-    miscBonusPct: 0,
-    supportCareBonusPct: 0,
-    supportBuffBonusPct: 0,
-  };
-}
-
-function makeDefaultCombatUpgradeSettings(): Record<CombatUpgradeSystemKey, CombatUpgradeSetting> {
-  return {
-    avatar: { current: 0, target: 1, costPerStep: 50000, powerGainPerStep: 80 },
-    bracelet: { current: 0, target: 3, costPerStep: 50000, powerGainPerStep: 55 },
-    gem: { current: 0, target: 96, costPerStep: 115000, powerGainPerStep: 20 },
-    engraving: { current: 0, target: 5, costPerStep: 30000, powerGainPerStep: 35 },
-    arkGrid: { current: 0, target: 12, costPerStep: 40000, powerGainPerStep: 25 },
-    arkPassive: { current: 0, target: 340, costPerStep: 35000, powerGainPerStep: 18 },
-    accessory: { current: 0, target: 6, costPerStep: 50000, powerGainPerStep: 45 },
-  };
-}
-
-function buildCombatUpgradeCandidates(
-  settings: Record<CombatUpgradeSystemKey, CombatUpgradeSetting>,
-  currentPower: number,
-  targetPower: number,
-  equipmentSimulation: { finalLevel: number; combatPower: number; estimate: GrowthEstimate } | null
-) {
-  const candidates: CombatUpgradeCandidate[] = COMBAT_UPGRADE_META.map((meta) => {
-    const setting = settings[meta.key];
-    const steps = Math.max(0, Math.floor(Number(setting.target || 0) - Number(setting.current || 0)));
-    const cost = steps * Math.max(0, Number(setting.costPerStep || 0));
-    const powerGain = steps * Math.max(0, Number(setting.powerGainPerStep || 0));
-    return {
-      key: meta.key,
-      label: meta.label,
-      from: setting.current,
-      to: setting.target,
-      steps,
-      cost,
-      powerGain,
-      projectedPower: currentPower + powerGain,
-      note: meta.note,
-      details: buildCombatUpgradeDetails(meta.key, setting, steps, cost, powerGain),
-    };
-  }).filter((candidate) => candidate.steps > 0 && candidate.powerGain > 0);
-
-  if (equipmentSimulation) {
-    candidates.push({
-      key: "equipment",
-      label: "장비 강화",
-      from: 0,
-      to: equipmentSimulation.finalLevel,
-      steps: equipmentSimulation.estimate.routeSteps.length,
-      cost: equipmentSimulation.estimate.totalSpendGold,
-      powerGain: Math.max(0, equipmentSimulation.combatPower - currentPower),
-      projectedPower: equipmentSimulation.combatPower,
-      note: "기존 목표 레벨 강화 계산 결과",
-      details: equipmentSimulation.estimate.routeSteps.slice(0, 8).map((step) => `${step.slotLabel} ${step.fromLevel} -> ${step.toLevel} (${formatGold(step.averageCost)})`),
-    });
-  }
-
-  const sorted = candidates.sort((a, b) => a.cost / Math.max(1, a.powerGain) - b.cost / Math.max(1, b.powerGain));
-  const selected: CombatUpgradeCandidate[] = [];
-  let projectedPower = currentPower;
-  let totalCost = 0;
-
-  for (const candidate of sorted) {
-    if (targetPower > 0 && projectedPower >= targetPower) break;
-    selected.push({ ...candidate, projectedPower: projectedPower + candidate.powerGain });
-    projectedPower += candidate.powerGain;
-    totalCost += candidate.cost;
-  }
-
-  return {
-    candidates: sorted,
-    selected,
-    projectedPower,
-    totalCost,
-    remainingPower: Math.max(0, targetPower - projectedPower),
-  };
-}
-
-function buildCombatUpgradeDetails(
-  key: CombatUpgradeSystemKey,
-  setting: CombatUpgradeSetting,
-  steps: number,
-  cost: number,
-  powerGain: number
-) {
-  const perStepCost = Math.max(0, Number(setting.costPerStep || 0));
-  const detailsByKey: Record<CombatUpgradeSystemKey, string[]> = {
-    avatar: [
-      `영웅 아바타 상의 -> 전설 아바타 상의: ${formatGold(perStepCost)}`,
-      `나머지 아바타 부위도 같은 단가로 ${steps}단계 계산`,
-    ],
-    bracelet: [`팔찌 유효 옵션 1단계 상승/교체: ${formatGold(perStepCost)}`, "치피/치적/특화/신속 등 유효 옵션 기준으로 직접 보정"],
-    gem: [`4티어 보석 레벨 합 +1: ${formatGold(perStepCost)}`, "공식 보석 탭에서 읽은 레벨 합을 현재값으로 사용"],
-    engraving: [
-      `각인 포인트 또는 유효 각인 1단계 보정: ${formatGold(perStepCost)}`,
-      "전투정보실 각인 효과에서 읽은 각인 수를 현재값으로 사용",
-    ],
-    arkGrid: [`아크그리드 코어/노드 1단계: ${formatGold(perStepCost)}`, "공격력/아군 피해 강화/낙인력 등 표시값 기준"],
-    arkPassive: [`진화/깨달음/도약 포인트 +1: ${formatGold(perStepCost)}`, "공식 페이지 아크패시브 포인트 합을 현재값으로 사용"],
-    accessory: [`악세 상/중/하 옵션 또는 품질 1단계: ${formatGold(perStepCost)}`, "목걸이/귀걸이/반지 유효 옵션 기준으로 보정"],
-  };
-  return [
-    ...detailsByKey[key],
-    `총 ${steps}단계 / 예상 전투력 +${Math.round(powerGain).toLocaleString()} / 총 비용 ${formatGold(cost)}`,
-  ];
-}
-
-function pctMultiplier(value: number) {
-  return 1 + Math.max(0, Number(value || 0)) / 100;
-}
-
-function arkPointMultiplier(points: number, perPoint: number) {
-  return 1 + Math.max(0, Number(points || 0)) * perPoint;
-}
-
-function karmaMultiplier(ranks: number, perRank: number) {
-  return 1 + Math.max(0, Number(ranks || 0)) * perRank;
-}
-
-function calculateFormulaCombatPower(details: CombatPowerDetails, role: CombatRole) {
-  const commonMultiplier =
-    pctMultiplier(details.weaponQualityBonusPct) *
-    pctMultiplier(details.engravingBonusPct) *
-    pctMultiplier(details.accessoryBonusPct) *
-    pctMultiplier(details.braceletBonusPct) *
-    pctMultiplier(details.elixirBonusPct) *
-    pctMultiplier(details.miscBonusPct) *
-    arkPointMultiplier(details.arkEvolutionPoints, 0.0015) *
-    arkPointMultiplier(details.arkEnlightenmentPoints, 0.0012) *
-    arkPointMultiplier(details.arkLeapPoints, 0.001) *
-    karmaMultiplier(details.evolutionKarmaRanks, 0.003) *
-    karmaMultiplier(details.enlightenmentKarmaRanks, 0.0025) *
-    karmaMultiplier(details.leapKarmaRanks, 0.002) *
-    (1 + Math.max(0, details.transcendenceGradeSum) * 0.0018) *
-    (1 + Math.max(0, details.t4GemLevelSum) * 0.001);
-
-  const levelMultiplier = 1 + Math.max(0, details.combatLevel - 60) * 0.002;
-
-  if (role === "support") {
-    const carePower = Math.max(0, details.maxHp) * 0.12 * pctMultiplier(details.supportCareBonusPct);
-    const buffPower = Math.max(0, details.pureBaseAttack) * 1.24 * pctMultiplier(details.supportBuffBonusPct);
-    return (carePower + buffPower) * commonMultiplier * levelMultiplier;
-  }
-
-  return Math.max(0, details.pureBaseAttack) * 2.88 * commonMultiplier * levelMultiplier;
-}
-
-function buildCombatSimulation(
-  planner: GrowthPlannerState,
-  targetCombatPower: number,
-  currentCombatPower: number,
-  role: CombatRole,
-  correction: number,
-  details: CombatPowerDetails,
-  estimateGrowthPlan: EstimateGrowthPlanFn
-) {
-  const minimumTargetLevel = Math.max(Number(planner.character.targetItemLevel || 0), Number(planner.character.currentItemLevel || 0));
-  const baseLevel = Number(planner.character.currentItemLevel || 0);
-  const formulaCurrent = calculateFormulaCombatPower(details, role);
-  const calibration = formulaCurrent > 0 && currentCombatPower > 0 ? currentCombatPower / formulaCurrent : 1;
-  let best: { targetLevel: number; finalLevel: number; combatPower: number; estimate: GrowthEstimate } | null = null;
-
-  for (let offset = 0; offset <= 40; offset += 2) {
-    const targetLevel = minimumTargetLevel + offset;
-    const candidateState = cloneState(planner);
-    candidateState.character.targetItemLevel = targetLevel;
-    const estimate = estimateGrowthPlan(candidateState);
-    const finalLevel = routeFinalItemLevel(baseLevel, estimate.routeSteps);
-    const formulaPower = formulaCurrent > 0 ? formulaCurrent * calibration : currentCombatPower;
-    const combatPower = estimateCombatPowerFromLevel(formulaPower, baseLevel, finalLevel, role, correction);
-    if (finalLevel + 0.0001 >= minimumTargetLevel && combatPower + 0.0001 >= targetCombatPower) {
-      if (!best || estimate.totalSpendGold < best.estimate.totalSpendGold) {
-        best = { targetLevel, finalLevel, combatPower, estimate };
-      }
-    }
-  }
-
-  return best;
 }
 
 export default function GrowthPlannerPage() {
@@ -1524,23 +1377,6 @@ export default function GrowthPlannerPage() {
   const [profileNickname, setProfileNickname] = useState("");
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileSummary, setProfileSummary] = useState<CharacterImportResponse | null>(null);
-  const [simulatorMode, setSimulatorMode] = useState<GrowthSimulatorMode>("level");
-  const [combatRole, setCombatRole] = useState<CombatRole>("dealer");
-  const [currentCombatPower, setCurrentCombatPower] = useState(0);
-  const [targetCombatPower, setTargetCombatPower] = useState(0);
-  const [combatLevelCorrection, setCombatLevelCorrection] = useState(1);
-  const [combatDetails, setCombatDetails] = useState<CombatPowerDetails>(() => makeCombatPowerDetails());
-  const [combatUpgradeSettings, setCombatUpgradeSettings] = useState<Record<CombatUpgradeSystemKey, CombatUpgradeSetting>>(() =>
-    makeDefaultCombatUpgradeSettings()
-  );
-  const [estimateGrowthPlanFn, setEstimateGrowthPlanFn] = useState<EstimateGrowthPlanFn | null>(null);
-  const [growthEngineLoading, setGrowthEngineLoading] = useState(false);
-  const [growthEngineError, setGrowthEngineError] = useState("");
-  const [confirmedDraft, setConfirmedDraft] = useState<ConfirmedUpgradeDraft>({
-    slot: "weapon",
-    action: "advanced",
-    targetLevel: 40,
-  });
   const [marketLoading, setMarketLoading] = useState(false);
   const [marketSummary, setMarketSummary] = useState<MarketAutoFillResponse | null>(null);
   const [marketError, setMarketError] = useState("");
@@ -1555,8 +1391,12 @@ export default function GrowthPlannerPage() {
   const [lastMaterialScan, setLastMaterialScan] = useState<Array<{ fieldId: string; label: string; value: number; raw: string }>>([]);
   const [currentRaidSelections, setCurrentRaidSelections] = useState<PlannerRaidSelection[]>([]);
   const [targetRaidSelections, setTargetRaidSelections] = useState<PlannerRaidSelection[]>([]);
-  const [raidGoldBasis, setRaidGoldBasis] = useState<PlannerGoldBasis>("total");
-  const [tradableOnlyEstimate, setTradableOnlyEstimate] = useState(false);
+  const [raidGoldBasis, setRaidGoldBasis] = useState<PlannerGoldBasis>("tradable");
+  const [tradableOnlyEstimate, setTradableOnlyEstimate] = useState(true);
+  const [cathedralStage, setCathedralStage] = useState<CathedralStage>("3");
+  const [cathedralExtraReward, setCathedralExtraReward] = useState(true);
+  const [selectedWaitWeeks, setSelectedWaitWeeks] = useState(0);
+  const [tradableAsBound, setTradableAsBound] = useState<Partial<Record<keyof MaterialInventory, boolean>>>(() => makeDefaultTradableAsBoundFlags());
   const previewFrameRef = useRef<HTMLDivElement | null>(null);
   const shareVideoRef = useRef<HTMLVideoElement | null>(null);
   const shareCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -1571,24 +1411,6 @@ export default function GrowthPlannerPage() {
     width: number;
     height: number;
   } | null>(null);
-
-  function loadGrowthEngine() {
-    if (estimateGrowthPlanFn || growthEngineLoading) return;
-    setGrowthEngineLoading(true);
-    import("../lib/growthPlanner")
-      .then((module) => {
-        setEstimateGrowthPlanFn(() => module.estimateGrowthPlan);
-        setGrowthEngineError("");
-      })
-      .catch((error) => {
-        setGrowthEngineError(error instanceof Error ? error.message : "성장 계산 엔진을 불러오지 못했어.");
-      })
-      .finally(() => setGrowthEngineLoading(false));
-  }
-
-  useEffect(() => {
-    loadGrowthEngine();
-  }, []);
 
   const selectedTable = todoState.tables.find((table) => table.id === getInitialTableId(todoState.tables, planner));
   const selectedCharacter = selectedTable?.characters.find((character) => character.id === planner.character.charId);
@@ -1616,8 +1438,9 @@ export default function GrowthPlannerPage() {
   );
   const currentBonusTotal = useMemo(() => sumBonusRows(currentBonusRows), [currentBonusRows]);
   const targetBonusTotal = useMemo(() => sumBonusRows(targetBonusRows), [targetBonusRows]);
+  const effectiveMaterials = useMemo(() => applyTradableAsBound(planner.materials, tradableAsBound), [planner.materials, tradableAsBound]);
   const estimateInput = useMemo(() => {
-    if (!tradableOnlyEstimate) return planner;
+    if (!tradableOnlyEstimate) return { ...planner, materials: effectiveMaterials };
     return {
       ...planner,
       character: {
@@ -1627,91 +1450,55 @@ export default function GrowthPlannerPage() {
         currentWeeklyBoundGold: 0,
       },
       materials: {
-        ...planner.materials,
+        ...effectiveMaterials,
         boundGold: 0,
       },
     };
-  }, [currentRaidGold.tradableGold, planner, targetRaidGold.tradableGold, tradableOnlyEstimate]);
-  const canRunGrowthEstimate = Number(estimateInput.character.currentItemLevel || 0) > 0 && Number(estimateInput.character.targetItemLevel || 0) > 0;
-  const estimate = useMemo(() => {
-    if (!estimateGrowthPlanFn) return makeEmptyGrowthEstimate();
-    return canRunGrowthEstimate
-      ? estimateGrowthPlanFn(estimateInput)
-      : estimateGrowthPlanFn({
-          ...estimateInput,
-          character: {
-            ...estimateInput.character,
-            currentItemLevel: 1720,
-            targetItemLevel: 1720,
-          },
-        });
-  }, [canRunGrowthEstimate, estimateGrowthPlanFn, estimateInput]);
-  const combatSimulation = useMemo(
-    () =>
-      COMBAT_SIMULATOR_ENABLED && simulatorMode === "combat" && estimateGrowthPlanFn && canRunGrowthEstimate && targetCombatPower > 0
-        ? buildCombatSimulation(estimateInput, targetCombatPower, currentCombatPower, combatRole, combatLevelCorrection, combatDetails, estimateGrowthPlanFn)
-        : null,
-    [
-      canRunGrowthEstimate,
-      combatDetails,
-      combatLevelCorrection,
-      combatRole,
-      currentCombatPower,
-      estimateGrowthPlanFn,
-      estimateInput,
-      simulatorMode,
-      targetCombatPower,
-    ]
+  }, [currentRaidGold.tradableGold, effectiveMaterials, planner, targetRaidGold.tradableGold, tradableOnlyEstimate]);
+  const preliminaryEstimate = useMemo(() => estimateGrowthPlan(estimateInput), [estimateInput]);
+  const cathedralExchangePlan = useMemo(
+    () => buildCathedralExchangePlan(preliminaryEstimate.requiredMaterials, estimateInput.materials, estimateInput.market, cathedralStage, cathedralExtraReward),
+    [cathedralExtraReward, cathedralStage, estimateInput.market, estimateInput.materials, preliminaryEstimate.requiredMaterials]
   );
-  const formulaCombatPower = useMemo(() => calculateFormulaCombatPower(combatDetails, combatRole), [combatDetails, combatRole]);
-  const combatUpgradePlan = useMemo(
-    () =>
-      COMBAT_SIMULATOR_ENABLED
-        ? buildCombatUpgradeCandidates(combatUpgradeSettings, currentCombatPower, targetCombatPower, combatSimulation)
-        : {
-            candidates: [],
-            selected: [],
-            projectedPower: currentCombatPower,
-            totalCost: 0,
-            remainingPower: 0,
-          },
-    [combatSimulation, combatUpgradeSettings, currentCombatPower, targetCombatPower]
+  const finalEstimateInput = useMemo(
+    () => ({ ...estimateInput, materials: applyCathedralExchangePlan(estimateInput.materials, cathedralExchangePlan) }),
+    [cathedralExchangePlan, estimateInput]
   );
-  const activeEstimate = simulatorMode === "combat" && combatSimulation ? combatSimulation.estimate : estimate;
-  const displayRouteSteps = useMemo(() => groupRouteStepsForDisplay(activeEstimate.routeSteps), [activeEstimate.routeSteps]);
-  const confirmedRouteSteps = useMemo(() => displayRouteSteps.filter((step) => step.confirmed), [displayRouteSteps]);
-  const confirmedRouteMaterialLines = useMemo(() => {
-    const materials: RefiningRouteStep["expectedMaterials"] = {};
-    confirmedRouteSteps.forEach((step) => addRouteMaterials(materials, inferRouteMaterials(step)));
-    return ROUTE_MATERIAL_USAGE_FIELDS.map((field) => [field.label, Number(materials[field.key] || 0)] as const).filter(
-      ([, value]) => Math.round(value) > 0
-    );
-  }, [confirmedRouteSteps]);
-  const usedMaterialRows = useMemo(
-    () => getUsedMaterialDisplayRows(activeEstimate.requiredMaterials, estimateInput.materials),
-    [activeEstimate.requiredMaterials, estimateInput.materials]
-  );
-  const displayedCurrentItemLevel = useMemo(() => {
-    const pieceLevels = planner.character.pieces.map(deriveEquipmentItemLevel).filter((level) => level > 0);
-    if (pieceLevels.length === 6) {
-      return pieceLevels.reduce((sum, level) => sum + level, 0) / 6;
-    }
-    return Number(planner.character.currentItemLevel || 0);
-  }, [planner.character.currentItemLevel, planner.character.pieces]);
+  const estimate = useMemo(() => estimateGrowthPlan(finalEstimateInput), [finalEstimateInput]);
+  const displayRouteSteps = useMemo(() => groupRouteStepsForDisplay(estimate.routeSteps), [estimate.routeSteps]);
   const selectedRouteStep = displayRouteSteps[Math.min(selectedRouteIndex, Math.max(0, displayRouteSteps.length - 1))] ?? null;
   const selectedRouteUsageRows = useMemo(
-    () => getSequentialRouteMaterialUsageRows(displayRouteSteps, Math.min(selectedRouteIndex, Math.max(0, displayRouteSteps.length - 1)), planner.materials),
-    [displayRouteSteps, planner.materials, selectedRouteIndex]
+    () => getSequentialRouteMaterialUsageRows(displayRouteSteps, Math.min(selectedRouteIndex, Math.max(0, displayRouteSteps.length - 1)), finalEstimateInput.materials),
+    [displayRouteSteps, finalEstimateInput.materials, selectedRouteIndex]
   );
   const selectedRouteSupportGuides = useMemo(
-    () => (selectedRouteStep ? getRouteSupportTimingGuides(selectedRouteStep, selectedRouteUsageRows) : []),
-    [selectedRouteStep, selectedRouteUsageRows]
+    () => (selectedRouteStep ? getRouteSupportTimingGuides(selectedRouteStep, selectedRouteUsageRows, planner.market) : []),
+    [planner.market, selectedRouteStep, selectedRouteUsageRows]
   );
-  const confirmedDraftPiece = planner.character.pieces.find((piece) => piece.slot === confirmedDraft.slot);
-  const confirmedDraftCurrentLevel = confirmedCurrentLevel(confirmedDraftPiece, confirmedDraft.action);
+  const displayMaterialPurchaseCost = useMemo(
+    () => getRequiredMaterialPurchaseCost(estimate.requiredMaterials, finalEstimateInput.materials, finalEstimateInput.market),
+    [estimate.requiredMaterials, finalEstimateInput.market, finalEstimateInput.materials]
+  );
+  const displayedTotalSpendGold = Math.max(0, estimate.directGoldCost + displayMaterialPurchaseCost);
+  const selectedWaitBoundGold = Math.max(
+    0,
+    Number(finalEstimateInput.materials.boundGold || 0) + Math.max(0, selectedWaitWeeks) * Number(finalEstimateInput.character.currentWeeklyBoundGold || 0)
+  );
+  const selectedWaitTradableGoldSaved = Math.max(0, selectedWaitWeeks) * Number(finalEstimateInput.character.currentWeeklyGold || 0);
+  const selectedWaitBoundGoldUse = Math.min(estimate.directGoldCost, selectedWaitBoundGold);
+  const selectedWaitTradableGoldUse = Math.max(
+    0,
+    displayMaterialPurchaseCost + Math.max(0, estimate.directGoldCost - selectedWaitBoundGoldUse) - selectedWaitTradableGoldSaved
+  );
+  const selectedWaitPaybackWeeks =
+    estimate.additionalWeeklyGold > 0 ? Math.round((selectedWaitTradableGoldUse / estimate.additionalWeeklyGold) * 100) / 100 : null;
+  const requiredMaterialCards = useMemo(
+    () => getRequiredMaterialCards(estimate.requiredMaterials, finalEstimateInput.materials, finalEstimateInput.market),
+    [estimate.requiredMaterials, finalEstimateInput.market, finalEstimateInput.materials]
+  );
   const visibleMarketLabels = useMemo(
-    () => MARKET_LABELS.filter(([key]) => shouldShowMarketField(key, activeEstimate.requiredMaterials) || shouldShowSupportBookMarketField(key, planner)),
-    [activeEstimate.requiredMaterials, planner]
+    () => MARKET_LABELS.filter(([key]) => shouldShowMarketField(key, estimate.requiredMaterials) || shouldShowSupportBookMarketField(key, planner)),
+    [estimate.requiredMaterials, planner]
   );
   const selectedOcrField = planner.ocr.fields.find((field) => field.id === planner.ocr.selectedFieldId) ?? planner.ocr.fields[0] ?? null;
 
@@ -1986,121 +1773,6 @@ export default function GrowthPlannerPage() {
     }));
   }
 
-  function addConfirmedUpgrade() {
-    const piece = planner.character.pieces.find((entry) => entry.slot === confirmedDraft.slot);
-    const currentLevel = confirmedCurrentLevel(piece, confirmedDraft.action);
-    const targetLevel = Math.floor(Number(confirmedDraft.targetLevel || 0));
-    if (!piece || targetLevel <= currentLevel) return;
-
-    const nextUpgrade: ConfirmedUpgrade = {
-      id: `confirm_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-      slot: confirmedDraft.slot,
-      action: confirmedDraft.action,
-      targetLevel,
-    };
-
-    patchPlanner((draft) => {
-      draft.character.confirmedUpgrades = [
-        ...(draft.character.confirmedUpgrades ?? []).filter(
-          (upgrade) => !(upgrade.slot === nextUpgrade.slot && upgrade.action === nextUpgrade.action)
-        ),
-        nextUpgrade,
-      ];
-    });
-  }
-
-  function removeConfirmedUpgrade(id: string) {
-    patchPlanner((draft) => {
-      draft.character.confirmedUpgrades = (draft.character.confirmedUpgrades ?? []).filter((upgrade) => upgrade.id !== id);
-    });
-  }
-
-  function patchCombatDetails(patch: Partial<CombatPowerDetails>) {
-    setCombatDetails((prev) => ({ ...prev, ...patch }));
-  }
-
-  function patchCombatUpgradeSetting(key: CombatUpgradeSystemKey, patch: Partial<CombatUpgradeSetting>) {
-    setCombatUpgradeSettings((prev) => ({
-      ...prev,
-      [key]: {
-        ...prev[key],
-        ...patch,
-      },
-    }));
-  }
-
-  function applyImportedCombatInfo(data: CharacterImportResponse) {
-    if (data.inferredRole) setCombatRole(data.inferredRole);
-    const importedCombatPower = Number(data.combatPower || 0);
-    if (importedCombatPower > 0) {
-      setCurrentCombatPower(importedCombatPower);
-      setTargetCombatPower((prev) => (prev > importedCombatPower ? prev : Math.ceil(importedCombatPower * 1.05)));
-    }
-    if (data.combatDetails) {
-      setCombatDetails((prev) => ({ ...prev, ...data.combatDetails }));
-    }
-    if (data.combatSystems || data.combatDetails) {
-      const systems = data.combatSystems;
-      setCombatUpgradeSettings((prev) => ({
-        ...prev,
-        gem: {
-          ...prev.gem,
-          current: Math.max(prev.gem.current, Number(systems?.gemLevelSum || data.combatDetails?.t4GemLevelSum || 0)),
-          target: Math.max(prev.gem.target, Number(systems?.gemLevelSum || data.combatDetails?.t4GemLevelSum || 0) + 11),
-        },
-        arkPassive: {
-          ...prev.arkPassive,
-          current: Math.max(
-            prev.arkPassive.current,
-            Number(systems?.arkPassivePoints || 0) ||
-              Number(data.combatDetails?.arkEvolutionPoints || 0) +
-                Number(data.combatDetails?.arkEnlightenmentPoints || 0) +
-                Number(data.combatDetails?.arkLeapPoints || 0)
-          ),
-          target: Math.max(
-            prev.arkPassive.target,
-            (Number(systems?.arkPassivePoints || 0) ||
-              Number(data.combatDetails?.arkEvolutionPoints || 0) +
-                Number(data.combatDetails?.arkEnlightenmentPoints || 0) +
-                Number(data.combatDetails?.arkLeapPoints || 0)) + 10
-          ),
-        },
-        arkGrid: {
-          ...prev.arkGrid,
-          current: Math.max(
-            prev.arkGrid.current,
-            Number(systems?.arkGridPoints || 0) ||
-              Number(data.combatDetails?.evolutionKarmaRanks || 0) +
-                Number(data.combatDetails?.enlightenmentKarmaRanks || 0) +
-                Number(data.combatDetails?.leapKarmaRanks || 0)
-          ),
-          target: Math.max(
-            prev.arkGrid.target,
-            (Number(systems?.arkGridPoints || 0) ||
-              Number(data.combatDetails?.evolutionKarmaRanks || 0) +
-                Number(data.combatDetails?.enlightenmentKarmaRanks || 0) +
-                Number(data.combatDetails?.leapKarmaRanks || 0)) + 10
-          ),
-        },
-        engraving: {
-          ...prev.engraving,
-          current: Math.max(prev.engraving.current, Number(systems?.engravingCount || 0)),
-          target: Math.max(prev.engraving.target, Number(systems?.engravingCount || 0)),
-        },
-        accessory: {
-          ...prev.accessory,
-          current: Math.max(prev.accessory.current, Number(systems?.accessoryCount || 0)),
-          target: Math.max(prev.accessory.target, Number(systems?.accessoryCount || 0) + 1),
-        },
-        avatar: {
-          ...prev.avatar,
-          current: Math.max(prev.avatar.current, Number(systems?.avatarGradeLevel || 0)),
-          target: Math.max(prev.avatar.target, Number(systems?.avatarGradeLevel || 0)),
-        },
-      }));
-    }
-  }
-
   function patchOcrField(fieldId: string, patch: Partial<OcrFieldBox>) {
     patchPlanner((draft) => {
       draft.ocr.fields = draft.ocr.fields.map((field) => (field.id === fieldId ? { ...field, ...patch } : field));
@@ -2148,7 +1820,6 @@ export default function GrowthPlannerPage() {
       }
 
       setProfileSummary(data);
-      applyImportedCombatInfo(data);
       const importedAverageLevel = averageImportedPieceLevel(data.pieces);
       const importedCurrentLevel = importedAverageLevel ?? data.currentItemLevel;
       patchPlanner((draft) => {
@@ -2196,7 +1867,6 @@ export default function GrowthPlannerPage() {
       }
 
       setProfileSummary(data);
-      applyImportedCombatInfo(data);
 
       patchPlanner((draft) => {
         draft.character.characterName = buildCharacterName(selectedCharacter, nickname);
@@ -2734,6 +2404,8 @@ export default function GrowthPlannerPage() {
       </section>
     );
   }
+  const profileWarnings = profileSummary?.warnings ?? [];
+
   return (
     <div className="growthPage">
       <section className="growthHero">
@@ -2746,36 +2418,6 @@ export default function GrowthPlannerPage() {
           <div>OCR 상태: {formatStatus(planner.ocr.status)}</div>
           <div>추천 경로: {formatMode(planner.character.preferredMode)}</div>
         </div>
-      </section>
-
-      <section className="growthCard simulatorTabsCard">
-        <div className="resourceTabsHeader">
-          <div className="resourceTabs">
-            <button type="button" className={simulatorMode === "level" ? "active" : ""} onClick={() => setSimulatorMode("level")}>
-              목표 레벨 시뮬레이터
-            </button>
-            <button
-              type="button"
-              className={simulatorMode === "combat" ? "active" : ""}
-              onClick={() => {
-                window.alert("목표 레벨+전투력 시뮬레이터는 추후 구현 예정이야.");
-                setSimulatorMode("level");
-              }}
-            >
-              목표 레벨+전투력 시뮬레이터
-            </button>
-          </div>
-          <div className="growthEngineStatus">
-            {estimateGrowthPlanFn ? (
-              <span>계산 엔진 준비됨</span>
-            ) : (
-              <button type="button" onClick={loadGrowthEngine} disabled={growthEngineLoading}>
-                {growthEngineLoading ? "계산 엔진 로딩 중" : "계산 엔진 불러오기"}
-              </button>
-            )}
-          </div>
-        </div>
-        {growthEngineError ? <div className="growthError">{growthEngineError}</div> : null}
       </section>
 
       <div className="growthTopGrid">
@@ -2905,6 +2547,15 @@ export default function GrowthPlannerPage() {
                     </span>
                   ))}
                 </div>
+                {profileWarnings.length ? (
+                  <div className="growthWarningList">
+                    {profileWarnings.map((warning) => (
+                      <span key={warning} className="growthChip">
+                        {warning}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -3095,18 +2746,72 @@ export default function GrowthPlannerPage() {
           <div className="materialPairList">
             {MATERIAL_FIELD_GROUPS.map((group) => (
               <div key={group.map(([key]) => key).join("-")} className="materialPairRow">
-                {group.map(([key, label]) => (
-                  <label key={key}>
-                    <span>{label}</span>
+                {group.map(([key, label]) => {
+                  const canTreatAsBound = Boolean(TRADABLE_AS_BOUND_PAIRS[key]);
+                  return (
+                  <label key={key} className={canTreatAsBound ? "materialTreatAsBoundField" : ""}>
+                    <span className="materialInputHeader">
+                      <span>{label}</span>
+                      {canTreatAsBound ? (
+                        <span className="materialBoundCheck" title="체크하면 이 재료는 충분히 있다고 보고 구매 비용을 0으로 계산해.">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(tradableAsBound[key])}
+                            onChange={(event) => setTradableAsBound((prev) => ({ ...prev, [key]: event.target.checked }))}
+                          />
+                          귀속
+                        </span>
+                      ) : null}
+                    </span>
                     <input
                       type="number"
                       value={planner.materials[key] || 0}
                       onChange={(event) => patchMaterials(key, Number(event.target.value) || 0)}
                     />
                   </label>
-                ))}
+                  );
+                })}
               </div>
             ))}
+            <div className="cathedralExchangeBox">
+              <div className="cathedralExchangeHeader">
+                <strong>성당 교환</strong>
+                <span>은총 10개 기준으로 현재 목표 경로에서 가장 비싼 부족 보조재료부터 교환해 계산에 반영해.</span>
+              </div>
+              <div className="cathedralExchangeControls">
+                <label>
+                  <span>성당 단계</span>
+                  <select value={cathedralStage} onChange={(event) => setCathedralStage(event.target.value as CathedralStage)}>
+                    <option value="none">안 감</option>
+                    <option value="1">1단계</option>
+                    <option value="2">2단계</option>
+                    <option value="3">3단계</option>
+                  </select>
+                </label>
+                <label className="cathedralCheck">
+                  <input type="checkbox" checked={cathedralExtraReward} onChange={(event) => setCathedralExtraReward(event.target.checked)} />
+                  <span>더보기 포함</span>
+                </label>
+              </div>
+              <div className="cathedralExchangeSummary">
+                <span>이번 주 수급 {formatCount(cathedralExchangePlan.weeklyFragments)}개</span>
+                <span>계산 파편 {formatCount(cathedralExchangePlan.totalFragments)}개</span>
+                <span>교환 가능 {formatCount(cathedralExchangePlan.exchangeCount)}회</span>
+              </div>
+              {cathedralExchangePlan.entries.length ? (
+                <div className="cathedralExchangeResult">
+                  <strong>추천 교환</strong>
+                  {cathedralExchangePlan.entries.map((entry) => (
+                    <div key={entry.key}>
+                      <span>{entry.label}</span>
+                      <b>{formatCount(entry.amount)}개</b>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="growthHint">현재 목표 경로에서 은총 교환으로 대체할 부족 보조재료가 없어.</div>
+              )}
+            </div>
           </div>
         ) : (
           <>
@@ -3250,107 +2955,9 @@ export default function GrowthPlannerPage() {
           </div>
         </section>
 
-        <section className="growthCard confirmedUpgradeCard">
-          <h3 className="growthCardTitle">스펙업 확정</h3>
-          <div className="growthHint">무조건 진행할 스펙업을 먼저 넣으면, 그 다음 남은 목표 레벨을 최저 비용으로 다시 추천해.</div>
-          <div className="growthFieldGrid confirmedUpgradeControls">
-            <label>
-              <span>장비</span>
-              <select
-                value={confirmedDraft.slot}
-                onChange={(event) => setConfirmedDraft((prev) => ({ ...prev, slot: event.target.value as EquipmentSlot }))}
-              >
-                {SLOT_ORDER.map((slot) => (
-                  <option key={slot} value={slot}>
-                    {SLOT_NAMES[slot]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>종류</span>
-              <select
-                value={confirmedDraft.action}
-                onChange={(event) =>
-                  setConfirmedDraft((prev) => ({ ...prev, action: event.target.value as ConfirmedUpgrade["action"] }))
-                }
-              >
-                <option value="advanced">상급 재련</option>
-                <option value="normal">강화</option>
-              </select>
-            </label>
-            <label>
-              <span>목표 단계</span>
-              <input
-                type="number"
-                value={confirmedDraft.targetLevel || ""}
-                onChange={(event) => setConfirmedDraft((prev) => ({ ...prev, targetLevel: Number(event.target.value) || 0 }))}
-              />
-            </label>
-            <button
-              type="button"
-              className="growthAction"
-              onClick={addConfirmedUpgrade}
-              disabled={confirmedDraft.targetLevel <= confirmedDraftCurrentLevel}
-            >
-              적용
-            </button>
-          </div>
-          <div className="growthHint">
-            현재 기준: {SLOT_NAMES[confirmedDraft.slot]}{" "}
-            {confirmedDraft.action === "normal" ? `+${confirmedDraftCurrentLevel}` : `x${confirmedDraftCurrentLevel}`}
-            {confirmedDraft.targetLevel > confirmedDraftCurrentLevel ? ` -> ${confirmedDraft.targetLevel}` : ""}
-          </div>
-          {(planner.character.confirmedUpgrades ?? []).length ? (
-            <div className="confirmedUpgradeList">
-              {(planner.character.confirmedUpgrades ?? []).map((upgrade) => {
-                const piece = planner.character.pieces.find((entry) => entry.slot === upgrade.slot);
-                const fromLevel = confirmedCurrentLevel(piece, upgrade.action);
-                return (
-                  <div className="confirmedUpgradeItem" key={upgrade.id}>
-                    <span>
-                      {SLOT_NAMES[upgrade.slot]} {upgrade.action === "normal" ? "강화" : "상급재련"} {fromLevel} -&gt; {upgrade.targetLevel}
-                    </span>
-                    <button type="button" className="growthAction secondary" onClick={() => removeConfirmedUpgrade(upgrade.id)}>
-                      삭제
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="growthEmpty">확정한 스펙업이 없으면 기존처럼 최저가 경로만 계산돼.</div>
-          )}
-        </section>
-
         <details className="growthDetails routePanel" open>
           <summary className="growthDetailsSummary">추천 강화순서</summary>
           <section className="growthCard compact routePanelInner">
-          {confirmedRouteSteps.length ? (
-            <div className="confirmedRouteSummary">
-              <div className="routeMaterialHeader">
-                <strong>확정 스펙업</strong>
-                <span>아래 추천 순서보다 먼저 반영돼.</span>
-              </div>
-              {confirmedRouteSteps.map((step, index) => (
-                <div className="routeUsageRow" key={`${step.slot}-${step.action}-${step.fromLevel}-${step.toLevel}-${index}`}>
-                  <span>
-                    {step.slotLabel} {formatRouteAction(step)}
-                  </span>
-                  <strong>{formatGold(step.averageCost)}</strong>
-                </div>
-              ))}
-              {confirmedRouteMaterialLines.length ? (
-                <div className="confirmedRouteMaterials">
-                  {confirmedRouteMaterialLines.map(([label, value]) => (
-                    <span key={label}>
-                      {label} {formatCount(value)}개
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
           {displayRouteSteps.length ? (
             <>
               <div className="compactRouteList">
@@ -3421,86 +3028,74 @@ export default function GrowthPlannerPage() {
       <div className="plannerBottomGrid">
       <section className="growthCard estimateResultCard">
         <h3 className="growthCardTitle">추정 결과</h3>
-        <div className="estimateCharacterSummary">
-          <span>{planner.character.characterName || "선택 캐릭터"}</span>
-          <strong>
-            {formatItemLevel(displayedCurrentItemLevel)} -&gt;{" "}
-            {formatItemLevel(simulatorMode === "combat" && combatSimulation ? combatSimulation.finalLevel : planner.character.targetItemLevel)}
-          </strong>
-        </div>
-        {COMBAT_SIMULATOR_ENABLED && simulatorMode === "combat" ? (
-          <div className="combatResultPanel">
-            <div>
-              <span className="resultLabel">전투력 목표 결과</span>
-              <strong>
-                {currentCombatPower ? Math.round(currentCombatPower).toLocaleString() : "-"} -&gt;{" "}
-                {combatSimulation ? Math.round(combatSimulation.combatPower).toLocaleString() : "-"}
-              </strong>
-            </div>
-            <div>
-              <span className="resultLabel">추천 목표 레벨</span>
-              <strong>{combatSimulation ? formatItemLevel(combatSimulation.finalLevel) : "달성 조합 없음"}</strong>
-            </div>
-          </div>
-        ) : null}
         <div className="resultHero">
           <div className="resultCard">
             <span className="resultLabel">총 추정 지출</span>
-            <div className="resultValue">{formatGold(activeEstimate.totalSpendGold)}</div>
+            <div className="resultValue">{formatGold(displayedTotalSpendGold)}</div>
           </div>
           <div className="resultCard">
             <span className="resultLabel">회수 예상</span>
-            <div className="resultValue">{activeEstimate.paybackWeeks == null ? "-" : `${activeEstimate.paybackWeeks.toLocaleString()}주`}</div>
+            <div className="resultValue">{selectedWaitPaybackWeeks == null ? "-" : `${selectedWaitPaybackWeeks.toLocaleString()}주`}</div>
           </div>
         </div>
         <div className="resultGrid">
           <div className="resultCard">
             <span className="resultLabel">총 누르는 골드</span>
-            <strong>{formatGold(activeEstimate.directGoldCost)}</strong>
+            <strong>{formatGold(estimate.directGoldCost)}</strong>
           </div>
           <div className="resultCard">
             <span className="resultLabel">추가 재료 구매</span>
-            <strong>{formatGold(activeEstimate.materialPurchaseCost)}</strong>
+            <strong>{formatGold(displayMaterialPurchaseCost)}</strong>
           </div>
           <div className="resultCard">
             <span className="resultLabel">귀속 절감 추정</span>
-            <strong>{formatGold(activeEstimate.boundMaterialOffset)}</strong>
+            <strong>{formatGold(estimate.boundMaterialOffset)}</strong>
           </div>
           <div className="resultCard">
             <span className="resultLabel">주간 추가 골드</span>
-            <strong>{formatGold(activeEstimate.additionalWeeklyGold)}</strong>
+            <strong>{formatGold(estimate.additionalWeeklyGold)}</strong>
           </div>
         </div>
         <div className="recommendGrid">
           <div className="recommendBox">
             <div className="resultLabel">지금 바로 올릴 때</div>
             <div className="resultList">
-              <div>귀속골드 사용: {formatGold(activeEstimate.boundGoldUsableNow)}</div>
-              <div>유통골드 필요: {formatGold(activeEstimate.tradableGoldNeededNow)}</div>
-              <div>귀속골드만으로 직접골드 충당: {activeEstimate.boundGoldAffordableWeeks == null ? "-" : `${activeEstimate.boundGoldAffordableWeeks}주`}</div>
+              <div>귀속골드 사용: {formatGold(estimate.boundGoldUsableNow)}</div>
+              <div>유통골드 필요: {formatGold(estimate.tradableGoldNeededNow)}</div>
+              <div>귀속골드만으로 직접골드 충당: {estimate.boundGoldAffordableWeeks == null ? "-" : `${estimate.boundGoldAffordableWeeks}주`}</div>
             </div>
           </div>
           <div className="recommendBox">
             <div className="resultLabel">추천 대기 시점</div>
             <div className="resultList">
-              <div>추천 대기 주차: {activeEstimate.recommendedWaitWeeks}주</div>
-              <div>귀속골드 사용: {formatGold(activeEstimate.recommendedBoundGoldUse)}</div>
-              <div>유통골드 사용: {formatGold(activeEstimate.recommendedTradableGoldUse)}</div>
+              <label className="waitWeekControl">
+                <span>대기 주차</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={selectedWaitWeeks}
+                  onChange={(event) => setSelectedWaitWeeks(Math.max(0, Number(event.target.value) || 0))}
+                />
+              </label>
+              <div>추천 대기 주차: {estimate.recommendedWaitWeeks}주</div>
+              <div>귀속골드 사용: {formatGold(selectedWaitBoundGoldUse)}</div>
+              <div>대기 중 모은 유통골드: {formatGold(selectedWaitTradableGoldSaved)}</div>
+              <div>유통골드 사용: {formatGold(selectedWaitTradableGoldUse)}</div>
             </div>
           </div>
         </div>
-        <div className="resultSectionTitle">사용된 재화</div>
-        {usedMaterialRows.length ? (
+        {requiredMaterialCards.length ? (
           <div className="resultMaterialTable">
-            {usedMaterialRows.map(({ label, value }) => (
-              <div className="resultCard" key={label}>
-                <span className="resultLabel">{label}</span>
-                <strong>{formatCount(value)}개</strong>
+            {requiredMaterialCards.map((row) => (
+              <div className="resultCard" key={row.label}>
+                <span className="resultLabel">{row.label}</span>
+                <strong>{formatCount(row.value)}개</strong>
+                {row.detail ? <small className="resultMaterialDetail">{row.detail}</small> : null}
               </div>
             ))}
           </div>
         ) : (
-          <div className="growthEmpty">사용된 재화가 없으면 여기는 비워져.</div>
+          <div className="growthEmpty">목표 경로에서 소모되는 재료가 없으면 여기는 비워져.</div>
         )}
       </section>
       <section className="growthCard weeklyRewardTabsCard">
@@ -3554,3 +3149,6 @@ export default function GrowthPlannerPage() {
     </div>
   );
 }
+
+
+
