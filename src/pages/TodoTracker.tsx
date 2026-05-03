@@ -1342,6 +1342,27 @@ export default function TodoTracker() {
     );
   }
 
+  async function clearWeeklyScheduleItems(scheduleId: string) {
+    if (!SERVER_MODE) return;
+    if (!confirm("현재 일정표 일정들을 전부 지울까요?")) return;
+
+    const schedule = weeklySchedules.find((s) => s.id === scheduleId);
+    if (!schedule) return;
+
+    const nextSchedule: SharedWeeklySchedule = {
+      ...schedule,
+      items: [],
+    };
+
+    setWeeklySchedules((prev) =>
+      prev.map((item) => (item.id === scheduleId ? nextSchedule : item))
+    );
+    setSelectedMyScheduleCharKey("");
+    setSelectedMyScheduleRaidNames([]);
+
+    await saveWeeklySchedule(nextSchedule);
+  }
+
   function parseScheduleMyCharKey(myCharKey: string) {
     const [tableId, charId] = String(myCharKey ?? "").split("|");
     return { tableId: tableId ?? "", charId: charId ?? "" };
@@ -2933,6 +2954,18 @@ export default function TodoTracker() {
       };
     }
 
+    function getUnscheduledRaidsForCandidate(
+      charKey: string,
+      targetRaids: string[],
+      raidSetMap: Map<string, Set<string>>,
+      extraKeys: string[] = []
+    ) {
+      const scheduleState = getRemainScheduleState(charKey, targetRaids, raidSetMap, extraKeys);
+      return targetRaids.filter(
+        (raid) => !scheduleState.scheduledSet.has(normalizeRaidName(raid))
+      );
+    }
+
     function getClearedScheduleRaidSetForKeys(
       schedule: SharedWeeklySchedule | undefined,
       keys: string[],
@@ -3064,11 +3097,21 @@ export default function TodoTracker() {
 
       const commonRaids: string[] =
         my && friend
-          ? my.activeRaids
+          ? getUnscheduledRaidsForCandidate(
+            my.key,
+            my.activeRaids,
+            scheduledMyRaidSetByChar,
+            [my.name, getScheduleSnapshotCandidateKey(my.tableName, my.name)]
+          )
             .map((raid: string) => normalizeRaidName(raid))
             .filter((raid: string, index: number, arr: string[]) => arr.indexOf(raid) === index)
             .filter((raid: string) =>
-              friend.activeRaids.some((fr: string) => normalizeRaidName(fr) === raid)
+              getUnscheduledRaidsForCandidate(
+                friend.key,
+                friend.activeRaids,
+                scheduledFriendRaidSetByChar,
+                [friend.name, getScheduleSnapshotCandidateKey(friend.tableName, friend.name)]
+              ).some((fr: string) => normalizeRaidName(fr) === raid)
             )
           : [];
 
@@ -3790,13 +3833,23 @@ export default function TodoTracker() {
     function autoBuildRecommendedPairs(): ManualKkanbuPair[] {
       const myPool: MyCandidate[] = myCandidates.map((x) => ({
         ...x,
-        remainingRaids: [...x.activeRaids],
-      }));
+        remainingRaids: getUnscheduledRaidsForCandidate(
+          x.key,
+          x.activeRaids,
+          scheduledMyRaidSetByChar,
+          [x.name, getScheduleSnapshotCandidateKey(x.tableName, x.name)]
+        ),
+      })).filter((x) => x.remainingRaids.length > 0);
 
       const friendPool: FriendCandidate[] = friendCandidates.map((x) => ({
         ...x,
-        remainingRaids: [...x.activeRaids],
-      }));
+        remainingRaids: getUnscheduledRaidsForCandidate(
+          x.key,
+          x.activeRaids,
+          scheduledFriendRaidSetByChar,
+          [x.name, getScheduleSnapshotCandidateKey(x.tableName, x.name)]
+        ),
+      })).filter((x) => x.remainingRaids.length > 0);
 
       const result: ManualKkanbuPair[] = [];
 
@@ -3904,8 +3957,14 @@ export default function TodoTracker() {
     // 일정표에 이미 전부 들어간 캐릭터는 흐리게만 표시되도록 분리
     const displayMyCandidates = myCandidates.map((me) => {
       const used = usedRaidsByMyKey.get(me.key) ?? new Set<string>();
+      const scheduleAvailableRaids = getUnscheduledRaidsForCandidate(
+        me.key,
+        me.activeRaids,
+        scheduledMyRaidSetByChar,
+        [me.name, getScheduleSnapshotCandidateKey(me.tableName, me.name)]
+      );
 
-      const unscheduledRaids = me.activeRaids.filter(
+      const unscheduledRaids = scheduleAvailableRaids.filter(
         (raid: string) => !used.has(normalizeRaidName(raid))
       );
 
@@ -3917,8 +3976,14 @@ export default function TodoTracker() {
 
     const displayFriendCandidates = friendCandidates.map((fr) => {
       const used = usedRaidsByFriendKey.get(fr.key) ?? new Set<string>();
+      const scheduleAvailableRaids = getUnscheduledRaidsForCandidate(
+        fr.key,
+        fr.activeRaids,
+        scheduledFriendRaidSetByChar,
+        [fr.name, getScheduleSnapshotCandidateKey(fr.tableName, fr.name)]
+      );
 
-      const unscheduledRaids = fr.activeRaids.filter(
+      const unscheduledRaids = scheduleAvailableRaids.filter(
         (raid: string) => !used.has(normalizeRaidName(raid))
       );
 
@@ -4126,6 +4191,18 @@ export default function TodoTracker() {
                     }}
                   >
                     일정표 삭제
+                  </button>
+
+                  <button
+                    type="button"
+                    className="mini"
+                    onClick={() => {
+                      clearWeeklyScheduleItems(selectedScheduleId).catch((e) => {
+                        alert(`일정표 초기화 실패: ${String(e)}`);
+                      });
+                    }}
+                  >
+                    일정표 초기화
                   </button>
 
                   {SERVER_MODE && (
