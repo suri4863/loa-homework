@@ -1634,9 +1634,14 @@ export default function TodoTracker() {
       parseScheduleNumberValue((item as any).myCharItemLevel) ??
       0;
 
+    const availableDiffs = itemIlvl > 0 ? availableDiffNames(itemIlvl, canonical) : [];
+    const parsedDiff = getRaidDiffFromLabel(raidName);
     const diff =
-      pickedDiff ??
-      getRaidDiffFromLabel(raidName) ??
+      ([pickedDiff, parsedDiff].find(
+        (candidate) =>
+          candidate &&
+          (availableDiffs.length === 0 || availableDiffs.includes(candidate as DiffName))
+      ) as DiffName | undefined) ??
       (itemIlvl > 0 ? getHighestAvailableDiffNameForRaid(itemIlvl, canonical) : null);
 
     return diff ? `${canonical} ${diff}` : canonical;
