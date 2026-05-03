@@ -2821,18 +2821,15 @@ export default function TodoTracker() {
       schedule: SharedWeeklySchedule,
       me: MyCandidate
     ) {
-      const scheduledRaidSet = getScheduledRaidSetForMyScheduleCandidate(schedule, me);
+      if (!schedule) return [];
 
-      return me.activeRaids.filter(
-        (raid) => !scheduledRaidSet.has(normalizeRaidName(raid))
+      return getUnscheduledRaidsForCandidate(
+        me.key,
+        me.activeRaids,
+        scheduledMyRaidSetByChar,
+        [me.name, getScheduleSnapshotCandidateKey(me.tableName, me.name)]
       );
     }
-
-    const selectableMyScheduleCandidates = myCandidates.filter((me) => {
-      if (!schedule) return false;
-
-      return getAvailableRaidsForMyScheduleCandidate(schedule, me).length > 0;
-    });
 
     // 공유 일정표에 이미 들어간 레이드 표시용
     const scheduledMyRaidSetByChar = new Map<string, Set<string>>();
@@ -4001,6 +3998,8 @@ export default function TodoTracker() {
     const remainingFriendCandidates = displayFriendCandidates.filter(
       (fr) => fr.unscheduledRaids.length > 0
     );
+
+    const selectableMyScheduleCandidates = remainingMyCandidates;
 
     const updateManualPair = (
       index: number,
