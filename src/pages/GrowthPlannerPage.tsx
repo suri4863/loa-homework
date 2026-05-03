@@ -2137,7 +2137,6 @@ export default function GrowthPlannerPage() {
 
   function applyRaidGoldBasis(nextBasis: PlannerGoldBasis) {
     setRaidGoldBasis(nextBasis);
-    if (isLinkedToTable) return;
 
     const currentIlvl = Number(planner.character.currentItemLevel || 0);
     const targetIlvl = Number(planner.character.targetItemLevel || 0);
@@ -2225,24 +2224,20 @@ export default function GrowthPlannerPage() {
               유통 골드로만 계산
             </button>
           ) : null}
-          {!isLinkedToTable ? (
-            <>
-              <button
-                type="button"
-                className={`growthChip growthChipButton ${raidGoldBasis === "total" ? "active" : ""}`}
-                onClick={() => applyRaidGoldBasis("total")}
-              >
-                귀속골드 포함
-              </button>
-              <button
-                type="button"
-                className={`growthChip growthChipButton ${raidGoldBasis === "tradable" ? "active" : ""}`}
-                onClick={() => applyRaidGoldBasis("tradable")}
-              >
-                귀속골드 포함 X
-              </button>
-            </>
-          ) : null}
+          <button
+            type="button"
+            className={`growthChip growthChipButton ${raidGoldBasis === "total" ? "active" : ""}`}
+            onClick={() => applyRaidGoldBasis("total")}
+          >
+            귀속골드 포함
+          </button>
+          <button
+            type="button"
+            className={`growthChip growthChipButton ${raidGoldBasis === "tradable" ? "active" : ""}`}
+            onClick={() => applyRaidGoldBasis("tradable")}
+          >
+            귀속골드 포함 X
+          </button>
         </div>
         <div className="growthSummaryBox compactSummary">
           <div className="resultLabel">
