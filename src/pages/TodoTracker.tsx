@@ -1831,6 +1831,7 @@ export default function TodoTracker() {
             ? selectedRaidNames
               .map((raid) => normalizeRaidName(raid))
               .filter((raid, index, arr) => raid && arr.indexOf(raid) === index)
+              .filter((raid) => !scheduledRaidSet.has(normalizeRaidName(raid)))
             : me.activeRaids.filter(
               (raid) => !scheduledRaidSet.has(normalizeRaidName(raid))
             );
@@ -2869,6 +2870,19 @@ export default function TodoTracker() {
         const itemScheduledRaids = getScheduleItemRaidNames(item).map((raid) => normalizeRaidName(raid));
 
         if (isTargetView) {
+          if (item.mode === "OPEN_SLOT" || !item.friendCharKey) {
+            addScheduledRaidsToKeys(
+              scheduledMyRaidSetByChar,
+              getScheduleCandidateKeys(
+                item.myCharKey,
+                item.myTableName,
+                item.myCharName,
+                item.mySnapshot
+              ),
+              itemScheduledRaids
+            );
+          }
+
           addScheduledRaidsToKeys(
             scheduledMyRaidSetByChar,
             getScheduleCandidateKeys(
