@@ -1828,9 +1828,9 @@ export default function TodoTracker() {
 
         const baseRaids =
           Array.isArray(selectedRaidNames) && selectedRaidNames.length > 0
-            ? selectedRaidNames.filter(
-              (raid) => !scheduledRaidSet.has(normalizeRaidName(raid))
-            )
+            ? selectedRaidNames
+              .map((raid) => normalizeRaidName(raid))
+              .filter((raid, index, arr) => raid && arr.indexOf(raid) === index)
             : me.activeRaids.filter(
               (raid) => !scheduledRaidSet.has(normalizeRaidName(raid))
             );
@@ -3138,7 +3138,9 @@ export default function TodoTracker() {
       };
     });
 
-    const shareablePairResults = pairResults.filter((result) => result.my && result.friend);
+    const shareablePairResults = pairResults.filter(
+      (result) => result.my && result.friend && result.activeSelectedRaids.length > 0
+    );
 
     const buildKkanbuShareText = () => {
       if (!shareablePairResults.length) {
@@ -3666,18 +3668,7 @@ export default function TodoTracker() {
     function getSelectableFriendOptionsForScheduleItem(
       schedule: SharedWeeklySchedule,
       item: SharedWeeklyScheduleItem
-    ): Array<{
-      key: string;
-      tableName?: string;
-      name: string;
-      ilvl: number;
-      currentIlvl?: number;
-      plannedIlvl?: number;
-      hasNextWeekPlan?: boolean;
-      power: number;
-      remainingRaids: string[];
-      commonRaids: string[];
-    }> {
+    ): Array<FriendCandidate & { commonRaids: string[] }> {
       const currentSelectedKey = getScheduleFriendSelectValue(schedule, item);
       const sourceCandidates = getScheduleAssignableCandidates(schedule);
       const assigningMySide = isScheduleAssigningMySide(schedule);
@@ -3707,7 +3698,7 @@ export default function TodoTracker() {
           return fr.commonRaids.length > 0;
         });
 
-      if (false &&
+      if (
         currentSelectedKey &&
         !options.some((fr) => fr.key === currentSelectedKey) &&
         (item.friendSnapshot?.name || item.friendCharName)
