@@ -78,6 +78,7 @@ export type MaterialInventory = {
   upheavalMetallurgyBook19: number;
   enhancedUpheavalTailoringBook19: number;
   enhancedUpheavalMetallurgyBook19: number;
+  graceFragments: number;
   gold: number;
   boundGold: number;
   silver: number;
@@ -285,6 +286,7 @@ export function makeEmptyPlannerState(): GrowthPlannerState {
       upheavalMetallurgyBook19: 0,
       enhancedUpheavalTailoringBook19: 0,
       enhancedUpheavalMetallurgyBook19: 0,
+      graceFragments: 0,
       gold: 0,
       boundGold: 0,
       silver: 0,
