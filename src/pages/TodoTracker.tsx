@@ -1542,6 +1542,10 @@ export default function TodoTracker() {
       : item.baseRaidNames ?? [];
   }
 
+  function normalizeScheduleRaidKey(raidName: string) {
+    return normalizeRaidName(getRaidBaseNameForRemainLabel(raidName) || raidName);
+  }
+
   function hydrateScheduleWithLocalCompletion(schedule: SharedWeeklySchedule) {
     const { isOwnerView, isTargetView } = getSchedulePerspectiveForCurrentUser(schedule);
 
@@ -1822,7 +1826,7 @@ export default function TodoTracker() {
           if (!myItemKeys.includes(me.key) && !friendItemKeys.includes(me.key)) continue;
 
           for (const raid of getScheduleItemRaidNames(item)) {
-            scheduledRaidSet.add(normalizeRaidName(raid));
+            scheduledRaidSet.add(normalizeScheduleRaidKey(raid));
           }
         }
 
@@ -1831,9 +1835,9 @@ export default function TodoTracker() {
             ? selectedRaidNames
               .map((raid) => normalizeRaidName(raid))
               .filter((raid, index, arr) => raid && arr.indexOf(raid) === index)
-              .filter((raid) => !scheduledRaidSet.has(normalizeRaidName(raid)))
+              .filter((raid) => !scheduledRaidSet.has(normalizeScheduleRaidKey(raid)))
             : me.activeRaids.filter(
-              (raid) => !scheduledRaidSet.has(normalizeRaidName(raid))
+              (raid) => !scheduledRaidSet.has(normalizeScheduleRaidKey(raid))
             );
 
         if (!baseRaids.length) return schedule;
@@ -2844,7 +2848,7 @@ export default function TodoTracker() {
       const key = String(charKey ?? "").trim();
       if (!key) return;
       const prev = map.get(key) ?? new Set<string>();
-      raidNames.forEach((raid) => prev.add(raid));
+      raidNames.forEach((raid) => prev.add(normalizeScheduleRaidKey(raid)));
       map.set(key, prev);
     }
 
@@ -2867,7 +2871,7 @@ export default function TodoTracker() {
 
       for (const item of schedule.items) {
         // 4/26 실제 일정표에 들어간 레이드만 흑백 처리되도록 수정
-        const itemScheduledRaids = getScheduleItemRaidNames(item).map((raid) => normalizeRaidName(raid));
+        const itemScheduledRaids = getScheduleItemRaidNames(item).map((raid) => normalizeScheduleRaidKey(raid));
 
         if (isTargetView) {
           if (item.mode === "OPEN_SLOT" || !item.friendCharKey) {
@@ -2952,7 +2956,7 @@ export default function TodoTracker() {
       });
 
       const scheduledRaids = targetRaids.filter((raid) =>
-        scheduledSet.has(normalizeRaidName(raid))
+        scheduledSet.has(normalizeScheduleRaidKey(raid))
       );
 
       const allScheduled =
@@ -2973,7 +2977,7 @@ export default function TodoTracker() {
     ) {
       const scheduleState = getRemainScheduleState(charKey, targetRaids, raidSetMap, extraKeys);
       return targetRaids.filter(
-        (raid) => !scheduleState.scheduledSet.has(normalizeRaidName(raid))
+        (raid) => !scheduleState.scheduledSet.has(normalizeScheduleRaidKey(raid))
       );
     }
 
@@ -4965,7 +4969,7 @@ export default function TodoTracker() {
                       me.allRaids.length > 0 &&
                       me.allRaids.every((raid) => {
                         const normalized = normalizeRaidName(raid);
-                        const isScheduled = scheduleState.scheduledSet.has(normalized);
+                        const isScheduled = scheduleState.scheduledSet.has(normalizeScheduleRaidKey(raid));
                         // 4/26 다음 주 초기화 기준일 때는 모든 표시 레이드를 남은 레이드로 처리
                         const isRemaining =
                           schedulePlanningMode === "NEXT_RESET" ||
@@ -5015,7 +5019,7 @@ export default function TodoTracker() {
                         <div className="manualRemainRaids">
                           {me.allRaids.map((raid) => {
                             const normalized = normalizeRaidName(raid);
-                            const isScheduled = scheduleState.scheduledSet.has(normalized);
+                            const isScheduled = scheduleState.scheduledSet.has(normalizeScheduleRaidKey(raid));
 
                             // 4/26 다음 주 초기화 기준일 때는 기존 클리어 체크를 무시하고 전부 남은 레이드로 처리
                             const isRemaining =
@@ -5113,7 +5117,7 @@ export default function TodoTracker() {
                       visibleFriendRaids.length > 0 &&
                       visibleFriendRaids.every((raid: string) => {
                         const normalized = normalizeRaidName(raid);
-                        const isScheduled = scheduleState.scheduledSet.has(normalized);
+                        const isScheduled = scheduleState.scheduledSet.has(normalizeScheduleRaidKey(raid));
                         const isCleared = clearedRaidSet.has(normalized);
 
                         return isScheduled || isCleared;
@@ -5160,7 +5164,7 @@ export default function TodoTracker() {
                         <div className="manualRemainRaids">
                           {visibleFriendRaids.map((raid: string) => {
                             const normalized = normalizeRaidName(raid);
-                            const isScheduled = scheduleState.scheduledSet.has(normalized);
+                            const isScheduled = scheduleState.scheduledSet.has(normalizeScheduleRaidKey(raid));
                             const isCleared = clearedRaidSet.has(normalized);
 
                             return (
