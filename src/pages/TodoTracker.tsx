@@ -1574,13 +1574,21 @@ export default function TodoTracker() {
   ) {
     const canonical = canonicalRaidName(raidName);
     const pickKey = resolveScheduleWeeklyPickKey(item);
-
-    if (!pickKey) return canonical;
-
-    const pick = weeklyRaidPickByChar[pickKey];
-    const diff =
+    const pick = pickKey ? weeklyRaidPickByChar[pickKey] : null;
+    const pickedDiff =
       pick?.diffs?.[canonical] ??
       pick?.diffs?.[raidName];
+
+    const itemIlvl =
+      parseScheduleNumberValue(item.mySnapshot?.ilvl) ??
+      parseScheduleNumberValue(item.mySnapshot?.itemLevel) ??
+      parseScheduleNumberValue((item as any).myCharItemLevel) ??
+      0;
+
+    const diff =
+      pickedDiff ??
+      getRaidDiffFromLabel(raidName) ??
+      (itemIlvl > 0 ? getHighestAvailableDiffNameForRaid(itemIlvl, canonical) : null);
 
     return diff ? `${canonical} ${diff}` : canonical;
   }
@@ -7802,9 +7810,22 @@ body.pip-dark .pip-select option{
       }))
     );
 
-    // 2) 주간 레이드 체크 3개 미만만 남기기
-    // (네가 이미 만들어둔 getWeeklyRaidCheckedCount(tableId, charId) 그대로 사용)
-    const visibleCols = allCols;
+    // 2) 선택한 주간 레이드 중 아직 완료 체크가 남은 캐릭터만 노출
+    const visibleCols = allCols.filter(({ tableId, ch }) => {
+      const ilvl = getCharIlvl(ch);
+      if (!Number.isFinite(ilvl) || ilvl <= 0) return false;
+
+      const raidNames = getMyAllWeeklyRaids(tableId, ch.id, ilvl);
+      if (raidNames.length === 0) return false;
+
+      return raidNames.some((raidName) => {
+        const taskId = weeklyRaidTaskIdByTitle.get(normalizeRaidName(raidName));
+        if (!taskId) return true;
+
+        const cell = getCellByTableId(state, tableId, taskId, ch.id);
+        return !(cell?.type === "CHECK" && cell.checked);
+      });
+    });
 
     // 3) 남은 캐릭 0명 안내
     if (visibleCols.length === 0) {
