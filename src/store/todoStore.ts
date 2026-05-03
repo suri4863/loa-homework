@@ -158,6 +158,8 @@ export type SharedScheduleCharacterSnapshot = {
   name: string;
   itemLevel?: string | null;
   ilvl?: number | null;
+  originalIlvl?: number | null;
+  plannedIlvl?: number | null;
   power?: number | null;
   raids?: string[];
 };
