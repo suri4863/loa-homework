@@ -4110,6 +4110,41 @@ export default function TodoTracker() {
       return commonRaids;
     }
 
+    function isExtremeRaidAlreadyScheduledForAccount(
+      schedule: SharedWeeklySchedule,
+      item: SharedWeeklyScheduleItem,
+      assigningMySide: boolean,
+      tableName: string | null | undefined,
+      raidName: string,
+      candidateKey?: string
+    ) {
+      const raidBaseName = canonicalRaidName(getScheduleRaidBaseName(raidName));
+      if (!DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(raidBaseName)) return false;
+
+      const normalizedTableName = String(tableName ?? "").trim();
+      if (!normalizedTableName) return false;
+
+      return schedule.items.some((scheduledItem) => {
+        if (scheduledItem.id === item.id) return false;
+
+        const scheduledRaidNames = getScheduleItemRaidNames(scheduledItem).map((raid) =>
+          canonicalRaidName(getScheduleRaidBaseName(raid))
+        );
+        if (!scheduledRaidNames.includes(raidBaseName)) return false;
+
+        const scheduledKey = assigningMySide
+          ? scheduledItem.myCharKey
+          : scheduledItem.friendCharKey;
+        if (candidateKey && scheduledKey === candidateKey) return true;
+
+        const scheduledTableName = assigningMySide
+          ? scheduledItem.mySnapshot?.tableName ?? scheduledItem.myTableName
+          : scheduledItem.friendSnapshot?.tableName ?? scheduledItem.friendTableName;
+
+        return String(scheduledTableName ?? "").trim() === normalizedTableName;
+      });
+    }
+
     function getSelectableFriendOptionsForScheduleItem(
       schedule: SharedWeeklySchedule,
       item: SharedWeeklyScheduleItem
@@ -4131,7 +4166,9 @@ export default function TodoTracker() {
             [fr.name, getScheduleSnapshotCandidateKey(fr.tableName, fr.name)]
           );
           const commonRaids = rawCommonRaids.filter(
-            (raid: string) => !scheduleState.scheduledSet.has(normalizeRaidName(getScheduleRaidBaseName(raid)))
+              (raid: string) =>
+                !scheduleState.scheduledSet.has(normalizeRaidName(getScheduleRaidBaseName(raid))) &&
+              !isExtremeRaidAlreadyScheduledForAccount(schedule, item, assigningMySide, fr.tableName, raid, fr.key)
           );
 
           return {
@@ -4213,7 +4250,9 @@ export default function TodoTracker() {
               [friend.name, getScheduleSnapshotCandidateKey(friend.tableName, friend.name)]
             );
             const commonRaids = rawCommonRaids.filter(
-              (raid) => !scheduleState.scheduledSet.has(normalizeRaidName(getScheduleRaidBaseName(raid)))
+              (raid) =>
+                !scheduleState.scheduledSet.has(normalizeRaidName(getScheduleRaidBaseName(raid))) &&
+                !isExtremeRaidAlreadyScheduledForAccount(schedule, item, assigningMySide, friend.tableName, raid, friend.key)
             );
             if (!commonRaids.length) return item;
 
