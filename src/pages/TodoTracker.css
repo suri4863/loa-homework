@@ -3370,6 +3370,42 @@ html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
   flex-wrap: wrap;
 }
 
+.recommendedScheduleModal {
+  width: min(560px, 100%);
+}
+
+.recommendedScheduleBody {
+  display: grid;
+  gap: 14px;
+}
+
+.recommendedScheduleField {
+  display: grid;
+  gap: 8px;
+}
+
+.recommendedScheduleDayList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.recommendedScheduleDay {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--soft);
+  color: var(--text);
+  font-weight: 800;
+}
+
+.recommendedScheduleMaxInput {
+  width: 120px;
+}
+
 /*일정표*/
 .weeklyScheduleSection {
   margin-top: 18px;
@@ -3394,6 +3430,55 @@ html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
   font-size: 16px;
   font-weight: 900;
   color: var(--text);
+}
+
+.weeklyScheduleTopControls,
+.weeklyScheduleHeaderRight,
+.weeklySchedulePrimaryActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.weeklyScheduleTopControls {
+  margin-bottom: 8px;
+}
+
+.weeklyScheduleHeaderRight {
+  width: 100%;
+}
+
+.weeklyScheduleLevelFilters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 8px;
+}
+
+.weeklyScheduleLevelFilter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--soft);
+  color: var(--text);
+  font-weight: 800;
+  font-size: 13px;
+}
+
+.weeklyScheduleTitleRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 8px;
+}
+
+.weeklyScheduleToggle {
+  min-width: 54px;
 }
 
 .weeklyScheduleGrid {
@@ -3528,6 +3613,11 @@ html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
 .weeklyScheduleItem.dragging {
   opacity: 0.45;
   transform: scale(0.98);
+}
+
+.weeklyScheduleItem.is-level-highlighted {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.28);
 }
 
 .weeklyDayCard {
