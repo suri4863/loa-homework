@@ -3676,6 +3676,12 @@ html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
   box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.28);
 }
 
+.weeklyScheduleItem.has-raid-mismatch {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.28);
+  cursor: pointer;
+}
+
 .weeklyDayCard {
   min-height: 220px;
   border: 1px solid var(--border);
@@ -3852,6 +3858,11 @@ html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
 .weeklyScheduleRaidText {
   color: var(--muted);
   transition: color 0.12s ease, opacity 0.12s ease;
+}
+
+.weeklyScheduleRaidText.is-mismatch {
+  color: #ef4444;
+  font-weight: 800;
 }
 
 /* 캐릭터 / 전투력 → 연하게만 */

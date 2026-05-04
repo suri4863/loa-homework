@@ -1368,6 +1368,52 @@ export default function TodoTracker() {
     );
   }
 
+  async function removeMismatchedScheduleRaids(
+    scheduleId: string,
+    itemId: string,
+    raidNamesToRemove: string[]
+  ) {
+    const schedule = weeklySchedules.find((s) => s.id === scheduleId);
+    if (!schedule) return;
+
+    const removeKeys = new Set(
+      raidNamesToRemove.map((raid) => normalizeScheduleRaidKey(raid)).filter(Boolean)
+    );
+    if (!removeKeys.size) return;
+
+    const nextSchedule: SharedWeeklySchedule = {
+      ...schedule,
+      items: schedule.items.map((item) => {
+        if (item.id !== itemId) return item;
+
+        const nextRaidNames = getScheduleItemRaidNames(item).filter(
+          (raid) => !removeKeys.has(normalizeScheduleRaidKey(raid))
+        );
+
+        return {
+          ...item,
+          raidNames: nextRaidNames,
+          baseRaidNames: Array.isArray(item.baseRaidNames)
+            ? item.baseRaidNames.filter(
+              (raid) => !removeKeys.has(normalizeScheduleRaidKey(raid))
+            )
+            : nextRaidNames,
+          myClearedRaidNames: (item.myClearedRaidNames ?? []).filter(
+            (raid) => !removeKeys.has(normalizeScheduleRaidKey(raid))
+          ),
+          friendClearedRaidNames: (item.friendClearedRaidNames ?? []).filter(
+            (raid) => !removeKeys.has(normalizeScheduleRaidKey(raid))
+          ),
+        };
+      }),
+    };
+
+    setWeeklySchedules((prev) =>
+      prev.map((item) => (item.id === scheduleId ? nextSchedule : item))
+    );
+    await saveWeeklySchedule(nextSchedule);
+  }
+
   async function clearWeeklyScheduleItems(scheduleId: string) {
     if (!confirm("현재 일정표 일정들을 전부 지울까요?")) return;
 
@@ -1566,6 +1612,64 @@ export default function TodoTracker() {
     return Array.isArray(item.raidNames) && item.raidNames.length > 0
       ? item.raidNames
       : item.baseRaidNames ?? [];
+  }
+
+  function toScheduleWeeklyPickKey(rawKey: string | null | undefined) {
+    const key = String(rawKey ?? "").trim();
+    if (!key) return "";
+    if (key.includes("|")) {
+      const [tableId, charId] = key.split("|");
+      return tableId && charId ? weeklyCharKey(tableId, charId) : key;
+    }
+    return key;
+  }
+
+  function getLocalScheduleWeeklyPickKey(
+    schedule: SharedWeeklySchedule,
+    item: SharedWeeklyScheduleItem
+  ) {
+    const { isOwnerView, isTargetView } = getSchedulePerspectiveForCurrentUser(schedule);
+    if (isOwnerView) return resolveScheduleWeeklyPickKey(item);
+    if (isTargetView) {
+      return toScheduleWeeklyPickKey(item.friendCharKey ?? item.friendSnapshot?.key);
+    }
+    return "";
+  }
+
+  function getScheduleRaidMismatch(
+    schedule: SharedWeeklySchedule,
+    item: SharedWeeklyScheduleItem
+  ) {
+    const pickKey = getLocalScheduleWeeklyPickKey(schedule, item);
+    const pick = pickKey ? weeklyRaidPickByChar[pickKey] : null;
+    const currentRaids = Array.isArray(pick?.raids)
+      ? uniqueCanonicalRaidNames(pick.raids)
+      : [];
+
+    if (!currentRaids.length) {
+      return { currentRaids, mismatchedRaidNames: [] };
+    }
+
+    const currentRaidKeys = new Set(
+      currentRaids.map((raid) => normalizeScheduleRaidKey(raid))
+    );
+    const mismatchedRaidNames = getScheduleItemRaidNames(item).filter(
+      (raid) => !currentRaidKeys.has(normalizeScheduleRaidKey(raid))
+    );
+
+    return { currentRaids, mismatchedRaidNames };
+  }
+
+  function isScheduleRaidMismatched(
+    schedule: SharedWeeklySchedule,
+    item: SharedWeeklyScheduleItem,
+    raidName: string
+  ) {
+    const mismatch = getScheduleRaidMismatch(schedule, item);
+    const targetKey = normalizeScheduleRaidKey(raidName);
+    return mismatch.mismatchedRaidNames.some(
+      (raid) => normalizeScheduleRaidKey(raid) === targetKey
+    );
   }
 
   function normalizeScheduleRaidKey(raidName: string) {
@@ -5059,12 +5163,31 @@ export default function TodoTracker() {
                             const liveAvgPower = displayedPowers.avgPower;
                             const plannedLevelBadges = getSchedulePlannedLevelBadges(item);
                             const levelHighlighted = isScheduleItemInHighlightedLevelRange(item);
+                            const raidMismatch = getScheduleRaidMismatch(schedule, item);
+                            const hasRaidMismatch = raidMismatch.mismatchedRaidNames.length > 0;
 
                             return (
                               <div
                                 key={item.id}
-                                className={`weeklyScheduleItem ${dragScheduleItem?.itemId === item.id ? "dragging" : ""} ${completion.isPast ? "is-past" : ""} ${completion.isFuture ? "is-future" : ""} ${levelHighlighted ? "is-level-highlighted" : ""}`}
+                                className={`weeklyScheduleItem ${dragScheduleItem?.itemId === item.id ? "dragging" : ""} ${completion.isPast ? "is-past" : ""} ${completion.isFuture ? "is-future" : ""} ${levelHighlighted ? "is-level-highlighted" : ""} ${hasRaidMismatch ? "has-raid-mismatch" : ""}`}
                                 draggable
+                                onClick={() => {
+                                  if (!hasRaidMismatch) return;
+                                  const raidText = raidMismatch.mismatchedRaidNames.join(", ");
+                                  if (
+                                    confirm(
+                                      `${raidText}이(가) 현재 표의 선택 레이드와 맞지 않아요.\n${raidText} 레이드를 일정에서 제외할까요?`
+                                    )
+                                  ) {
+                                    removeMismatchedScheduleRaids(
+                                      schedule.id,
+                                      item.id,
+                                      raidMismatch.mismatchedRaidNames
+                                    ).catch((e) => {
+                                      alert(`일정에서 레이드 제외 실패: ${String(e)}`);
+                                    });
+                                  }
+                                }}
                                 onDragStart={() => {
                                   setDragScheduleItem({
                                     scheduleId: schedule.id,
@@ -5140,6 +5263,7 @@ export default function TodoTracker() {
                                     <select
                                       className="friendSelect weeklyScheduleFriendSelect"
                                       value={getScheduleFriendSelectValue(schedule, item)}
+                                      onClick={(e) => e.stopPropagation()}
                                       onChange={(e) =>
                                         assignFriendToScheduleItem(schedule.id, item.id, e.target.value)
                                       }
@@ -5160,7 +5284,10 @@ export default function TodoTracker() {
                                   <button
                                     type="button"
                                     className="mini"
-                                    onClick={() => removeScheduleItem(schedule.id, item.id)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      removeScheduleItem(schedule.id, item.id);
+                                    }}
                                     title="이 매칭 삭제"
                                   >
                                     삭제
@@ -5176,7 +5303,7 @@ export default function TodoTracker() {
                                     completion.clearedMap.map((raidItem, raidIndex) => (
                                       <React.Fragment key={`${item.id}_${raidItem.raid}`}>
                                         <span
-                                          className={`weeklyScheduleRaidText ${raidItem.cleared ? "is-cleared" : ""} ${completion.isPast ? "is-past" : ""}`}
+                                          className={`weeklyScheduleRaidText ${raidItem.cleared ? "is-cleared" : ""} ${completion.isPast ? "is-past" : ""} ${isScheduleRaidMismatched(schedule, item, raidItem.raid) ? "is-mismatch" : ""}`}
                                         >
                                           {formatScheduleRaidNameWithDifficulty(item, raidItem.raid)}
                                         </span>
