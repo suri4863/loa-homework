@@ -300,7 +300,7 @@ export default function TodoTracker() {
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [scheduleTargetDay, setScheduleTargetDay] = useState<WeeklyScheduleDay>("수");
-  const [scheduleCreateMode, setScheduleCreateMode] = useState<"NEW" | "EXISTING">("NEW");
+  const [scheduleCreateMode, setScheduleCreateMode] = useState<"NEW" | "EXISTING">("EXISTING");
   const [schedulePlanningMode, setSchedulePlanningMode] = useState<"CURRENT" | "NEXT_RESET">("CURRENT");
   const [newScheduleTitle, setNewScheduleTitle] = useState("일정표");
   const [importScheduleSourceId, setImportScheduleSourceId] = useState<string>("");
@@ -1872,7 +1872,7 @@ export default function TodoTracker() {
   }
 
   function getScheduleItemLevels(item: SharedWeeklyScheduleItem) {
-    return [
+    const levels = [
       parseScheduleNumberValue(item.mySnapshot?.plannedIlvl),
       parseScheduleNumberValue(item.mySnapshot?.ilvl),
       parseScheduleNumberValue(item.mySnapshot?.itemLevel),
@@ -1880,6 +1880,66 @@ export default function TodoTracker() {
       parseScheduleNumberValue(item.friendSnapshot?.ilvl),
       parseScheduleNumberValue(item.friendSnapshot?.itemLevel),
     ].filter((level): level is number => level != null && Number.isFinite(level));
+
+    const addLevel = (level: unknown) => {
+      const parsed = parseScheduleNumberValue(level);
+      if (parsed != null && Number.isFinite(parsed)) levels.push(parsed);
+    };
+
+    const addLocalCharacterLevel = (charKey: string | null | undefined) => {
+      const [tableId, charId] = String(charKey ?? "").split("|");
+      if (!tableId || !charId) return;
+
+      const table = state.tables.find((tbl) => tbl.id === tableId);
+      const char = table?.characters.find((ch) => ch.id === charId);
+      if (char) addLevel(getCharIlvl(char));
+    };
+
+    addLocalCharacterLevel(item.myCharKey);
+    addLocalCharacterLevel(item.friendCharKey);
+
+    const addRowsByKeys = (keys: string[], rows: any[]) => {
+      const keySet = new Set(keys);
+      for (const row of rows) {
+        const rowKeys = getScheduleCandidateKeysForItem(
+          row?.charKey,
+          row?.tableName,
+          row?.charName,
+          {
+            key: row?.charKey,
+            tableName: row?.tableName,
+            name: row?.charName,
+            itemLevel: row?.charItemLevel,
+            ilvl: row?.ilvl,
+            originalIlvl: row?.originalIlvl ?? row?.currentIlvl,
+            plannedIlvl: row?.plannedIlvl,
+          }
+        );
+        if (!rowKeys.some((key) => keySet.has(key))) continue;
+
+        addLevel(row?.plannedIlvl);
+        addLevel(row?.currentIlvl);
+        addLevel(row?.ilvl);
+        addLevel(row?.charItemLevel);
+      }
+    };
+
+    const friendKeys = getScheduleCandidateKeysForItem(
+      item.friendCharKey,
+      item.friendTableName,
+      item.friendCharName,
+      item.friendSnapshot
+    );
+    const snapRows = Array.isArray(friendSnapshots[selectedFriendCode]?.data)
+      ? friendSnapshots[selectedFriendCode].data
+      : [];
+    const planRows = Array.isArray(friendRaidPlans[selectedFriendCode]?.data)
+      ? friendRaidPlans[selectedFriendCode].data
+      : [];
+    addRowsByKeys(friendKeys, snapRows);
+    addRowsByKeys(friendKeys, planRows);
+
+    return Array.from(new Set(levels));
   }
 
   function isScheduleItemInHighlightedLevelRange(item: SharedWeeklyScheduleItem) {
@@ -2636,7 +2696,10 @@ export default function TodoTracker() {
         : [];
 
       if (normalizedFallbackRaids.length > 0) {
-        return normalizedFallbackRaids;
+        return uniqueCanonicalRaidNames([
+          ...normalizedFallbackRaids,
+          ...getEligibleNextResetExtremeRaids(ilvl),
+        ]);
       }
 
       const WEEKLY_RAID_MIN_ILVL: Record<string, number> = {
@@ -2653,21 +2716,51 @@ export default function TodoTracker() {
         .filter(([, minIlvl]) => Number.isFinite(ilvl) && ilvl >= minIlvl)
         .map(([raidName]) => normalizeRaidName(raidName));
 
-      return fullEligibleRaids;
+      return uniqueCanonicalRaidNames([
+        ...fullEligibleRaids,
+        ...getEligibleNextResetExtremeRaids(ilvl),
+      ]);
+    }
+
+    function getEligibleNextResetExtremeRaids(ilvl: number) {
+      return Array.from(DEFAULT_EXTREME_WEEKLY_RAID_TITLES).filter(
+        (raidName) => availableDiffNames(ilvl, raidName).length > 0
+      );
     }
 
     function getDefaultNextWeekPlanRaids(ilvl: number, fallbackRaids: string[]) {
       const top3 = calcWeeklyTop3Gold(ilvl).top3.map((row) => normalizeRaidName(row.raid));
-      if (top3.length > 0) return top3.slice(0, 3);
-      return getFriendNextResetDefaultRaids(ilvl, fallbackRaids).slice(0, 3);
+      const extremeRaids = getEligibleNextResetExtremeRaids(ilvl);
+      if (top3.length > 0) {
+        return uniqueCanonicalRaidNames([...top3.slice(0, 3), ...extremeRaids]);
+      }
+
+      const defaultRaids = getFriendNextResetDefaultRaids(ilvl, fallbackRaids);
+      const normalRaids = defaultRaids.filter(
+        (raidName) => !DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(canonicalRaidName(raidName))
+      );
+      return uniqueCanonicalRaidNames([...normalRaids.slice(0, 3), ...extremeRaids]);
     }
 
     function narrowFriendPlanRaids(ilvl: number, raidNames: string[]) {
       const normalized = uniqueCanonicalRaidNames(
         Array.isArray(raidNames) ? raidNames.map((raid) => normalizeRaidName(raid)).filter(Boolean) : []
       );
+      const extremeRaids = normalized.filter((raidName) =>
+        DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(canonicalRaidName(raidName))
+      );
+      const normalRaids = normalized.filter(
+        (raidName) => !DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(canonicalRaidName(raidName))
+      );
 
-      if (normalized.length <= 3) return normalized;
+      if (normalRaids.length <= 3) {
+        return uniqueCanonicalRaidNames([
+          ...normalRaids,
+          ...extremeRaids,
+          ...getEligibleNextResetExtremeRaids(ilvl),
+        ]);
+      }
+
       return getDefaultNextWeekPlanRaids(ilvl, normalized);
     }
 
@@ -4492,6 +4585,16 @@ export default function TodoTracker() {
                 >
                   {weeklyScheduleOpen ? "접기" : "펼치기"}
                 </button>
+                <select
+                  className="friendSelect manualKkanbuDaySelect"
+                  value={schedulePlanningMode}
+                  onChange={(e) =>
+                    setSchedulePlanningMode(e.target.value as "CURRENT" | "NEXT_RESET")
+                  }
+                >
+                  <option value="CURRENT">현재 주 기준</option>
+                  <option value="NEXT_RESET">다음 주 초기화 기준</option>
+                </select>
                 <div className="weeklyScheduleTitle">공유 일정표</div>
               </div>
 
@@ -4514,19 +4617,29 @@ export default function TodoTracker() {
                     </option>
                   ))}
               </select>
-              {SERVER_MODE && (
-                <button
-                  type="button"
-                  className="mini"
-                  onClick={() => {
-                    importPreviousWeeklySchedule().catch((e) => {
-                      alert(`이전 일정 불러오기 실패: ${String(e)}`);
-                    });
-                  }}
-                >
-                  이전 일정 불러오기
-                </button>
-              )}
+              <button
+                type="button"
+                className="mini"
+                disabled={!selectedFriendCode}
+                onClick={() => {
+                  createEmptyWeeklySchedule().catch((e) => {
+                    alert(`일정표 생성 실패: ${String(e)}`);
+                  });
+                }}
+              >
+                새 일정표 만들기
+              </button>
+              <button
+                type="button"
+                className="mini"
+                onClick={() => {
+                  importPreviousWeeklySchedule().catch((e) => {
+                    alert(`이전 일정 불러오기 실패: ${String(e)}`);
+                  });
+                }}
+              >
+                이전 일정 불러오기
+              </button>
               {selectedScheduleId && (
                 <div className="weeklySchedulePrimaryActions">
                   <button
@@ -5082,17 +5195,6 @@ export default function TodoTracker() {
             </button>
             <select
               className="friendSelect manualKkanbuDaySelect"
-              value={schedulePlanningMode}
-              onChange={(e) =>
-                setSchedulePlanningMode(e.target.value as "CURRENT" | "NEXT_RESET")
-              }
-            >
-              <option value="CURRENT">현재 주 기준</option>
-              <option value="NEXT_RESET">다음 주 초기화 기준</option>
-            </select>
-
-            <select
-              className="friendSelect manualKkanbuDaySelect"
               value={scheduleTargetDay}
               onChange={(e) => setScheduleTargetDay(e.target.value as WeeklyScheduleDay)}
               title="일정표 생성 시 배치할 요일"
@@ -5103,57 +5205,6 @@ export default function TodoTracker() {
                 </option>
               ))}
             </select>
-
-            <select
-              className="friendSelect manualKkanbuDaySelect"
-              value={scheduleCreateMode}
-              onChange={(e) => setScheduleCreateMode(e.target.value as "NEW" | "EXISTING")}
-            >
-              <option value="NEW">새 일정표 만들기</option>
-              <option value="EXISTING">기존 일정표에 추가</option>
-            </select>
-
-            {scheduleCreateMode === "NEW" ? (
-              <input
-                className="friendInput manualKkanbuScheduleInput"
-                value={newScheduleTitle}
-                onChange={(e) => setNewScheduleTitle(e.target.value)}
-                placeholder="새 일정표 이름"
-              />
-            ) : (
-              <select
-                className="friendSelect manualKkanbuDaySelect"
-                value={selectedScheduleId}
-                onChange={(e) => setSelectedScheduleId(e.target.value)}
-              >
-                <option value="">추가할 일정표 선택</option>
-                {weeklySchedules
-                  .filter(
-                    (s) =>
-                      (s.targetFriendCode === selectedFriendCode ||
-                        s.ownerFriendCode === selectedFriendCode) &&
-                      matchesSchedulePlanningMode(s, schedulePlanningMode)
-                  )
-                  .map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {getDisplayWeeklyScheduleTitle(s)}
-                    </option>
-                  ))}
-              </select>
-            )}
-
-            <button
-              type="button"
-              className="btn"
-              disabled={!selectedFriendCode}
-              onClick={() => {
-                createEmptyWeeklySchedule().catch((e) => {
-                  alert(`일정표 생성 실패: ${String(e)}`);
-                });
-              }}
-            >
-              빈 일정표 만들기
-            </button>
 
             <button
               type="button"
