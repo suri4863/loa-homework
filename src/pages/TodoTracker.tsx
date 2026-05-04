@@ -2696,10 +2696,7 @@ export default function TodoTracker() {
         : [];
 
       if (normalizedFallbackRaids.length > 0) {
-        return uniqueCanonicalRaidNames([
-          ...normalizedFallbackRaids,
-          ...getEligibleNextResetExtremeRaids(ilvl),
-        ]);
+        return normalizedFallbackRaids;
       }
 
       const WEEKLY_RAID_MIN_ILVL: Record<string, number> = {
@@ -2716,30 +2713,26 @@ export default function TodoTracker() {
         .filter(([, minIlvl]) => Number.isFinite(ilvl) && ilvl >= minIlvl)
         .map(([raidName]) => normalizeRaidName(raidName));
 
-      return uniqueCanonicalRaidNames([
-        ...fullEligibleRaids,
-        ...getEligibleNextResetExtremeRaids(ilvl),
-      ]);
-    }
-
-    function getEligibleNextResetExtremeRaids(ilvl: number) {
-      return Array.from(DEFAULT_EXTREME_WEEKLY_RAID_TITLES).filter(
-        (raidName) => availableDiffNames(ilvl, raidName).length > 0
-      );
+      return fullEligibleRaids;
     }
 
     function getDefaultNextWeekPlanRaids(ilvl: number, fallbackRaids: string[]) {
+      const normalizedFallback = uniqueCanonicalRaidNames(
+        Array.isArray(fallbackRaids) ? fallbackRaids.map((raid) => normalizeRaidName(raid)).filter(Boolean) : []
+      );
+      const fallbackExtremeRaids = normalizedFallback.filter((raidName) =>
+        DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(canonicalRaidName(raidName))
+      );
       const top3 = calcWeeklyTop3Gold(ilvl).top3.map((row) => normalizeRaidName(row.raid));
-      const extremeRaids = getEligibleNextResetExtremeRaids(ilvl);
       if (top3.length > 0) {
-        return uniqueCanonicalRaidNames([...top3.slice(0, 3), ...extremeRaids]);
+        return uniqueCanonicalRaidNames([...top3.slice(0, 3), ...fallbackExtremeRaids]);
       }
 
       const defaultRaids = getFriendNextResetDefaultRaids(ilvl, fallbackRaids);
       const normalRaids = defaultRaids.filter(
         (raidName) => !DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(canonicalRaidName(raidName))
       );
-      return uniqueCanonicalRaidNames([...normalRaids.slice(0, 3), ...extremeRaids]);
+      return uniqueCanonicalRaidNames([...normalRaids.slice(0, 3), ...fallbackExtremeRaids]);
     }
 
     function narrowFriendPlanRaids(ilvl: number, raidNames: string[]) {
@@ -2757,11 +2750,14 @@ export default function TodoTracker() {
         return uniqueCanonicalRaidNames([
           ...normalRaids,
           ...extremeRaids,
-          ...getEligibleNextResetExtremeRaids(ilvl),
         ]);
       }
 
-      return getDefaultNextWeekPlanRaids(ilvl, normalized);
+      const fallback = getDefaultNextWeekPlanRaids(ilvl, normalized);
+      const fallbackNormals = fallback.filter(
+        (raidName) => !DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(canonicalRaidName(raidName))
+      );
+      return uniqueCanonicalRaidNames([...fallbackNormals.slice(0, 3), ...extremeRaids]);
     }
 
     function getSelectableNextWeekRaidNames(ilvl: number) {
