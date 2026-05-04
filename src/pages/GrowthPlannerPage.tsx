@@ -5,6 +5,7 @@ import {
   estimateGrowthPlan,
   makeEmptyPlannerState,
   type EquipmentSlot,
+  type ConfirmedUpgrade,
   type GrowthPlannerState,
   type MaterialInventory,
   type MarketPriceSnapshot,
@@ -1396,6 +1397,11 @@ export default function GrowthPlannerPage() {
   const [cathedralStage, setCathedralStage] = useState<CathedralStage>("3");
   const [cathedralExtraReward, setCathedralExtraReward] = useState(true);
   const [selectedWaitWeeks, setSelectedWaitWeeks] = useState(0);
+  const [confirmedDraft, setConfirmedDraft] = useState<Pick<ConfirmedUpgrade, "slot" | "action" | "targetLevel">>({
+    slot: "weapon",
+    action: "advanced",
+    targetLevel: 40,
+  });
   const [tradableAsBound, setTradableAsBound] = useState<Partial<Record<keyof MaterialInventory, boolean>>>(() => makeDefaultTradableAsBoundFlags());
   const previewFrameRef = useRef<HTMLDivElement | null>(null);
   const shareVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -1475,6 +1481,8 @@ export default function GrowthPlannerPage() {
     () => (selectedRouteStep ? getRouteSupportTimingGuides(selectedRouteStep, selectedRouteUsageRows, planner.market) : []),
     [planner.market, selectedRouteStep, selectedRouteUsageRows]
   );
+  const confirmedUpgrades = planner.character.confirmedUpgrades ?? [];
+  const confirmedDraftBaseLevel = getConfirmedBaseLevel(confirmedDraft.slot, confirmedDraft.action);
   const displayMaterialPurchaseCost = useMemo(
     () => getRequiredMaterialPurchaseCost(estimate.requiredMaterials, finalEstimateInput.materials, finalEstimateInput.market),
     [estimate.requiredMaterials, finalEstimateInput.market, finalEstimateInput.materials]
@@ -1771,6 +1779,38 @@ export default function GrowthPlannerPage() {
         pieces: prev.character.pieces.map((piece) => (piece.slot === slot ? { ...piece, ...patch } : piece)),
       },
     }));
+  }
+
+  function getConfirmedBaseLevel(slot: EquipmentSlot, action: ConfirmedUpgrade["action"]) {
+    const piece = planner.character.pieces.find((entry) => entry.slot === slot);
+    if (!piece) return 0;
+    return action === "normal" ? Number(piece.honingLevel || 0) : Number(piece.advancedRefiningLevel || 0);
+  }
+
+  function addConfirmedUpgrade() {
+    const baseLevel = getConfirmedBaseLevel(confirmedDraft.slot, confirmedDraft.action);
+    const targetLevel = Math.max(baseLevel + 1, Number(confirmedDraft.targetLevel || 0));
+    const nextUpgrade: ConfirmedUpgrade = {
+      id: `${confirmedDraft.slot}-${confirmedDraft.action}-${Date.now()}`,
+      slot: confirmedDraft.slot,
+      action: confirmedDraft.action,
+      targetLevel,
+    };
+
+    patchPlanner((draft) => {
+      const prev = draft.character.confirmedUpgrades ?? [];
+      draft.character.confirmedUpgrades = [
+        ...prev.filter((item) => !(item.slot === nextUpgrade.slot && item.action === nextUpgrade.action)),
+        nextUpgrade,
+      ];
+    });
+    setConfirmedDraft((prev) => ({ ...prev, targetLevel }));
+  }
+
+  function removeConfirmedUpgrade(id: string) {
+    patchPlanner((draft) => {
+      draft.character.confirmedUpgrades = (draft.character.confirmedUpgrades ?? []).filter((item) => item.id !== id);
+    });
   }
 
   function patchOcrField(fieldId: string, patch: Partial<OcrFieldBox>) {
@@ -2947,6 +2987,72 @@ export default function GrowthPlannerPage() {
                 </details>
               );
             })}
+          </div>
+          <div className="confirmedUpgradeCard">
+            <div>
+              <h3 className="growthCardTitle small">스펙업 확정</h3>
+              <p className="growthHint">무조건 진행할 장비 성장을 먼저 넣으면, 그 비용과 레벨을 반영한 뒤 남은 목표를 다시 추천해.</p>
+            </div>
+            <div className="growthFieldGrid confirmedUpgradeControls">
+              <label>
+                <span>장비</span>
+                <select
+                  value={confirmedDraft.slot}
+                  onChange={(event) => setConfirmedDraft((prev) => ({ ...prev, slot: event.target.value as EquipmentSlot }))}
+                >
+                  {SLOT_ORDER.map((slot) => (
+                    <option key={slot} value={slot}>
+                      {SLOT_NAMES[slot]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>종류</span>
+                <select
+                  value={confirmedDraft.action}
+                  onChange={(event) =>
+                    setConfirmedDraft((prev) => ({ ...prev, action: event.target.value as ConfirmedUpgrade["action"] }))
+                  }
+                >
+                  <option value="normal">강화</option>
+                  <option value="advanced">상급 재련</option>
+                </select>
+              </label>
+              <label>
+                <span>목표 단계</span>
+                <input
+                  type="number"
+                  min={confirmedDraftBaseLevel + 1}
+                  value={confirmedDraft.targetLevel || confirmedDraftBaseLevel + 1}
+                  onChange={(event) => setConfirmedDraft((prev) => ({ ...prev, targetLevel: Number(event.target.value) || 0 }))}
+                />
+              </label>
+              <button type="button" className="growthAction" onClick={addConfirmedUpgrade}>
+                적용
+              </button>
+            </div>
+            <div className="growthHint">
+              현재 기준: {SLOT_NAMES[confirmedDraft.slot]}{" "}
+              {confirmedDraft.action === "normal" ? `강화 +${confirmedDraftBaseLevel}` : `상급재련 ${confirmedDraftBaseLevel}`}
+            </div>
+            {confirmedUpgrades.length ? (
+              <div className="confirmedUpgradeList">
+                {confirmedUpgrades.map((upgrade) => (
+                  <div className="confirmedUpgradeItem" key={upgrade.id}>
+                    <span>
+                      {SLOT_NAMES[upgrade.slot]}{" "}
+                      {upgrade.action === "normal" ? `강화 +${upgrade.targetLevel}까지` : `상급재련 ${upgrade.targetLevel}까지`}
+                    </span>
+                    <button type="button" className="growthAction secondary" onClick={() => removeConfirmedUpgrade(upgrade.id)}>
+                      삭제
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="growthEmpty">확정으로 먼저 진행할 스펙업이 없으면 추천 경로만으로 계산해.</div>
+            )}
           </div>
         </section>
 

@@ -169,6 +169,11 @@
   grid-column: 1;
   grid-row: 2;
   align-content: start;
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 12px;
 }
 
 .routePanel {
