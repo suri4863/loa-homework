@@ -294,6 +294,10 @@ export default function TodoTracker() {
   const [recommendedScheduleExcludedDays, setRecommendedScheduleExcludedDays] = useState<WeeklyScheduleDay[]>(
     () => [WEEK_DAYS[1], WEEK_DAYS[6]]
   );
+  const [recommendedSchedulePreferredDayRanges, setRecommendedSchedulePreferredDayRanges] = useState<
+    Record<string, string[]>
+  >({});
+  const [recommendedSchedulePreferredDays, setRecommendedSchedulePreferredDays] = useState<WeeklyScheduleDay[]>([]);
   const [recommendedScheduleMaxPerDay, setRecommendedScheduleMaxPerDay] = useState("6");
   const [scheduleLevelFilterOpen, setScheduleLevelFilterOpen] = useState(false);
   const [scheduleLevelHighlightRanges, setScheduleLevelHighlightRanges] = useState<string[]>([]);
@@ -1947,19 +1951,47 @@ export default function TodoTracker() {
     const levels = getScheduleItemLevels(item);
 
     return levels.some((level) =>
-      scheduleLevelHighlightRanges.some((range) => {
-        if (range === "UNDER_1700") return level < 1710;
-        if (range === "1750_PLUS") return level >= 1750;
-
-        const start = Number(range);
-        return Number.isFinite(start) && level >= start && level < start + 10;
-      })
+      scheduleLevelHighlightRanges.some((range) => isLevelInScheduleRange(level, range))
     );
+  }
+
+  function isLevelInScheduleRange(level: number, range: string) {
+    if (range === "UNDER_1700") return level < 1710;
+    if (range === "1750_PLUS") return level >= 1750;
+
+    const start = Number(range);
+    return Number.isFinite(start) && level >= start && level < start + 10;
+  }
+
+  function isScheduleItemMatchingLevelRanges(item: SharedWeeklyScheduleItem, ranges: string[]) {
+    if (!ranges.length) return false;
+    const levels = getScheduleItemLevels(item);
+    return levels.some((level) => ranges.some((range) => isLevelInScheduleRange(level, range)));
   }
 
   function toggleScheduleLevelHighlightRange(range: string) {
     setScheduleLevelHighlightRanges((prev) =>
       prev.includes(range) ? prev.filter((item) => item !== range) : [...prev, range]
+    );
+  }
+
+  function toggleRecommendedSchedulePreferredDayRange(day: WeeklyScheduleDay, range: string) {
+    setRecommendedSchedulePreferredDayRanges((prev) => {
+      const current = prev[day] ?? [];
+      const nextRanges = current.includes(range)
+        ? current.filter((item) => item !== range)
+        : [...current, range];
+
+      return {
+        ...prev,
+        [day]: nextRanges,
+      };
+    });
+  }
+
+  function toggleRecommendedSchedulePreferredDay(day: WeeklyScheduleDay) {
+    setRecommendedSchedulePreferredDays((prev) =>
+      prev.includes(day) ? prev.filter((item) => item !== day) : [...prev, day]
     );
   }
 
@@ -1998,38 +2030,91 @@ export default function TodoTracker() {
 
     const nextItems: SharedWeeklyScheduleItem[] = [];
     const dayOrderCounts = new Map<WeeklyScheduleDay, number>();
-    let dayIndex = 0;
-    let currentDayRaidCount = 0;
+    const dayRaidCounts = new Map<WeeklyScheduleDay, number>();
+    const remainingItems = [...sortedItems];
 
-    for (const item of sortedItems) {
+    for (const item of remainingItems) {
       const raidCount = getRecommendedScheduleRaidCount(item);
+      if (raidCount <= dayRaidCapacity) continue;
 
-      if (raidCount > dayRaidCapacity) {
-        const itemName = String(item.myCharName ?? item.mySnapshot?.name ?? "선택한").trim();
-        alert(`"${itemName}" 일정은 레이드 ${raidCount}개라 하루 최대 ${dayRaidCapacity}개 설정에 들어갈 수 없어.`);
-        return;
+      const itemName = String(item.myCharName ?? item.mySnapshot?.name ?? "선택한").trim();
+      alert(`"${itemName}" 일정은 레이드 ${raidCount}개라 하루 최대 ${dayRaidCapacity}개 설정에 들어갈 수 없어.`);
+      return;
+    }
+
+    const placeItemsForDay = (
+      day: WeeklyScheduleDay,
+      raidLimit: number,
+      preferredRanges: string[],
+      allowFallback: boolean
+    ) => {
+      while (remainingItems.length) {
+        const currentRaidCount = dayRaidCounts.get(day) ?? 0;
+        const remainingCapacity = raidLimit - currentRaidCount;
+        if (remainingCapacity <= 0) break;
+
+        const findFitIndex = (ranges: string[]) =>
+          remainingItems.findIndex((item) => {
+            const raidCount = getRecommendedScheduleRaidCount(item);
+            if (raidCount > remainingCapacity) return false;
+            return !ranges.length || isScheduleItemMatchingLevelRanges(item, ranges);
+          });
+
+        let nextIndex = preferredRanges.length ? findFitIndex(preferredRanges) : -1;
+        if (nextIndex < 0 && allowFallback) nextIndex = findFitIndex([]);
+        if (nextIndex < 0) break;
+
+        const [item] = remainingItems.splice(nextIndex, 1);
+        const order = dayOrderCounts.get(day) ?? 0;
+        const raidCount = getRecommendedScheduleRaidCount(item);
+
+        nextItems.push({
+          ...item,
+          day,
+          order,
+        });
+
+        dayOrderCounts.set(day, order + 1);
+        dayRaidCounts.set(day, currentRaidCount + raidCount);
       }
+    };
 
-      if (currentDayRaidCount > 0 && currentDayRaidCount + raidCount > dayRaidCapacity) {
-        dayIndex += 1;
-        currentDayRaidCount = 0;
+    const heavyDays = allowedDays.filter((day) => recommendedSchedulePreferredDays.includes(day));
+    const lightDays = allowedDays.filter((day) => !recommendedSchedulePreferredDays.includes(day));
+    const primaryLightDays = heavyDays.length ? lightDays : allowedDays;
+
+    for (const day of heavyDays) {
+      placeItemsForDay(day, dayRaidCapacity, recommendedSchedulePreferredDayRanges[day] ?? [], true);
+    }
+
+    if (primaryLightDays.length) {
+      const remainingRaidCount = remainingItems.reduce(
+        (sum, item) => sum + getRecommendedScheduleRaidCount(item),
+        0
+      );
+      const maxRemainingItemRaidCount = Math.max(
+        0,
+        ...remainingItems.map((item) => getRecommendedScheduleRaidCount(item))
+      );
+      const softRaidLimit = Math.min(
+        dayRaidCapacity,
+        Math.max(maxRemainingItemRaidCount, Math.ceil(remainingRaidCount / primaryLightDays.length))
+      );
+
+      for (const day of primaryLightDays) {
+        placeItemsForDay(day, softRaidLimit, [], true);
       }
+    }
 
-      const day = allowedDays[dayIndex];
-      if (!day) {
-        alert("현재 설정으로 모든 일정을 배치할 수 없어. 제외 요일을 줄이거나 하루 최대 일정을 늘려줘.");
-        return;
+    if (remainingItems.length) {
+      for (const day of allowedDays) {
+        placeItemsForDay(day, dayRaidCapacity, [], true);
       }
+    }
 
-      const order = dayOrderCounts.get(day) ?? 0;
-      nextItems.push({
-        ...item,
-        day,
-        order,
-      });
-
-      dayOrderCounts.set(day, order + 1);
-      currentDayRaidCount += raidCount;
+    if (remainingItems.length > 0) {
+      alert("현재 설정으로 모든 일정을 배치할 수 없어. 제외 요일을 줄이거나 하루 최대 일정을 늘려줘.");
+      return;
     }
 
     const nextSchedule: SharedWeeklySchedule = {
@@ -5754,6 +5839,51 @@ export default function TodoTracker() {
                     }
                   />
                 </div>
+
+                <div className="recommendedScheduleField">
+                  <div className="manualKkanbuLabel">주로 하는 레이드</div>
+                  <div className="recommendedPreferredDayList">
+                    {WEEK_DAYS.map((day) => {
+                      const selectedRanges = recommendedSchedulePreferredDayRanges[day] ?? [];
+                      const isPreferredDay = recommendedSchedulePreferredDays.includes(day);
+
+                      return (
+                        <div key={day} className="recommendedPreferredDayRow">
+                          <button
+                            type="button"
+                            className={`recommendedPreferredDayName${isPreferredDay ? " active" : ""}`}
+                            onClick={() => toggleRecommendedSchedulePreferredDay(day)}
+                          >
+                            {day}
+                          </button>
+                          <div
+                            className={`recommendedPreferredRangeList${
+                              isPreferredDay ? "" : " is-light-day"
+                            }`}
+                          >
+                            {[
+                              { id: "1710", label: "1710" },
+                              { id: "1720", label: "1720" },
+                              { id: "1730", label: "1730" },
+                              { id: "1750_PLUS", label: "1750+" },
+                            ].map((option) => (
+                              <label key={option.id} className="recommendedPreferredRange">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedRanges.includes(option.id)}
+                                  onChange={() =>
+                                    toggleRecommendedSchedulePreferredDayRange(day, option.id)
+                                  }
+                                />
+                                <span>{option.label}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
 
               <div className="importScheduleActions">
@@ -5762,6 +5892,8 @@ export default function TodoTracker() {
                   className="mini"
                   onClick={() => {
                     setRecommendedScheduleExcludedDays([WEEK_DAYS[1], WEEK_DAYS[6]]);
+                    setRecommendedSchedulePreferredDayRanges({});
+                    setRecommendedSchedulePreferredDays([]);
                     setRecommendedScheduleMaxPerDay("6");
                   }}
                 >

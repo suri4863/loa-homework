@@ -3406,6 +3406,62 @@ html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
   width: 120px;
 }
 
+.recommendedPreferredDayList {
+  display: grid;
+  gap: 8px;
+}
+
+.recommendedPreferredDayRow {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  align-items: center;
+  gap: 10px;
+}
+
+.recommendedPreferredDayName {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--soft);
+  font-weight: 900;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.recommendedPreferredDayName.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.recommendedPreferredRangeList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.recommendedPreferredRangeList.is-light-day {
+  opacity: 0.9;
+}
+
+.recommendedPreferredRange {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--soft);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+}
+
 /*일정표*/
 .weeklyScheduleSection {
   margin-top: 18px;
