@@ -2519,6 +2519,96 @@ export default function TodoTracker() {
     );
   }
 
+  async function addMyCharSlotToScheduleAndSave(
+    scheduleId: string,
+    me: {
+      key: string;
+      tableId: string;
+      tableName?: string;
+      charId: string;
+      name: string;
+      ilvl: number;
+      power: number;
+      activeRaids: string[];
+    },
+    targetDay: WeeklyScheduleDay,
+    selectedRaidNames?: string[]
+  ) {
+    const schedule = weeklySchedules.find((s) => s.id === scheduleId);
+    if (!schedule) {
+      alert("추가할 일정표를 찾을 수 없어.");
+      return;
+    }
+
+    const targetDayCount = schedule.items.filter((item) => item.day === targetDay).length;
+    const scheduledRaidSet = new Set<string>();
+
+    for (const item of schedule.items) {
+      const myItemKeys = getScheduleCandidateKeysForItem(
+        item.myCharKey,
+        item.myTableName,
+        item.myCharName,
+        item.mySnapshot
+      );
+      const friendItemKeys = getScheduleCandidateKeysForItem(
+        item.friendCharKey,
+        item.friendTableName,
+        item.friendCharName,
+        item.friendSnapshot
+      );
+
+      if (!myItemKeys.includes(me.key) && !friendItemKeys.includes(me.key)) continue;
+
+      for (const raid of getScheduleItemRaidNames(item)) {
+        scheduledRaidSet.add(normalizeScheduleRaidKey(raid));
+      }
+    }
+
+    const baseRaids =
+      Array.isArray(selectedRaidNames) && selectedRaidNames.length > 0
+        ? selectedRaidNames
+          .map((raid) => normalizeRaidName(raid))
+          .filter((raid, index, arr) => raid && arr.indexOf(raid) === index)
+          .filter((raid) => !scheduledRaidSet.has(normalizeScheduleRaidKey(raid)))
+        : me.activeRaids.filter((raid) => !scheduledRaidSet.has(normalizeScheduleRaidKey(raid)));
+
+    if (!baseRaids.length) {
+      alert("이미 이 캐릭터의 선택한 레이드는 일정표에 들어가 있어.");
+      return;
+    }
+
+    const newItem: SharedWeeklyScheduleItem = {
+      id: `slot_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+      day: targetDay,
+      myCharKey: me.key,
+      myCharName: me.name,
+      myTableName: me.tableName ?? null,
+      myCharPower: me.power ?? null,
+      mySnapshot: buildScheduleCharacterSnapshot(me),
+      myWeeklyRaidPickKey: weeklyCharKey(me.tableId, me.charId),
+      friendCharKey: null,
+      friendCharName: null,
+      friendTableName: null,
+      friendCharPower: null,
+      mode: "OPEN_SLOT",
+      baseRaidNames: [...baseRaids],
+      raidNames: [...baseRaids],
+      avgPower: null,
+      memo: "",
+      order: targetDayCount,
+    };
+
+    const nextSchedule: SharedWeeklySchedule = {
+      ...schedule,
+      items: [...schedule.items, newItem],
+    };
+
+    setWeeklySchedules((prev) =>
+      prev.map((item) => (item.id === scheduleId ? nextSchedule : item))
+    );
+    await saveWeeklySchedule(nextSchedule);
+  }
+
   async function saveWeeklySchedule(schedule: SharedWeeklySchedule) {
     const hydratedSchedule = hydrateScheduleWithLocalCompletion(schedule);
 
@@ -5206,15 +5296,19 @@ export default function TodoTracker() {
                   );
                   if (!me) return;
 
-                  addMyCharSlotToSchedule(
+                  addMyCharSlotToScheduleAndSave(
                     selectedScheduleId,
                     me,
                     scheduleTargetDay,
                     selectedMyScheduleRaidNames
-                  );
-
-                  setSelectedMyScheduleCharKey("");
-                  setSelectedMyScheduleRaidNames([]);
+                  )
+                    .then(() => {
+                      setSelectedMyScheduleCharKey("");
+                      setSelectedMyScheduleRaidNames([]);
+                    })
+                    .catch((e) => {
+                      alert(`일정표에 캐릭 추가 실패: ${String(e)}`);
+                    });
                 }}
               >
                 추가
@@ -5591,12 +5685,11 @@ export default function TodoTracker() {
               className="btn"
               disabled={
                 !selectedFriendCode ||
-                shareablePairResults.length === 0 ||
-                (scheduleCreateMode === "EXISTING" && !selectedScheduleId)
+                shareablePairResults.length === 0
               }
               onClick={() => {
                 const action =
-                  scheduleCreateMode === "NEW"
+                  scheduleCreateMode === "NEW" || !selectedScheduleId
                     ? createWeeklyScheduleFromRecommendation(
                       shareablePairResults,
                       scheduleTargetDay
