@@ -1636,28 +1636,161 @@ export default function TodoTracker() {
     return "";
   }
 
+  function getRaidKeysFromNames(raidNames: string[]) {
+    return new Set(
+      uniqueCanonicalRaidNames(raidNames)
+        .map((raid) => normalizeScheduleRaidKey(raid))
+        .filter(Boolean)
+    );
+  }
+
+  function getWeeklyPickRaidNamesByKey(pickKey: string | null | undefined) {
+    const key = String(pickKey ?? "").trim();
+    const pick = key ? weeklyRaidPickByChar[key] : null;
+    return Array.isArray(pick?.raids) ? uniqueCanonicalRaidNames(pick.raids) : [];
+  }
+
+  function getNextWeekOverrideRaidNamesByKeys(
+    friendCodes: string[],
+    charKeys: string[]
+  ) {
+    for (const friendCode of friendCodes) {
+      for (const charKey of charKeys) {
+        const override = nextWeekLevelOverrides[getNextWeekLevelOverrideKey(friendCode, charKey)];
+        if (override?.raidNames?.length) {
+          return uniqueCanonicalRaidNames(override.raidNames);
+        }
+      }
+    }
+
+    return [];
+  }
+
+  function getRaidPlanRowRaidNamesByKeys(
+    friendCodes: string[],
+    charKeys: string[]
+  ) {
+    const keySet = new Set(charKeys.map((key) => String(key ?? "").trim()).filter(Boolean));
+
+    for (const friendCode of friendCodes) {
+      const sources = [
+        ...(Array.isArray(friendRaidPlans[friendCode]?.data) ? friendRaidPlans[friendCode].data : []),
+        ...(Array.isArray(friendSnapshots[friendCode]?.data) ? friendSnapshots[friendCode].data : []),
+      ];
+
+      for (const row of sources) {
+        const tableName = String(row?.tableName ?? "").trim();
+        const charName = String(row?.charName ?? "").trim();
+        const rowKeys = compactScheduleKeysForItem([
+          row?.charKey,
+          charName,
+          getScheduleSnapshotCandidateKeyForItem(tableName, charName),
+          `${tableName}|${charName}`,
+        ]);
+
+        if (!rowKeys.some((key) => keySet.has(key))) continue;
+
+        const raids =
+          row?.raidNames ??
+          row?.activeRaids ??
+          row?.remainingRaids ??
+          row?.allRaids ??
+          row?.raids ??
+          [];
+        if (Array.isArray(raids) && raids.length) {
+          return uniqueCanonicalRaidNames(raids);
+        }
+      }
+    }
+
+    return [];
+  }
+
+  function getScheduleLiveRaidSets(
+    schedule: SharedWeeklySchedule,
+    item: SharedWeeklyScheduleItem
+  ) {
+    const { isOwnerView, isTargetView } = getSchedulePerspectiveForCurrentUser(schedule);
+    const raidSets: Array<{ label: string; keys: Set<string> }> = [];
+
+    const myKeys = getScheduleCandidateKeysForItem(
+      item.myCharKey,
+      item.myTableName,
+      item.myCharName,
+      item.mySnapshot
+    );
+    const friendKeys = getScheduleCandidateKeysForItem(
+      item.friendCharKey,
+      item.friendTableName,
+      item.friendCharName,
+      item.friendSnapshot
+    );
+    const scheduleFriendCodes = compactScheduleKeysForItem([
+      selectedFriendCode,
+      schedule.targetFriendCode,
+      schedule.ownerFriendCode,
+    ]);
+    const useNextWeekOverrides = isFutureWeeklySchedule(schedule);
+
+    const myPickRaids = getWeeklyPickRaidNamesByKey(resolveScheduleWeeklyPickKey(item));
+    const myOverrideRaids = useNextWeekOverrides
+      ? getNextWeekOverrideRaidNamesByKeys(
+        compactScheduleKeysForItem([
+          `MY:${selectedFriendCode || "local"}`,
+          `MY:${schedule.targetFriendCode || "local"}`,
+          `MY:${schedule.ownerFriendCode || "local"}`,
+        ]),
+        myKeys
+      )
+      : [];
+    const myLiveRaids = myOverrideRaids.length ? myOverrideRaids : myPickRaids;
+    if (myLiveRaids.length) {
+      raidSets.push({
+        label: String(item.mySnapshot?.name ?? item.myCharName ?? "").trim(),
+        keys: getRaidKeysFromNames(myLiveRaids),
+      });
+    }
+
+    const friendPickRaids = isTargetView
+      ? getWeeklyPickRaidNamesByKey(toScheduleWeeklyPickKey(item.friendCharKey ?? item.friendSnapshot?.key))
+      : [];
+    const friendOverrideRaids = useNextWeekOverrides
+      ? getNextWeekOverrideRaidNamesByKeys(scheduleFriendCodes, friendKeys)
+      : [];
+    const friendPlanRaids = getRaidPlanRowRaidNamesByKeys(scheduleFriendCodes, friendKeys);
+    const friendLiveRaids =
+      friendOverrideRaids.length ? friendOverrideRaids :
+        friendPickRaids.length ? friendPickRaids :
+          friendPlanRaids;
+
+    if (friendLiveRaids.length && (item.friendCharKey || item.friendSnapshot?.name || isTargetView)) {
+      raidSets.push({
+        label: String(
+          item.friendSnapshot?.name ??
+          item.friendCharName ??
+          item.mySnapshot?.name ??
+          item.myCharName ??
+          ""
+        ).trim(),
+        keys: getRaidKeysFromNames(friendLiveRaids),
+      });
+    }
+
+    return raidSets;
+  }
+
   function getScheduleRaidMismatch(
     schedule: SharedWeeklySchedule,
     item: SharedWeeklyScheduleItem
   ) {
-    const pickKey = getLocalScheduleWeeklyPickKey(schedule, item);
-    const pick = pickKey ? weeklyRaidPickByChar[pickKey] : null;
-    const currentRaids = Array.isArray(pick?.raids)
-      ? uniqueCanonicalRaidNames(pick.raids)
-      : [];
+    const liveRaidSets = getScheduleLiveRaidSets(schedule, item).filter((set) => set.keys.size > 0);
+    if (!liveRaidSets.length) return { currentRaids: [], mismatchedRaidNames: [] };
 
-    if (!currentRaids.length) {
-      return { currentRaids, mismatchedRaidNames: [] };
-    }
-
-    const currentRaidKeys = new Set(
-      currentRaids.map((raid) => normalizeScheduleRaidKey(raid))
-    );
     const mismatchedRaidNames = getScheduleItemRaidNames(item).filter(
-      (raid) => !currentRaidKeys.has(normalizeScheduleRaidKey(raid))
+      (raid) => liveRaidSets.some((set) => !set.keys.has(normalizeScheduleRaidKey(raid)))
     );
 
-    return { currentRaids, mismatchedRaidNames };
+    return { currentRaids: [], mismatchedRaidNames };
   }
 
   function isScheduleRaidMismatched(
