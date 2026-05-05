@@ -2054,11 +2054,55 @@ export default function TodoTracker() {
     ].join("|");
   }
 
-  function buildRecommendedScheduleOrder(items: SharedWeeklyScheduleItem[]) {
+  function getScheduleAccountTransitionCost(
+    prev: SharedWeeklyScheduleItem | null | undefined,
+    next: SharedWeeklyScheduleItem | null | undefined
+  ) {
+    if (!prev || !next) return 0;
+
+    const prevAccounts = getScheduleAccountParts(prev);
+    const nextAccounts = getScheduleAccountParts(next);
+
+    return (
+      (prevAccounts.myAccount === nextAccounts.myAccount ? 0 : 1) +
+      (prevAccounts.friendAccount === nextAccounts.friendAccount ? 0 : 1)
+    );
+  }
+
+  function getRecommendedScheduleOrderCost(items: SharedWeeklyScheduleItem[]) {
+    return items.reduce(
+      (sum, item, index) => sum + getScheduleAccountTransitionCost(items[index - 1], item),
+      0
+    );
+  }
+
+  function compareRecommendedScheduleOrders(
+    a: SharedWeeklyScheduleItem[],
+    b: SharedWeeklyScheduleItem[]
+  ) {
+    const costDiff = getRecommendedScheduleOrderCost(a) - getRecommendedScheduleOrderCost(b);
+    if (costDiff !== 0) return costDiff;
+
+    return a
+      .map((item) => getScheduleAccountSortKey(item))
+      .join("\n")
+      .localeCompare(
+        b.map((item) => getScheduleAccountSortKey(item)).join("\n"),
+        "ko"
+      );
+  }
+
+  function buildGreedyRecommendedScheduleOrder(
+    items: SharedWeeklyScheduleItem[],
+    startIndex: number
+  ) {
     const remaining = [...items].sort((a, b) =>
       getScheduleAccountSortKey(a).localeCompare(getScheduleAccountSortKey(b), "ko")
     );
     const ordered: SharedWeeklyScheduleItem[] = [];
+
+    const first = remaining.splice(Math.max(0, Math.min(startIndex, remaining.length - 1)), 1)[0];
+    if (first) ordered.push(first);
 
     while (remaining.length) {
       const prev = ordered[ordered.length - 1] ?? null;
@@ -2070,12 +2114,7 @@ export default function TodoTracker() {
       for (let index = 0; index < remaining.length; index++) {
         const candidate = remaining[index];
         const candidateAccounts = getScheduleAccountParts(candidate);
-        const prevAccounts = prev ? getScheduleAccountParts(prev) : null;
-
-        const switchCost = prevAccounts
-          ? (prevAccounts.myAccount === candidateAccounts.myAccount ? 0 : 1) +
-          (prevAccounts.friendAccount === candidateAccounts.friendAccount ? 0 : 1)
-          : 0;
+        const switchCost = getScheduleAccountTransitionCost(prev, candidate);
 
         const nearbySameAccountCount = remaining.reduce((count, item, otherIndex) => {
           if (otherIndex === index) return count;
@@ -2100,6 +2139,76 @@ export default function TodoTracker() {
     }
 
     return ordered;
+  }
+
+  function improveRecommendedScheduleOrder(items: SharedWeeklyScheduleItem[]) {
+    let best = [...items];
+    let bestCost = getRecommendedScheduleOrderCost(best);
+    let improved = true;
+    let pass = 0;
+
+    while (improved && pass < 8) {
+      improved = false;
+      pass += 1;
+
+      for (let from = 0; from < best.length; from++) {
+        for (let to = 0; to < best.length; to++) {
+          if (from === to) continue;
+
+          const candidate = [...best];
+          const [item] = candidate.splice(from, 1);
+          candidate.splice(to, 0, item);
+          const candidateCost = getRecommendedScheduleOrderCost(candidate);
+
+          if (
+            candidateCost < bestCost ||
+            (candidateCost === bestCost && compareRecommendedScheduleOrders(candidate, best) < 0)
+          ) {
+            best = candidate;
+            bestCost = candidateCost;
+            improved = true;
+          }
+        }
+      }
+
+      for (let start = 0; start < best.length - 1; start++) {
+        for (let end = start + 1; end < best.length; end++) {
+          const candidate = [
+            ...best.slice(0, start),
+            ...best.slice(start, end + 1).reverse(),
+            ...best.slice(end + 1),
+          ];
+          const candidateCost = getRecommendedScheduleOrderCost(candidate);
+
+          if (
+            candidateCost < bestCost ||
+            (candidateCost === bestCost && compareRecommendedScheduleOrders(candidate, best) < 0)
+          ) {
+            best = candidate;
+            bestCost = candidateCost;
+            improved = true;
+          }
+        }
+      }
+    }
+
+    return best;
+  }
+
+  function buildRecommendedScheduleOrder(items: SharedWeeklyScheduleItem[]) {
+    const baseItems = [...items].sort((a, b) =>
+      getScheduleAccountSortKey(a).localeCompare(getScheduleAccountSortKey(b), "ko")
+    );
+    if (baseItems.length <= 2) return baseItems;
+
+    const greedyCandidates = baseItems.map((_, index) =>
+      buildGreedyRecommendedScheduleOrder(baseItems, index)
+    );
+    const bestGreedy = greedyCandidates.reduce((best, candidate) =>
+      compareRecommendedScheduleOrders(candidate, best) < 0 ? candidate : best
+    );
+
+    return improveRecommendedScheduleOrder(bestGreedy);
   }
 
   function toggleRecommendedScheduleExcludedDay(day: WeeklyScheduleDay) {
@@ -2290,15 +2399,45 @@ export default function TodoTracker() {
         const remainingCapacity = raidLimit - currentRaidCount;
         if (remainingCapacity <= 0) break;
 
-        const findFitIndex = (ranges: string[]) =>
-          remainingItems.findIndex((item) => {
+        const previousDayItem = [...nextItems].reverse().find((item) => item.day === day);
+        const findFitIndex = (ranges: string[], allowNonPreferredRange: boolean) => {
+          let bestIndex = -1;
+          let bestScore = Number.POSITIVE_INFINITY;
+          let bestTie = "";
+
+          remainingItems.forEach((item, index) => {
             const raidCount = getRecommendedScheduleRaidCount(item);
-            if (raidCount > remainingCapacity) return false;
-            return !ranges.length || isScheduleItemMatchingLevelRanges(item, ranges);
+            if (raidCount > remainingCapacity) return;
+            const rangeMatched =
+              !ranges.length || isScheduleItemMatchingLevelRanges(item, ranges);
+            if (!rangeMatched && !allowNonPreferredRange) return;
+
+            const sameAccountCount = remainingItems.reduce((count, otherItem, otherIndex) => {
+              if (otherIndex === index) return count;
+              const accounts = getScheduleAccountParts(item);
+              const otherAccounts = getScheduleAccountParts(otherItem);
+              return count +
+                (accounts.myAccount === otherAccounts.myAccount ? 1 : 0) +
+                (accounts.friendAccount === otherAccounts.friendAccount ? 1 : 0);
+            }, 0);
+            const score =
+              getScheduleAccountTransitionCost(previousDayItem, item) * 10000 +
+              (rangeMatched ? 0 : 1000) -
+              sameAccountCount;
+            const tie = getScheduleAccountSortKey(item);
+
+            if (score < bestScore || (score === bestScore && tie.localeCompare(bestTie, "ko") < 0)) {
+              bestIndex = index;
+              bestScore = score;
+              bestTie = tie;
+            }
           });
 
-        let nextIndex = preferredRanges.length ? findFitIndex(preferredRanges) : -1;
-        if (nextIndex < 0 && allowFallback) nextIndex = findFitIndex([]);
+          return bestIndex;
+        };
+
+        let nextIndex = findFitIndex(preferredRanges, allowFallback);
+        if (nextIndex < 0 && allowFallback) nextIndex = findFitIndex([], true);
         if (nextIndex < 0) break;
 
         const [item] = remainingItems.splice(nextIndex, 1);
