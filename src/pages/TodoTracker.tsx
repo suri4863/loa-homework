@@ -2459,14 +2459,8 @@ export default function TodoTracker() {
             item.myCharName,
             item.mySnapshot
           );
-          const friendItemKeys = getScheduleCandidateKeysForItem(
-            item.friendCharKey,
-            item.friendTableName,
-            item.friendCharName,
-            item.friendSnapshot
-          );
 
-          if (!myItemKeys.includes(me.key) && !friendItemKeys.includes(me.key)) continue;
+          if (!myItemKeys.includes(me.key)) continue;
 
           for (const raid of getScheduleItemRaidNames(item)) {
             scheduledRaidSet.add(normalizeScheduleRaidKey(raid));
@@ -2550,14 +2544,8 @@ export default function TodoTracker() {
         item.myCharName,
         item.mySnapshot
       );
-      const friendItemKeys = getScheduleCandidateKeysForItem(
-        item.friendCharKey,
-        item.friendTableName,
-        item.friendCharName,
-        item.friendSnapshot
-      );
 
-      if (!myItemKeys.includes(me.key) && !friendItemKeys.includes(me.key)) continue;
+      if (!myItemKeys.includes(me.key)) continue;
 
       for (const raid of getScheduleItemRaidNames(item)) {
         scheduledRaidSet.add(normalizeScheduleRaidKey(raid));
