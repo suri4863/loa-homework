@@ -790,6 +790,43 @@ export default function TodoTracker() {
     return getWeeklyScheduleTimeState(schedule) === "CURRENT";
   }
 
+  function getCurrentWeeklyResetTimestamp() {
+    const [year, month, day] = getScheduleWeekStartDate("CURRENT")
+      .split("-")
+      .map((value) => Number(value));
+    const resetHour = state.reset?.dailyResetHour ?? 6;
+
+    if (!year || !month || !day) return 0;
+    return new Date(year, month - 1, day, resetHour, 0, 0, 0).getTime();
+  }
+
+  function shouldClearStaleScheduleCompletion(schedule: SharedWeeklySchedule) {
+    if (isPastWeeklySchedule(schedule)) return false;
+
+    const updatedAt = Number(schedule.updatedAt ?? 0);
+    const currentWeeklyResetAt = getCurrentWeeklyResetTimestamp();
+
+    return (
+      Number.isFinite(updatedAt) &&
+      updatedAt > 0 &&
+      currentWeeklyResetAt > 0 &&
+      updatedAt < currentWeeklyResetAt
+    );
+  }
+
+  function clearStaleScheduleCompletion(schedule: SharedWeeklySchedule) {
+    if (!shouldClearStaleScheduleCompletion(schedule)) return schedule;
+
+    return {
+      ...schedule,
+      items: schedule.items.map((item) => ({
+        ...item,
+        myClearedRaidNames: [],
+        friendClearedRaidNames: [],
+      })),
+    };
+  }
+
   // 4/23 일정표 제목 상태 보정
   function stripNextResetSuffix(title: string) {
     return String(title ?? "").replace(/\s*\(다음 주\)\s*$/, "").trim();
@@ -1033,7 +1070,7 @@ export default function TodoTracker() {
         };
       });
 
-      setWeeklySchedules(parsed);
+      setWeeklySchedules(parsed.map((schedule) => clearStaleScheduleCompletion(schedule)));
     } finally {
       setScheduleLoading(false);
     }
@@ -1810,11 +1847,12 @@ export default function TodoTracker() {
   }
 
   function hydrateScheduleWithLocalCompletion(schedule: SharedWeeklySchedule) {
-    const { isOwnerView, isTargetView } = getSchedulePerspectiveForCurrentUser(schedule);
+    const normalizedSchedule = clearStaleScheduleCompletion(schedule);
+    const { isOwnerView, isTargetView } = getSchedulePerspectiveForCurrentUser(normalizedSchedule);
 
     return {
-      ...schedule,
-      items: schedule.items.map((item) => {
+      ...normalizedSchedule,
+      items: normalizedSchedule.items.map((item) => {
         const raidNames = getScheduleItemRaidNames(item);
         const myLocalKey = resolveLocalScheduleCharKeyForItem(
           item.myCharKey,
@@ -1877,9 +1915,10 @@ export default function TodoTracker() {
     if (isFutureWeeklySchedule(schedule)) return false;
 
     const { isOwnerView, isTargetView } = getSchedulePerspectiveForCurrentUser(schedule);
+    const useStoredCompletion = !shouldClearStaleScheduleCompletion(schedule);
 
-    if (isStoredScheduleRaidCleared(item.myClearedRaidNames, raidName)) return true;
-    if (isStoredScheduleRaidCleared(item.friendClearedRaidNames, raidName)) return true;
+    if (useStoredCompletion && isStoredScheduleRaidCleared(item.myClearedRaidNames, raidName)) return true;
+    if (useStoredCompletion && isStoredScheduleRaidCleared(item.friendClearedRaidNames, raidName)) return true;
 
     const myLocalKey = resolveLocalScheduleCharKeyForItem(
       item.myCharKey,
@@ -2737,26 +2776,27 @@ export default function TodoTracker() {
   }
 
   async function saveWeeklySchedule(schedule: SharedWeeklySchedule) {
-    const hydratedSchedule = hydrateScheduleWithLocalCompletion(schedule);
+    const normalizedSchedule = clearStaleScheduleCompletion(schedule);
+    const hydratedSchedule = hydrateScheduleWithLocalCompletion(normalizedSchedule);
 
     setScheduleSaving(true);
     try {
       if (!SERVER_MODE) {
         setWeeklySchedules((prev) =>
           prev.map((item) =>
-            item.id === schedule.id
-              ? { ...schedule, items: hydratedSchedule.items, updatedAt: Date.now() }
+            item.id === normalizedSchedule.id
+              ? { ...normalizedSchedule, items: hydratedSchedule.items, updatedAt: Date.now() }
               : item
           )
         );
         return;
       }
 
-      await apiFetch2(`/api/weekly-schedules?id=${schedule.id}`, {
+      await apiFetch2(`/api/weekly-schedules?id=${normalizedSchedule.id}`, {
         method: "PUT",
         body: JSON.stringify({
-          title: schedule.title,
-          weekStartDate: schedule.weekStartDate,
+          title: normalizedSchedule.title,
+          weekStartDate: normalizedSchedule.weekStartDate,
           scheduleJson: JSON.stringify({
             items: hydratedSchedule.items,
           }),
