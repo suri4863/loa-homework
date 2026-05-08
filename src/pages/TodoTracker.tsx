@@ -4552,6 +4552,20 @@ export default function TodoTracker() {
       return raids;
     }
 
+    function getScheduleClearedRaidSetForCandidate(
+      schedule: SharedWeeklySchedule | undefined,
+      friend: FriendCandidate,
+      side: "MY" | "FRIEND"
+    ) {
+      const keys = compactScheduleKeys([
+        friend.key,
+        friend.name,
+        getScheduleSnapshotCandidateKey(friend.tableName, friend.name),
+      ]);
+
+      return getClearedScheduleRaidSetForKeys(schedule, keys, side);
+    }
+
     function getScheduleRaidBaseName(raidName: string) {
       const raw = String(raidName ?? "").trim();
       const normalized = normalizeRaidName(raw);
@@ -4738,6 +4752,11 @@ export default function TodoTracker() {
       const options = sourceCandidates
         .map((fr: FriendCandidate) => {
           const rawCommonRaids = getCommonRaidsForScheduleItem(item, fr);
+          const clearedRaidSet = getScheduleClearedRaidSetForCandidate(
+            schedule,
+            fr,
+            assigningMySide ? "MY" : "FRIEND"
+          );
           const scheduleState = getRemainScheduleState(
             fr.key,
             rawCommonRaids,
@@ -4745,8 +4764,9 @@ export default function TodoTracker() {
             [fr.name, getScheduleSnapshotCandidateKey(fr.tableName, fr.name)]
           );
           const commonRaids = rawCommonRaids.filter(
-              (raid: string) =>
-                !scheduleState.scheduledSet.has(normalizeRaidName(getScheduleRaidBaseName(raid))) &&
+            (raid: string) =>
+              !clearedRaidSet.has(normalizeRaidName(getScheduleRaidBaseName(raid))) &&
+              !scheduleState.scheduledSet.has(normalizeRaidName(getScheduleRaidBaseName(raid))) &&
               !isExtremeRaidAlreadyScheduledForAccount(schedule, item, assigningMySide, fr.tableName, raid, fr.key)
           );
 
@@ -4822,6 +4842,11 @@ export default function TodoTracker() {
               : scheduledFriendRaidSetByChar;
 
             const rawCommonRaids = getCommonRaidsForScheduleItem(item, friend);
+            const clearedRaidSet = getScheduleClearedRaidSetForCandidate(
+              schedule,
+              friend,
+              assigningMySide ? "MY" : "FRIEND"
+            );
             const scheduleState = getRemainScheduleState(
               friend.key,
               rawCommonRaids,
@@ -4830,6 +4855,7 @@ export default function TodoTracker() {
             );
             const commonRaids = rawCommonRaids.filter(
               (raid) =>
+                !clearedRaidSet.has(normalizeRaidName(getScheduleRaidBaseName(raid))) &&
                 !scheduleState.scheduledSet.has(normalizeRaidName(getScheduleRaidBaseName(raid))) &&
                 !isExtremeRaidAlreadyScheduledForAccount(schedule, item, assigningMySide, friend.tableName, raid, friend.key)
             );
