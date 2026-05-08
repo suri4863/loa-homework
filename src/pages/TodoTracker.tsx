@@ -4531,9 +4531,24 @@ export default function TodoTracker() {
       return schedule.targetFriendCode === myFriendCode;
     }
 
+    function addScheduleAvailabilityKeys(set: Set<string>, raidName: string) {
+      const normalized = normalizeRaidName(raidName);
+      const baseKey = normalizeScheduleRaidKey(raidName);
+      if (normalized) set.add(normalized);
+      if (baseKey) set.add(baseKey);
+    }
+
+    function hasScheduleAvailabilityKey(set: Set<string>, raidName: string) {
+      return (
+        set.has(normalizeRaidName(raidName)) ||
+        set.has(normalizeScheduleRaidKey(raidName))
+      );
+    }
+
     function getSchedulableRaidsForFriendCandidate(friend: FriendCandidate) {
-      const clearedSet = new Set(
-        (friend.clearedRaids ?? []).map((raid: string) => normalizeRaidName(raid))
+      const clearedSet = new Set<string>();
+      (friend.clearedRaids ?? []).forEach((raid: string) =>
+        addScheduleAvailabilityKeys(clearedSet, raid)
       );
       const seen = new Set<string>();
       const raids: string[] = [];
@@ -4544,7 +4559,7 @@ export default function TodoTracker() {
         ...friend.allRaids,
       ]) {
         const normalized = normalizeRaidName(raid);
-        if (!normalized || seen.has(normalized) || clearedSet.has(normalized)) continue;
+        if (!normalized || seen.has(normalized) || hasScheduleAvailabilityKey(clearedSet, raid)) continue;
         seen.add(normalized);
         raids.push(raid);
       }
@@ -4564,6 +4579,46 @@ export default function TodoTracker() {
       ]);
 
       return getClearedScheduleRaidSetForKeys(schedule, keys, side);
+    }
+
+    function getAvailableRaidKeySetForScheduleCandidate(
+      schedule: SharedWeeklySchedule,
+      candidate: FriendCandidate,
+      scheduledRaidMap: Map<string, Set<string>>,
+      side: "MY" | "FRIEND"
+    ) {
+      const clearedSet = new Set<string>();
+      if (schedulePlanningMode !== "NEXT_RESET") {
+        (candidate.clearedRaids ?? []).forEach((raid: string) =>
+          addScheduleAvailabilityKeys(clearedSet, raid)
+        );
+      }
+
+      getScheduleClearedRaidSetForCandidate(schedule, candidate, side).forEach((raid) =>
+        addScheduleAvailabilityKeys(clearedSet, raid)
+      );
+
+      const sourceRaids = uniqueCanonicalRaidNames([
+        ...candidate.activeRaids,
+        ...candidate.remainingRaids,
+        ...candidate.allRaids,
+        ...(candidate.clearedRaids ?? []),
+      ]);
+      const scheduleState = getRemainScheduleState(
+        candidate.key,
+        sourceRaids,
+        scheduledRaidMap,
+        [candidate.name, getScheduleSnapshotCandidateKey(candidate.tableName, candidate.name)]
+      );
+
+      const availableSet = new Set<string>();
+      for (const raid of sourceRaids) {
+        if (hasScheduleAvailabilityKey(clearedSet, raid)) continue;
+        if (scheduleState.scheduledSet.has(normalizeScheduleRaidKey(raid))) continue;
+        addScheduleAvailabilityKeys(availableSet, raid);
+      }
+
+      return availableSet;
     }
 
     function getScheduleRaidBaseName(raidName: string) {
@@ -4757,6 +4812,12 @@ export default function TodoTracker() {
             fr,
             assigningMySide ? "MY" : "FRIEND"
           );
+          const availableRaidKeySet = getAvailableRaidKeySetForScheduleCandidate(
+            schedule,
+            fr,
+            scheduledRaidMap,
+            assigningMySide ? "MY" : "FRIEND"
+          );
           const scheduleState = getRemainScheduleState(
             fr.key,
             rawCommonRaids,
@@ -4765,7 +4826,8 @@ export default function TodoTracker() {
           );
           const commonRaids = rawCommonRaids.filter(
             (raid: string) =>
-              !clearedRaidSet.has(normalizeRaidName(getScheduleRaidBaseName(raid))) &&
+              availableRaidKeySet.has(normalizeScheduleRaidKey(raid)) &&
+              !hasScheduleAvailabilityKey(clearedRaidSet, raid) &&
               !scheduleState.scheduledSet.has(normalizeRaidName(getScheduleRaidBaseName(raid))) &&
               !isExtremeRaidAlreadyScheduledForAccount(schedule, item, assigningMySide, fr.tableName, raid, fr.key)
           );
@@ -4847,6 +4909,12 @@ export default function TodoTracker() {
               friend,
               assigningMySide ? "MY" : "FRIEND"
             );
+            const availableRaidKeySet = getAvailableRaidKeySetForScheduleCandidate(
+              schedule,
+              friend,
+              scheduledRaidMap,
+              assigningMySide ? "MY" : "FRIEND"
+            );
             const scheduleState = getRemainScheduleState(
               friend.key,
               rawCommonRaids,
@@ -4855,7 +4923,8 @@ export default function TodoTracker() {
             );
             const commonRaids = rawCommonRaids.filter(
               (raid) =>
-                !clearedRaidSet.has(normalizeRaidName(getScheduleRaidBaseName(raid))) &&
+                availableRaidKeySet.has(normalizeScheduleRaidKey(raid)) &&
+                !hasScheduleAvailabilityKey(clearedRaidSet, raid) &&
                 !scheduleState.scheduledSet.has(normalizeRaidName(getScheduleRaidBaseName(raid))) &&
                 !isExtremeRaidAlreadyScheduledForAccount(schedule, item, assigningMySide, friend.tableName, raid, friend.key)
             );
@@ -5942,26 +6011,26 @@ export default function TodoTracker() {
                 }
               }
 
-              const selectableMy = myCandidates
+              const selectableMy = displayMyCandidates
                 .map((me: MyCandidate) => {
                   const used = usedMy.get(me.key) ?? new Set<string>();
                   return {
                     ...me,
-                    remainingRaids: me.activeRaids.filter(
+                    remainingRaids: (me as MyCandidate & { unscheduledRaids?: string[] }).unscheduledRaids?.filter(
                       (raid: string) => !used.has(normalizeRaidName(raid))
-                    ),
+                    ) ?? [],
                   };
                 })
                 .filter((me: MyCandidate & { remainingRaids: string[] }) => me.remainingRaids.length > 0);
 
-              const selectableFriend = friendCandidates
+              const selectableFriend = displayFriendCandidates
                 .map((fr: FriendCandidate) => {
                   const used = usedFriend.get(fr.key) ?? new Set<string>();
                   return {
                     ...fr,
-                    remainingRaids: fr.activeRaids.filter(
+                    remainingRaids: (fr as FriendCandidate & { unscheduledRaids?: string[] }).unscheduledRaids?.filter(
                       (raid: string) => !used.has(normalizeRaidName(raid))
-                    ),
+                    ) ?? [],
                   };
                 })
                 .filter((fr: FriendCandidate & { remainingRaids: string[] }) => fr.remainingRaids.length > 0);
