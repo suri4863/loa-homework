@@ -3192,19 +3192,67 @@ export default function TodoTracker() {
       : null;
   }
 
-  function getScheduleFriendProfileNickname(item: SharedWeeklyScheduleItem) {
-    return String(item.friendSnapshot?.name ?? item.friendCharName ?? "").trim();
+  type ScheduleProfileSide = "MY" | "FRIEND";
+
+  function getScheduleProfileNickname(item: SharedWeeklyScheduleItem, side: ScheduleProfileSide) {
+    return side === "MY"
+      ? String(item.mySnapshot?.name ?? item.myCharName ?? "").trim()
+      : String(item.friendSnapshot?.name ?? item.friendCharName ?? "").trim();
   }
 
-  async function importScheduleFriendProfileLevel(scheduleId: string, itemId: string) {
-    const loadingKey = `${scheduleId}:${itemId}`;
+  function getScheduleProfileLoadingKey(scheduleId: string, itemId: string, side: ScheduleProfileSide) {
+    return `${scheduleId}:${itemId}:${side}`;
+  }
+
+  function syncLocalTableCharacterFromScheduleProfile(
+    item: SharedWeeklyScheduleItem,
+    side: ScheduleProfileSide,
+    importedIlvl: number | null,
+    importedPower: number | null
+  ) {
+    const localKey =
+      side === "MY"
+        ? resolveLocalScheduleCharKeyForItem(item.myCharKey, item.mySnapshot, item.myCharName, item.myTableName)
+        : resolveLocalScheduleCharKeyForItem(item.friendCharKey, item.friendSnapshot, item.friendCharName, item.friendTableName);
+    const { tableId, charId } = parseScheduleMyCharKey(localKey);
+    if (!tableId || !charId) return;
+
+    setState((prev) => {
+      let changed = false;
+      const nextTables = prev.tables.map((table) => {
+        if (table.id !== tableId) return table;
+
+        const nextCharacters = table.characters.map((ch) => {
+          if (ch.id !== charId) return ch;
+
+          const currentPower = parseScheduleNumberValue(ch.power);
+          const nextPower =
+            importedPower != null && (currentPower == null || importedPower > currentPower)
+              ? String(importedPower)
+              : ch.power;
+          const nextItemLevel = importedIlvl != null ? String(importedIlvl) : ch.itemLevel;
+
+          if (nextItemLevel === ch.itemLevel && nextPower === ch.power) return ch;
+          changed = true;
+          return { ...ch, itemLevel: nextItemLevel, power: nextPower };
+        });
+
+        return nextCharacters === table.characters ? table : { ...table, characters: nextCharacters };
+      });
+
+      return changed ? { ...prev, tables: nextTables } : prev;
+    });
+  }
+
+  async function importScheduleProfileLevel(scheduleId: string, itemId: string, side: ScheduleProfileSide) {
+    const loadingKey = getScheduleProfileLoadingKey(scheduleId, itemId, side);
     if (scheduleProfileLoadingKey === loadingKey) return;
 
     const schedule = weeklySchedules.find((candidate) => candidate.id === scheduleId);
     const item = schedule?.items.find((candidate) => candidate.id === itemId);
-    const nickname = item ? getScheduleFriendProfileNickname(item) : "";
+    const nickname = item ? getScheduleProfileNickname(item, side) : "";
     if (!schedule || !item || !nickname) {
-      alert("불러올 친구 캐릭터 닉네임이 없어.");
+      alert("불러올 캐릭터 닉네임이 없어.");
       return;
     }
 
@@ -3230,6 +3278,8 @@ export default function TodoTracker() {
         return;
       }
 
+      syncLocalTableCharacterFromScheduleProfile(item, side, importedIlvl, importedPower);
+
       setWeeklySchedules((prev) =>
         prev.map((candidateSchedule) => {
           if (candidateSchedule.id !== scheduleId) return candidateSchedule;
@@ -3237,29 +3287,45 @@ export default function TodoTracker() {
           const nextItems = candidateSchedule.items.map((candidateItem) => {
             if (candidateItem.id !== itemId) return candidateItem;
 
+            const snapshot = side === "MY" ? candidateItem.mySnapshot : candidateItem.friendSnapshot;
+            const charPower = side === "MY" ? candidateItem.myCharPower : candidateItem.friendCharPower;
+            const currentPower = parseScheduleNumberValue(snapshot?.power) ?? parseScheduleNumberValue(charPower);
+            const nextPower =
+              importedPower != null && (currentPower == null || importedPower > currentPower)
+                ? importedPower
+                : currentPower;
+
             const nextSnapshot: SharedScheduleCharacterSnapshot = {
-              ...(candidateItem.friendSnapshot ?? {
-                key: candidateItem.friendCharKey,
-                tableName: candidateItem.friendTableName,
+              ...(snapshot ?? {
+                key: side === "MY" ? candidateItem.myCharKey : candidateItem.friendCharKey,
+                tableName: side === "MY" ? candidateItem.myTableName : candidateItem.friendTableName,
                 name: nickname,
                 raids: getScheduleItemRaidNames(candidateItem),
               }),
               name: nickname,
-              itemLevel: importedIlvl != null ? String(importedIlvl) : candidateItem.friendSnapshot?.itemLevel ?? null,
-              ilvl: importedIlvl ?? candidateItem.friendSnapshot?.ilvl ?? null,
+              itemLevel: importedIlvl != null ? String(importedIlvl) : snapshot?.itemLevel ?? null,
+              ilvl: importedIlvl ?? snapshot?.ilvl ?? null,
               originalIlvl:
-                candidateItem.friendSnapshot?.plannedIlvl != null
-                  ? importedIlvl ?? candidateItem.friendSnapshot?.originalIlvl ?? null
-                  : candidateItem.friendSnapshot?.originalIlvl ?? importedIlvl ?? null,
-              power: importedPower ?? candidateItem.friendSnapshot?.power ?? candidateItem.friendCharPower ?? null,
-              raids: candidateItem.friendSnapshot?.raids ?? getScheduleItemRaidNames(candidateItem),
+                snapshot?.plannedIlvl != null
+                  ? importedIlvl ?? snapshot?.originalIlvl ?? null
+                  : snapshot?.originalIlvl ?? importedIlvl ?? null,
+              power: nextPower ?? null,
+              raids: snapshot?.raids ?? getScheduleItemRaidNames(candidateItem),
             };
 
             const nextItem: SharedWeeklyScheduleItem = {
               ...candidateItem,
-              friendCharName: candidateItem.friendCharName ?? nickname,
-              friendCharPower: importedPower ?? candidateItem.friendCharPower,
-              friendSnapshot: nextSnapshot,
+              ...(side === "MY"
+                ? {
+                    myCharName: candidateItem.myCharName ?? nickname,
+                    myCharPower: nextPower ?? candidateItem.myCharPower,
+                    mySnapshot: nextSnapshot,
+                  }
+                : {
+                    friendCharName: candidateItem.friendCharName ?? nickname,
+                    friendCharPower: nextPower ?? candidateItem.friendCharPower,
+                    friendSnapshot: nextSnapshot,
+                  }),
             };
 
             return {
@@ -3282,14 +3348,21 @@ export default function TodoTracker() {
     }
   }
 
-  function syncSchedulePowerSnapshotsForChar(
+  function importScheduleFriendProfileLevel(scheduleId: string, itemId: string) {
+    return importScheduleProfileLevel(scheduleId, itemId, "FRIEND");
+  }
+
+  function syncScheduleCharacterSnapshotsForChar(
     schedules: SharedWeeklySchedule[],
     myFriendCode: string,
     tableId: string,
     charId: string,
+    nextName: string | null,
+    nextItemLevel: string | null,
     nextPower: number | null
   ) {
     const myCharKey = `${tableId}|${charId}`;
+    const nextIlvl = parseScheduleNumberValue(nextItemLevel);
 
     return schedules.map((schedule) => {
       const isOwnerView = schedule.ownerFriendCode === myFriendCode;
@@ -3303,7 +3376,20 @@ export default function TodoTracker() {
         if (isOwnerView && item.myCharKey === myCharKey) {
           nextItem = {
             ...nextItem,
+            myCharName: nextName ?? nextItem.myCharName,
             myCharPower: nextPower,
+            mySnapshot: {
+              ...(nextItem.mySnapshot ?? {
+                key: item.myCharKey,
+                tableName: item.myTableName,
+                name: nextName ?? item.myCharName,
+                raids: getScheduleItemRaidNames(item),
+              }),
+              name: nextName ?? nextItem.mySnapshot?.name ?? nextItem.myCharName,
+              itemLevel: nextItemLevel ?? nextItem.mySnapshot?.itemLevel ?? null,
+              ilvl: nextIlvl ?? nextItem.mySnapshot?.ilvl ?? null,
+              power: nextPower ?? nextItem.mySnapshot?.power ?? null,
+            },
           };
           changed = true;
         }
@@ -3320,7 +3406,20 @@ export default function TodoTracker() {
         ) {
           nextItem = {
             ...nextItem,
+            friendCharName: nextName ?? nextItem.friendCharName,
             friendCharPower: nextPower,
+            friendSnapshot: {
+              ...(nextItem.friendSnapshot ?? {
+                key: item.friendCharKey,
+                tableName: item.friendTableName,
+                name: nextName ?? item.friendCharName ?? "",
+                raids: getScheduleItemRaidNames(item),
+              }),
+              name: nextName ?? nextItem.friendSnapshot?.name ?? nextItem.friendCharName ?? "",
+              itemLevel: nextItemLevel ?? nextItem.friendSnapshot?.itemLevel ?? null,
+              ilvl: nextIlvl ?? nextItem.friendSnapshot?.ilvl ?? null,
+              power: nextPower ?? nextItem.friendSnapshot?.power ?? null,
+            },
           };
           changed = true;
         }
@@ -4517,10 +4616,14 @@ export default function TodoTracker() {
           const planned = parseScheduleNumberValue(snapshot?.plannedIlvl);
           if (!snapshot?.name || !planned) return null;
 
-          const original =
-            parseScheduleNumberValue(snapshot.originalIlvl) ??
+          const current =
             parseScheduleNumberValue(snapshot.ilvl) ??
             parseScheduleNumberValue(snapshot.itemLevel);
+          if (current != null && current >= planned) return null;
+
+          const original =
+            parseScheduleNumberValue(snapshot.originalIlvl) ??
+            current;
 
           return {
             name: snapshot.name,
@@ -4836,27 +4939,43 @@ export default function TodoTracker() {
       return itemIlvl > 0 ? getHighestAvailableRaidDiffName(baseName, itemIlvl) : null;
     }
 
-    function canFriendCandidateEnterScheduleRaid(
+    function getCandidateScheduleRaidDiffName(
       friend: FriendCandidate,
-      item: SharedWeeklyScheduleItem,
       raidName: string
-    ) {
+    ): DiffName | null {
+      const parsed = getRaidDiffFromLabel(raidName);
+      if (parsed) return parsed;
+
       const baseName = getScheduleRaidBaseName(raidName);
-      const diffName = getScheduleRaidDiffName(item, raidName);
+      return friend.ilvl > 0 ? getHighestAvailableRaidDiffName(baseName, friend.ilvl) : null;
+    }
 
-      const def = RAID_CATALOG.find(
-        (raid) => normalizeRaidName(raid.name) === normalizeRaidName(baseName)
-      );
-      if (!def) return true;
+    function buildCandidateScheduleRaidDiffKeySet(
+      friend: FriendCandidate,
+      candidateRaids: string[]
+    ) {
+      const keys = new Set<string>();
 
-      const diff =
-        def.diffs.find((x) => x.name === diffName) ??
-        def.diffs.reduce((lowest, cur) => (cur.minIlvl < lowest.minIlvl ? cur : lowest));
+      for (const candidateRaid of candidateRaids) {
+        const baseKey = normalizeRaidName(getScheduleRaidBaseName(candidateRaid));
+        if (!baseKey) continue;
+        const candidateDiffName = getCandidateScheduleRaidDiffName(friend, candidateRaid);
+        keys.add(candidateDiffName ? `${baseKey}|${candidateDiffName}` : baseKey);
+      }
 
-      if (friend.ilvl < diff.minIlvl) return false;
+      return keys;
+    }
 
-      const friendDiffName = getHighestAvailableRaidDiffName(baseName, friend.ilvl);
-      return getRaidDiffRank(friendDiffName) >= getRaidDiffRank(diff.name);
+    function canFriendCandidateEnterScheduleRaid(
+      item: SharedWeeklyScheduleItem,
+      raidName: string,
+      candidateRaidDiffKeySet: Set<string>
+    ) {
+      const baseKey = normalizeRaidName(getScheduleRaidBaseName(raidName));
+      if (!baseKey) return false;
+
+      const scheduleDiffName = getScheduleRaidDiffName(item, raidName);
+      return candidateRaidDiffKeySet.has(scheduleDiffName ? `${baseKey}|${scheduleDiffName}` : baseKey);
     }
 
     function getCommonRaidsForScheduleItem(
@@ -4869,6 +4988,7 @@ export default function TodoTracker() {
         ...(Array.isArray(item.baseRaidNames) ? item.baseRaidNames : []),
       ];
       const candidateRaids = getSchedulableRaidsForFriendCandidate(friend);
+      const candidateRaidDiffKeySet = buildCandidateScheduleRaidDiffKeySet(friend, candidateRaids);
       const seen = new Set<string>();
       const commonRaids: string[] = [];
 
@@ -4876,12 +4996,7 @@ export default function TodoTracker() {
         const baseName = getScheduleRaidBaseName(raid);
         const normalized = normalizeRaidName(baseName);
         if (!normalized || seen.has(normalized)) continue;
-        if (
-          !candidateRaids.some(
-            (fr: string) => normalizeRaidName(getScheduleRaidBaseName(fr)) === normalized
-          )
-        ) continue;
-        if (!canFriendCandidateEnterScheduleRaid(friend, item, raid)) continue;
+        if (!canFriendCandidateEnterScheduleRaid(item, raid, candidateRaidDiffKeySet)) continue;
         seen.add(normalized);
         commonRaids.push(baseName);
       }
@@ -5435,7 +5550,6 @@ export default function TodoTracker() {
                   <option value="CURRENT">현재 주 기준</option>
                   <option value="NEXT_RESET">다음 주 초기화 기준</option>
                 </select>
-                <div className="weeklyScheduleTitle">공유 일정표</div>
               </div>
 
               <select
@@ -5843,14 +5957,29 @@ export default function TodoTracker() {
                                       <div
                                         className={`weeklyScheduleMyChar ${completion.allCleared ? "is-cleared" : ""} ${completion.isPast ? "is-past" : ""}`}
                                       >
-                                        <span>{getScheduleMyDisplayName(item)}</span>
+                                        <button
+                                          type="button"
+                                          className="weeklyScheduleProfileButton"
+                                          disabled={scheduleProfileLoadingKey === getScheduleProfileLoadingKey(schedule.id, item.id, "MY")}
+                                          title="전투정보실에서 아이템레벨 불러오기"
+                                          onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            importScheduleProfileLevel(schedule.id, item.id, "MY");
+                                          }}
+                                          onMouseDown={(e) => e.stopPropagation()}
+                                        >
+                                          {scheduleProfileLoadingKey === getScheduleProfileLoadingKey(schedule.id, item.id, "MY")
+                                            ? "확인 중..."
+                                            : getScheduleMyDisplayName(item)}
+                                        </button>
                                         {getScheduleFriendDisplayName(item) ? (
                                           <>
                                             <span className="weeklySchedulePairSep">-</span>
                                             <button
                                               type="button"
                                               className="weeklyScheduleProfileButton"
-                                              disabled={scheduleProfileLoadingKey === `${schedule.id}:${item.id}`}
+                                              disabled={scheduleProfileLoadingKey === getScheduleProfileLoadingKey(schedule.id, item.id, "FRIEND")}
                                               title="전투정보실에서 아이템레벨 불러오기"
                                               onClick={(e) => {
                                                 e.preventDefault();
@@ -5859,7 +5988,7 @@ export default function TodoTracker() {
                                               }}
                                               onMouseDown={(e) => e.stopPropagation()}
                                             >
-                                              {scheduleProfileLoadingKey === `${schedule.id}:${item.id}`
+                                              {scheduleProfileLoadingKey === getScheduleProfileLoadingKey(schedule.id, item.id, "FRIEND")
                                                 ? "확인 중..."
                                                 : getScheduleFriendDisplayName(item)}
                                             </button>
@@ -8075,11 +8204,13 @@ export default function TodoTracker() {
     });
 
     setWeeklySchedules((prev) =>
-      syncSchedulePowerSnapshotsForChar(
+      syncScheduleCharacterSnapshotsForChar(
         prev,
         String(state.profile.friendCode ?? "").trim(),
         state.activeTableId,
         ch.id,
+        name,
+        itemLevel,
         nextPower
       )
     );
@@ -8129,6 +8260,18 @@ export default function TodoTracker() {
           tables: prev.tables.map((t) => (t.id === nextTable.id ? nextTable : t)),
         };
       });
+
+      setWeeklySchedules((prev) =>
+        syncScheduleCharacterSnapshotsForChar(
+          prev,
+          String(state.profile.friendCode ?? "").trim(),
+          tableId,
+          ch.id,
+          ch.name,
+          itemLevel || ch.itemLevel || null,
+          parseNum(applyPower && combatPower ? combatPower : ch.power)
+        )
+      );
     } catch (error: any) {
       alert(error?.message || "공식 캐릭터 정보를 불러오지 못했어.");
     }
