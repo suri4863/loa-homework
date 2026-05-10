@@ -26,6 +26,7 @@ import {
 } from "../lib/raidGold";
 
 const STORAGE_KEY = "loa-growth-planner:v1";
+const CHARACTER_MATERIALS_STORAGE_PREFIX = "loa-growth-planner:character-materials:v1";
 
 const SLOT_ORDER: EquipmentSlot[] = ["helmet", "shoulder", "chest", "pants", "gloves", "weapon"];
 
@@ -311,6 +312,49 @@ function applyTradableAsBound(materials: MaterialInventory, flags: Partial<Recor
   return next;
 }
 
+function makeEmptyMaterialInventory(): MaterialInventory {
+  return { ...makeEmptyPlannerState().materials };
+}
+
+function normalizeMaterialInventory(raw: unknown): MaterialInventory {
+  const base = makeEmptyMaterialInventory();
+  if (!raw || typeof raw !== "object") return base;
+  const source = raw as Partial<Record<keyof MaterialInventory, unknown>>;
+
+  return Object.fromEntries(
+    Object.entries(base).map(([key, defaultValue]) => {
+      const value = Number(source[key as keyof MaterialInventory] ?? defaultValue);
+      return [key, Number.isFinite(value) ? value : defaultValue];
+    })
+  ) as MaterialInventory;
+}
+
+function characterMaterialsStorageKey(tableId: string, charId: string) {
+  return `${CHARACTER_MATERIALS_STORAGE_PREFIX}:${encodeURIComponent(tableId)}:${encodeURIComponent(charId)}`;
+}
+
+function loadCharacterMaterials(tableId: string, charId: string): MaterialInventory | null {
+  if (!tableId || !charId) return null;
+
+  try {
+    const raw = localStorage.getItem(characterMaterialsStorageKey(tableId, charId));
+    if (!raw) return null;
+    return normalizeMaterialInventory(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+function saveCharacterMaterials(tableId: string, charId: string, materials: MaterialInventory) {
+  if (!tableId || !charId) return;
+
+  try {
+    localStorage.setItem(characterMaterialsStorageKey(tableId, charId), JSON.stringify(normalizeMaterialInventory(materials)));
+  } catch {
+    // Ignore quota failures so the planner itself can keep working.
+  }
+}
+
 function toPersistedPlannerState(state: GrowthPlannerState) {
   return {
     ...state,
@@ -340,8 +384,7 @@ function restorePlannerState(raw: string): GrowthPlannerState {
       })),
     },
     materials: {
-      ...base.materials,
-      ...(parsed.materials ?? {}),
+      ...normalizeMaterialInventory(parsed.materials),
     },
   market: {
     ...base.market,
@@ -1542,6 +1585,10 @@ export default function GrowthPlannerPage() {
   }, [planner]);
 
   useEffect(() => {
+    saveCharacterMaterials(planner.character.tableId, planner.character.charId, planner.materials);
+  }, [planner.character.charId, planner.character.tableId, planner.materials]);
+
+  useEffect(() => {
     if (!profileNickname.trim() && selectedCharacter?.name) {
       setProfileNickname(selectedCharacter.name);
     }
@@ -2168,23 +2215,42 @@ export default function GrowthPlannerPage() {
 
   function setTableId(tableId: string) {
     const table = todoState.tables.find((item) => item.id === tableId);
-    patchPlanner((draft) => {
-      draft.character.tableId = table?.id ?? "";
-      draft.character.tableName = table?.name ?? "";
-      draft.character.charId = "";
-      draft.character.characterName = "";
+    setPlanner((prev) => {
+      saveCharacterMaterials(prev.character.tableId, prev.character.charId, prev.materials);
+      return {
+        ...prev,
+        character: {
+          ...prev.character,
+          tableId: table?.id ?? "",
+          tableName: table?.name ?? "",
+          charId: "",
+          characterName: "",
+        },
+        materials: makeEmptyMaterialInventory(),
+      };
     });
   }
 
   function setCharacterId(charId: string) {
-    patchPlanner((draft) => {
-      draft.character.charId = charId;
-      const table = todoState.tables.find((item) => item.id === draft.character.tableId);
+    setPlanner((prev) => {
+      saveCharacterMaterials(prev.character.tableId, prev.character.charId, prev.materials);
+
+      const table = todoState.tables.find((item) => item.id === prev.character.tableId);
       const character = table?.characters.find((item) => item.id === charId);
+      const loadedMaterials = character ? loadCharacterMaterials(table?.id ?? "", character.id) : null;
       if (character) {
-        draft.character.characterName = character.name;
         if (!profileNickname.trim()) setProfileNickname(character.name);
       }
+
+      return {
+        ...prev,
+        character: {
+          ...prev.character,
+          charId,
+          characterName: character?.name ?? "",
+        },
+        materials: loadedMaterials ?? makeEmptyMaterialInventory(),
+      };
     });
   }
 
@@ -2789,6 +2855,11 @@ export default function GrowthPlannerPage() {
             </button>
           </div>
         </div>
+        {resourceTab === "materials" && isLinkedToTable ? (
+          <p className="growthHint materialCharacterSyncHint">
+            {selectedTable?.name} / {selectedCharacter?.name} 기준으로 저장돼.
+          </p>
+        ) : null}
 
         {resourceTab === "materials" ? (
           <div className="materialPairList">
