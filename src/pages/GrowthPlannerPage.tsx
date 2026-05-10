@@ -1489,22 +1489,25 @@ export default function GrowthPlannerPage() {
   const currentBonusTotal = useMemo(() => sumBonusRows(currentBonusRows), [currentBonusRows]);
   const targetBonusTotal = useMemo(() => sumBonusRows(targetBonusRows), [targetBonusRows]);
   const effectiveMaterials = useMemo(() => applyTradableAsBound(planner.materials, tradableAsBound), [planner.materials, tradableAsBound]);
+  const currentWeeklyTradableGold = currentRaidGold.tradableGold;
+  const currentWeeklyBoundGold = tradableOnlyEstimate ? 0 : currentRaidGold.boundGold;
+  const currentWeeklyGoldForEstimate = tradableOnlyEstimate ? currentRaidGold.tradableGold : currentRaidGold.totalGold;
+  const targetWeeklyGoldForEstimate = tradableOnlyEstimate ? targetRaidGold.tradableGold : targetRaidGold.totalGold;
   const estimateInput = useMemo(() => {
-    if (!tradableOnlyEstimate) return { ...planner, materials: effectiveMaterials };
     return {
       ...planner,
       character: {
         ...planner.character,
-        currentWeeklyGold: currentRaidGold.tradableGold,
-        targetWeeklyGold: targetRaidGold.tradableGold,
-        currentWeeklyBoundGold: 0,
+        currentWeeklyGold: currentWeeklyGoldForEstimate,
+        targetWeeklyGold: targetWeeklyGoldForEstimate,
+        currentWeeklyBoundGold,
       },
       materials: {
         ...effectiveMaterials,
-        boundGold: 0,
+        boundGold: tradableOnlyEstimate ? 0 : effectiveMaterials.boundGold,
       },
     };
-  }, [currentRaidGold.tradableGold, effectiveMaterials, planner, targetRaidGold.tradableGold, tradableOnlyEstimate]);
+  }, [currentWeeklyBoundGold, currentWeeklyGoldForEstimate, effectiveMaterials, planner, targetWeeklyGoldForEstimate, tradableOnlyEstimate]);
   const deferredEstimateInput = useDeferredValue(estimateInput);
   const preliminaryEstimate = useMemo(() => estimateGrowthPlan(deferredEstimateInput), [deferredEstimateInput]);
   const cathedralExchangePlan = useMemo(
@@ -1544,7 +1547,7 @@ export default function GrowthPlannerPage() {
     0,
     Number(finalEstimateInput.materials.boundGold || 0) + Math.max(0, selectedWaitWeeks) * Number(finalEstimateInput.character.currentWeeklyBoundGold || 0)
   );
-  const selectedWaitTradableGoldSaved = Math.max(0, selectedWaitWeeks) * Number(finalEstimateInput.character.currentWeeklyGold || 0);
+  const selectedWaitTradableGoldSaved = Math.max(0, selectedWaitWeeks) * currentWeeklyTradableGold;
   const selectedWaitBoundGoldUse = Math.min(estimate.directGoldCost, selectedWaitBoundGold);
   const selectedWaitTradableGoldUse = Math.max(
     0,
@@ -1618,16 +1621,19 @@ export default function GrowthPlannerPage() {
 
   useEffect(() => {
     setPlanner((prev) => {
-      if (prev.character.currentWeeklyGold === currentRaidGold.totalGold) return prev;
+      if (prev.character.currentWeeklyGold === currentRaidGold.tradableGold && prev.character.currentWeeklyBoundGold === currentRaidGold.boundGold) {
+        return prev;
+      }
       return {
         ...prev,
         character: {
           ...prev.character,
-          currentWeeklyGold: currentRaidGold.totalGold,
+          currentWeeklyGold: currentRaidGold.tradableGold,
+          currentWeeklyBoundGold: currentRaidGold.boundGold,
         },
       };
     });
-  }, [currentRaidGold.totalGold]);
+  }, [currentRaidGold.boundGold, currentRaidGold.tradableGold]);
 
   useEffect(() => {
     const targetIlvl = Number(planner.character.targetItemLevel || 0);
@@ -1639,16 +1645,17 @@ export default function GrowthPlannerPage() {
 
   useEffect(() => {
     setPlanner((prev) => {
-      if (prev.character.targetWeeklyGold === targetRaidGold.totalGold) return prev;
+      const targetWeeklyGold = raidGoldBasis === "tradable" ? targetRaidGold.tradableGold : targetRaidGold.totalGold;
+      if (prev.character.targetWeeklyGold === targetWeeklyGold) return prev;
       return {
         ...prev,
         character: {
           ...prev.character,
-          targetWeeklyGold: targetRaidGold.totalGold,
+          targetWeeklyGold,
         },
       };
     });
-  }, [targetRaidGold.totalGold]);
+  }, [raidGoldBasis, targetRaidGold.totalGold, targetRaidGold.tradableGold]);
 
   useEffect(() => {
     return () => {
