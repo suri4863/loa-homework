@@ -315,6 +315,7 @@ export default function TodoTracker() {
   } | null>(null);
   const [selectedMyScheduleCharKey, setSelectedMyScheduleCharKey] = useState<string>("");
   const [selectedMyScheduleRaidNames, setSelectedMyScheduleRaidNames] = useState<string[]>([]);
+  const [scheduleProfileLoadingKey, setScheduleProfileLoadingKey] = useState<string>("");
 
   const selectedWeeklySchedule = useMemo(
     () => weeklySchedules.find((schedule) => schedule.id === selectedScheduleId) ?? null,
@@ -3191,6 +3192,96 @@ export default function TodoTracker() {
       : null;
   }
 
+  function getScheduleFriendProfileNickname(item: SharedWeeklyScheduleItem) {
+    return String(item.friendSnapshot?.name ?? item.friendCharName ?? "").trim();
+  }
+
+  async function importScheduleFriendProfileLevel(scheduleId: string, itemId: string) {
+    const loadingKey = `${scheduleId}:${itemId}`;
+    if (scheduleProfileLoadingKey === loadingKey) return;
+
+    const schedule = weeklySchedules.find((candidate) => candidate.id === scheduleId);
+    const item = schedule?.items.find((candidate) => candidate.id === itemId);
+    const nickname = item ? getScheduleFriendProfileNickname(item) : "";
+    if (!schedule || !item || !nickname) {
+      alert("불러올 친구 캐릭터 닉네임이 없어.");
+      return;
+    }
+
+    setScheduleProfileLoadingKey(loadingKey);
+    try {
+      const response = await fetch(`/api/growth/kloa-character?nickname=${encodeURIComponent(nickname)}`);
+      const data = await response.json();
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.detail || data?.error || "전투정보실에서 캐릭터 정보를 불러오지 못했어.");
+      }
+
+      const importedIlvl =
+        typeof data.currentItemLevel === "number" && Number.isFinite(data.currentItemLevel)
+          ? data.currentItemLevel
+          : null;
+      const importedPower =
+        typeof data.combatPower === "number" && Number.isFinite(data.combatPower)
+          ? Math.round(data.combatPower)
+          : null;
+
+      if (importedIlvl == null && importedPower == null) {
+        alert(`${nickname}의 아이템레벨이나 전투력을 찾지 못했어.`);
+        return;
+      }
+
+      setWeeklySchedules((prev) =>
+        prev.map((candidateSchedule) => {
+          if (candidateSchedule.id !== scheduleId) return candidateSchedule;
+
+          const nextItems = candidateSchedule.items.map((candidateItem) => {
+            if (candidateItem.id !== itemId) return candidateItem;
+
+            const nextSnapshot: SharedScheduleCharacterSnapshot = {
+              ...(candidateItem.friendSnapshot ?? {
+                key: candidateItem.friendCharKey,
+                tableName: candidateItem.friendTableName,
+                name: nickname,
+                raids: getScheduleItemRaidNames(candidateItem),
+              }),
+              name: nickname,
+              itemLevel: importedIlvl != null ? String(importedIlvl) : candidateItem.friendSnapshot?.itemLevel ?? null,
+              ilvl: importedIlvl ?? candidateItem.friendSnapshot?.ilvl ?? null,
+              originalIlvl:
+                candidateItem.friendSnapshot?.plannedIlvl != null
+                  ? importedIlvl ?? candidateItem.friendSnapshot?.originalIlvl ?? null
+                  : candidateItem.friendSnapshot?.originalIlvl ?? importedIlvl ?? null,
+              power: importedPower ?? candidateItem.friendSnapshot?.power ?? candidateItem.friendCharPower ?? null,
+              raids: candidateItem.friendSnapshot?.raids ?? getScheduleItemRaidNames(candidateItem),
+            };
+
+            const nextItem: SharedWeeklyScheduleItem = {
+              ...candidateItem,
+              friendCharName: candidateItem.friendCharName ?? nickname,
+              friendCharPower: importedPower ?? candidateItem.friendCharPower,
+              friendSnapshot: nextSnapshot,
+            };
+
+            return {
+              ...nextItem,
+              avgPower: recalcScheduleItemAvgPower(nextItem),
+            };
+          });
+
+          return {
+            ...candidateSchedule,
+            items: nextItems,
+            updatedAt: Date.now(),
+          };
+        })
+      );
+    } catch (error: any) {
+      alert(error?.message || "전투정보실에서 캐릭터 정보를 불러오지 못했어.");
+    } finally {
+      setScheduleProfileLoadingKey("");
+    }
+  }
+
   function syncSchedulePowerSnapshotsForChar(
     schedules: SharedWeeklySchedule[],
     myFriendCode: string,
@@ -5752,9 +5843,28 @@ export default function TodoTracker() {
                                       <div
                                         className={`weeklyScheduleMyChar ${completion.allCleared ? "is-cleared" : ""} ${completion.isPast ? "is-past" : ""}`}
                                       >
-                                        {getScheduleFriendDisplayName(item)
-                                          ? `${getScheduleMyDisplayName(item)} - ${getScheduleFriendDisplayName(item)}`
-                                          : getScheduleMyDisplayName(item)}
+                                        <span>{getScheduleMyDisplayName(item)}</span>
+                                        {getScheduleFriendDisplayName(item) ? (
+                                          <>
+                                            <span className="weeklySchedulePairSep">-</span>
+                                            <button
+                                              type="button"
+                                              className="weeklyScheduleProfileButton"
+                                              disabled={scheduleProfileLoadingKey === `${schedule.id}:${item.id}`}
+                                              title="전투정보실에서 아이템레벨 불러오기"
+                                              onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                importScheduleFriendProfileLevel(schedule.id, item.id);
+                                              }}
+                                              onMouseDown={(e) => e.stopPropagation()}
+                                            >
+                                              {scheduleProfileLoadingKey === `${schedule.id}:${item.id}`
+                                                ? "확인 중..."
+                                                : getScheduleFriendDisplayName(item)}
+                                            </button>
+                                          </>
+                                        ) : null}
                                       </div>
 
                                       {!getScheduleFriendDisplayName(item) && (

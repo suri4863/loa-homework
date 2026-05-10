@@ -3741,6 +3741,9 @@ html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
 }
 
 .weeklyScheduleMyChar {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 13px;
   font-weight: 800;
   color: var(--text);
@@ -3750,6 +3753,37 @@ html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.weeklySchedulePairSep {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.weeklyScheduleProfileButton {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  font: inherit;
+  font-weight: 900;
+  padding: 0;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.weeklyScheduleProfileButton:hover {
+  text-decoration: underline;
+}
+
+.weeklyScheduleProfileButton:disabled {
+  color: var(--muted);
+  cursor: wait;
+  text-decoration: none;
 }
 
 .weeklyScheduleFriendSelect {
