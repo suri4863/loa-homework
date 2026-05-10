@@ -1,5 +1,6 @@
 ﻿import { ChangeEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import "./GrowthPlannerPage.css";
+import { useDeferredValue } from "react";
 import { DEFAULT_TODO_STATE, type Character, type TodoTable } from "../store/todoStore";
 import {
   estimateGrowthPlan,
@@ -1461,14 +1462,22 @@ export default function GrowthPlannerPage() {
       },
     };
   }, [currentRaidGold.tradableGold, effectiveMaterials, planner, targetRaidGold.tradableGold, tradableOnlyEstimate]);
-  const preliminaryEstimate = useMemo(() => estimateGrowthPlan(estimateInput), [estimateInput]);
+  const deferredEstimateInput = useDeferredValue(estimateInput);
+  const preliminaryEstimate = useMemo(() => estimateGrowthPlan(deferredEstimateInput), [deferredEstimateInput]);
   const cathedralExchangePlan = useMemo(
-    () => buildCathedralExchangePlan(preliminaryEstimate.requiredMaterials, estimateInput.materials, estimateInput.market, cathedralStage, cathedralExtraReward),
-    [cathedralExtraReward, cathedralStage, estimateInput.market, estimateInput.materials, preliminaryEstimate.requiredMaterials]
+    () =>
+      buildCathedralExchangePlan(
+        preliminaryEstimate.requiredMaterials,
+        deferredEstimateInput.materials,
+        deferredEstimateInput.market,
+        cathedralStage,
+        cathedralExtraReward
+      ),
+    [cathedralExtraReward, cathedralStage, deferredEstimateInput.market, deferredEstimateInput.materials, preliminaryEstimate.requiredMaterials]
   );
   const finalEstimateInput = useMemo(
-    () => ({ ...estimateInput, materials: applyCathedralExchangePlan(estimateInput.materials, cathedralExchangePlan) }),
-    [cathedralExchangePlan, estimateInput]
+    () => ({ ...deferredEstimateInput, materials: applyCathedralExchangePlan(deferredEstimateInput.materials, cathedralExchangePlan) }),
+    [cathedralExchangePlan, deferredEstimateInput]
   );
   const estimate = useMemo(() => estimateGrowthPlan(finalEstimateInput), [finalEstimateInput]);
   const displayRouteSteps = useMemo(() => groupRouteStepsForDisplay(estimate.routeSteps), [estimate.routeSteps]);
@@ -1521,11 +1530,15 @@ export default function GrowthPlannerPage() {
   }, [planner.ocr.fields]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(toPersistedPlannerState(planner)));
-    } catch {
-      // Ignore quota failures so screen captures do not crash the page.
-    }
+    const saveTimer = window.setTimeout(() => {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(toPersistedPlannerState(planner)));
+      } catch {
+        // Ignore quota failures so screen captures do not crash the page.
+      }
+    }, 250);
+
+    return () => window.clearTimeout(saveTimer);
   }, [planner]);
 
   useEffect(() => {

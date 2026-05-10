@@ -316,6 +316,43 @@ export default function TodoTracker() {
   const [selectedMyScheduleCharKey, setSelectedMyScheduleCharKey] = useState<string>("");
   const [selectedMyScheduleRaidNames, setSelectedMyScheduleRaidNames] = useState<string[]>([]);
 
+  const selectedWeeklySchedule = useMemo(
+    () => weeklySchedules.find((schedule) => schedule.id === selectedScheduleId) ?? null,
+    [selectedScheduleId, weeklySchedules]
+  );
+
+  const selectedWeeklyScheduleItemsByDay = useMemo(() => {
+    const map = new Map<WeeklyScheduleDay, SharedWeeklyScheduleItem[]>();
+    if (!selectedWeeklySchedule) return map;
+
+    for (const item of selectedWeeklySchedule.items) {
+      const dayItems = map.get(item.day) ?? [];
+      dayItems.push(item);
+      map.set(item.day, dayItems);
+    }
+
+    for (const dayItems of map.values()) {
+      dayItems.sort((a, b) => a.order - b.order);
+    }
+
+    return map;
+  }, [selectedWeeklySchedule]);
+
+  const localTableById = useMemo(() => {
+    const map = new Map<string, TodoTable>();
+    for (const table of state.tables) map.set(table.id, table);
+    return map;
+  }, [state.tables]);
+
+  const localWeeklyRaidTaskIdByName = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const task of state.tasks) {
+      if (task.period !== "WEEKLY" || task.cellType !== "CHECK") continue;
+      map.set(normalizeRaidName(String(task.title ?? "")), task.id);
+    }
+    return map;
+  }, [state.tasks]);
+
   const excludedKkanbuTableIds = state.profile.kkanbuExcludedTableIds ?? [];
 
   function isKkanbuExcludedTable(tableId: string) {
@@ -1491,6 +1528,8 @@ export default function TodoTracker() {
 
   function getLocalWeeklyRaidTaskId(raidName: string) {
     const normalizedTarget = normalizeRaidName(raidName);
+    const cachedTaskId = localWeeklyRaidTaskIdByName.get(normalizedTarget);
+    if (cachedTaskId) return cachedTaskId;
 
     const task = state.tasks.find(
       (t) =>
@@ -1506,7 +1545,7 @@ export default function TodoTracker() {
     const { tableId, charId } = parseScheduleMyCharKey(String(charKey ?? ""));
     if (!tableId || !charId) return false;
 
-    const table = state.tables.find((t) => t.id === tableId);
+    const table = localTableById.get(tableId);
     if (!table || !table.characters.some((ch) => ch.id === charId)) return false;
 
     const taskId = getLocalWeeklyRaidTaskId(raidName);
@@ -2855,10 +2894,10 @@ export default function TodoTracker() {
     }));
   }
 
-  async function uploadFriendRaidPlan() {
+  async function uploadFriendRaidPlan(sourceState: TodoState = stateRef.current) {
     if (!SERVER_MODE) return;
 
-    const s = state;
+    const s = sourceState;
     const planJson = exportFriendRaidPlan(s, "ALL", weeklyRaidPickRef.current);
 
     await apiFetch2("/api/me/raid-plan", {
@@ -2875,10 +2914,10 @@ export default function TodoTracker() {
     if (raidSnapUploadingRef.current) return;
 
     raidSnapUploadingRef.current = true;
-    setRaidSnapUploadState("uploading");
+      setRaidSnapUploadState("uploading");
 
     try {
-      const s = state;
+      const s = stateRef.current;
 
       // 자동 업로드라도 weeklyRaidPick이 없다고 건너뛰지 않음.
       // todoStore 쪽에서 weeklyRaidPick이 없으면 캐릭터 ilvl 기준 전체 주간 레이드 후보로 fallback 하므로
@@ -2931,6 +2970,7 @@ export default function TodoTracker() {
     }, intervalMs);
 
     raidSnapAutoTimerRef.current = id;
+    uploadRaidLeftSnapshot("auto").catch(() => { });
 
     return () => {
       window.clearInterval(id);
@@ -5593,15 +5633,13 @@ export default function TodoTracker() {
           )}
 
           {weeklyScheduleOpen && (selectedScheduleId ? (() => {
-            const schedule = weeklySchedules.find((s) => s.id === selectedScheduleId);
+            const schedule = selectedWeeklySchedule;
             if (!schedule) return <div className="manualKkanbuEmpty">선택한 일정표가 없어.</div>;
 
             return (
               <div className="weeklyScheduleGrid">
                 {WEEK_DAYS.map((day) => {
-                  const dayItems = schedule.items
-                    .filter((item) => item.day === day)
-                    .sort((a, b) => a.order - b.order);
+                  const dayItems = selectedWeeklyScheduleItemsByDay.get(day) ?? [];
 
                   return (
                     <div
