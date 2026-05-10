@@ -1247,6 +1247,11 @@ function candidateItemLevelGain(candidate: RefiningActionCandidate) {
   return candidate.action === "normal" ? 5 : 1;
 }
 
+function advancedGroupEnd(fromLevel: number) {
+  const remainder = fromLevel % 5;
+  return fromLevel + (remainder === 0 ? 5 : 5 - remainder);
+}
+
 function routeStepFromCandidate(candidate: RefiningActionCandidate, confirmed = false): RefiningRouteStep {
   return {
     slot: candidate.piece.slot,
@@ -1334,14 +1339,34 @@ function planCheapestRoute(input: GrowthPlannerState) {
     const targetPiece = pieces.find((piece) => piece.slot === best.piece.slot);
     if (!targetPiece) break;
 
-    addNeeds(requiredMaterials, best.expectedMaterials);
-    directGoldCost += best.directGold;
-    materialPurchaseCost += materialPatchPurchaseCost(best.expectedMaterials, remainingMaterials, input.market);
-    gainedLevel += best.levelGain;
-    gainedItemLevel += candidateItemLevelGain(best);
-    steps.push(routeStepFromCandidate(best));
-    consumeMaterials(remainingMaterials, best.expectedMaterials);
-    applyCandidate(targetPiece, best);
+    let forcedAdvancedEnd: number | null = null;
+
+    while (true) {
+      const candidate =
+        forcedAdvancedEnd == null
+          ? best
+          : targetPiece.advancedRefiningLevel < forcedAdvancedEnd
+            ? createCandidate(targetPiece, "advanced", input.market, remainingMaterials)
+            : null;
+      if (!candidate) break;
+
+      addNeeds(requiredMaterials, candidate.expectedMaterials);
+      directGoldCost += candidate.directGold;
+      materialPurchaseCost += materialPatchPurchaseCost(candidate.expectedMaterials, remainingMaterials, input.market);
+      gainedLevel += candidate.levelGain;
+      gainedItemLevel += candidateItemLevelGain(candidate);
+      steps.push(routeStepFromCandidate(candidate));
+      consumeMaterials(remainingMaterials, candidate.expectedMaterials);
+      applyCandidate(targetPiece, candidate);
+
+      if (forcedAdvancedEnd == null) {
+        if (candidate.action !== "advanced") break;
+        forcedAdvancedEnd = advancedGroupEnd(candidate.fromLevel);
+      }
+      if (forcedAdvancedEnd == null || targetPiece.advancedRefiningLevel >= forcedAdvancedEnd) break;
+      i += 1;
+      if (i >= maxSteps) break;
+    }
   }
 
   return {
