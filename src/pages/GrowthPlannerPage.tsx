@@ -1543,9 +1543,20 @@ export default function GrowthPlannerPage() {
     [estimate.requiredMaterials, finalEstimateInput.market, finalEstimateInput.materials]
   );
   const displayedTotalSpendGold = Math.max(0, estimate.directGoldCost + displayMaterialPurchaseCost);
+  const displayCurrentBoundGold = Math.max(0, Number(effectiveMaterials.boundGold || 0));
+  const displayWeeklyBoundGold = Math.max(0, Number(planner.character.currentWeeklyBoundGold || 0));
+  const displayBoundGoldUsableNow = Math.min(estimate.directGoldCost, displayCurrentBoundGold);
+  const displayTradableGoldNeededNow = Math.max(0, displayMaterialPurchaseCost + Math.max(0, estimate.directGoldCost - displayCurrentBoundGold));
+  const displayBoundGoldAffordableWeeks =
+    estimate.directGoldCost <= displayCurrentBoundGold
+      ? 0
+      : displayWeeklyBoundGold > 0
+        ? Math.ceil((estimate.directGoldCost - displayCurrentBoundGold) / displayWeeklyBoundGold)
+        : null;
+  const displayRecommendedWaitWeeks = displayBoundGoldAffordableWeeks ?? 0;
   const selectedWaitBoundGold = Math.max(
     0,
-    Number(finalEstimateInput.materials.boundGold || 0) + Math.max(0, selectedWaitWeeks) * Number(finalEstimateInput.character.currentWeeklyBoundGold || 0)
+    displayCurrentBoundGold + Math.max(0, selectedWaitWeeks) * displayWeeklyBoundGold
   );
   const selectedWaitTradableGoldSaved = Math.max(0, selectedWaitWeeks) * currentWeeklyTradableGold;
   const selectedWaitBoundGoldUse = Math.min(estimate.directGoldCost, selectedWaitBoundGold);
@@ -3252,9 +3263,9 @@ export default function GrowthPlannerPage() {
           <div className="recommendBox">
             <div className="resultLabel">지금 바로 올릴 때</div>
             <div className="resultList">
-              <div>귀속골드 사용: {formatGold(estimate.boundGoldUsableNow)}</div>
-              <div>유통골드 필요: {formatGold(estimate.tradableGoldNeededNow)}</div>
-              <div>귀속골드만으로 직접골드 충당: {estimate.boundGoldAffordableWeeks == null ? "-" : `${estimate.boundGoldAffordableWeeks}주`}</div>
+              <div>귀속골드 사용: {formatGold(displayBoundGoldUsableNow)}</div>
+              <div>유통골드 필요: {formatGold(displayTradableGoldNeededNow)}</div>
+              <div>귀속골드만으로 직접골드 충당: {displayBoundGoldAffordableWeeks == null ? "-" : `${displayBoundGoldAffordableWeeks}주`}</div>
             </div>
           </div>
           <div className="recommendBox">
@@ -3269,7 +3280,7 @@ export default function GrowthPlannerPage() {
                   onChange={(event) => setSelectedWaitWeeks(Math.max(0, Number(event.target.value) || 0))}
                 />
               </label>
-              <div>추천 대기 주차: {estimate.recommendedWaitWeeks}주</div>
+              <div>추천 대기 주차: {displayRecommendedWaitWeeks}주</div>
               <div>귀속골드 사용: {formatGold(selectedWaitBoundGoldUse)}</div>
               <div>대기 중 모은 유통골드: {formatGold(selectedWaitTradableGoldSaved)}</div>
               <div>유통골드 사용: {formatGold(selectedWaitTradableGoldUse)}</div>
