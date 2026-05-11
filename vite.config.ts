@@ -3,9 +3,15 @@ import react from '@vitejs/plugin-react'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ViteDevServer } from 'vite'
 
-async function runLocalApiHandler(server: ViteDevServer, modulePath: string, req: IncomingMessage, res: ServerResponse) {
+async function runLocalApiHandler(
+  server: ViteDevServer,
+  modulePath: string,
+  req: IncomingMessage,
+  res: ServerResponse,
+  routeQuery: Record<string, string | string[]> = {}
+) {
   const requestUrl = new URL(req.url || "/", "http://127.0.0.1")
-  const query: Record<string, string | string[]> = {}
+  const query: Record<string, string | string[]> = { ...routeQuery }
   requestUrl.searchParams.forEach((value, key) => {
     const prev = query[key]
     query[key] = prev == null ? value : Array.isArray(prev) ? [...prev, value] : [prev, value]
@@ -56,16 +62,16 @@ export default defineConfig({
           void runLocalApiHandler(server, "/api/growth/market-prices.ts", req, res)
         })
         server.middlewares.use("/api/growth/gem-prices", (req, res) => {
-          void runLocalApiHandler(server, "/api/growth/gem-prices.ts", req, res)
+          void runLocalApiHandler(server, "/api/growth/[kind].ts", req, res, { kind: "gem-prices" })
         })
         server.middlewares.use("/api/growth/accessory-prices", (req, res) => {
-          void runLocalApiHandler(server, "/api/growth/accessory-prices.ts", req, res)
+          void runLocalApiHandler(server, "/api/growth/[kind].ts", req, res, { kind: "accessory-prices" })
         })
         server.middlewares.use("/api/growth/engraving-prices", (req, res) => {
-          void runLocalApiHandler(server, "/api/growth/engraving-prices.ts", req, res)
+          void runLocalApiHandler(server, "/api/growth/[kind].ts", req, res, { kind: "engraving-prices" })
         })
         server.middlewares.use("/api/growth/avatar-prices", (req, res) => {
-          void runLocalApiHandler(server, "/api/growth/avatar-prices.ts", req, res)
+          void runLocalApiHandler(server, "/api/growth/[kind].ts", req, res, { kind: "avatar-prices" })
         })
       },
     },
