@@ -1,4 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import fs from "node:fs";
+import path from "node:path";
 
 type EquipmentSlot = "weapon" | "helmet" | "shoulder" | "chest" | "pants" | "gloves";
 
@@ -28,7 +30,7 @@ type CombatPowerDetails = {
 type CombatProfileSystems = {
   engravingCount: number;
   engravingNames: string[];
-  engravings: Array<{ name: string; level?: number; points?: number }>;
+  engravings: Array<{ name: string; grade?: string; level?: number; points?: number }>;
   gemLevelSum: number;
   gemCount: number;
   gems: Array<{ name: string; level: number; type: string }>;
@@ -44,7 +46,7 @@ type CombatProfileSystems = {
   accessories: Array<{ name: string; quality?: number; effects: string[] }>;
   avatarCount: number;
   avatarGradeLevel: number;
-  avatars: Array<{ name: string; grade: string; slot?: string; effect?: string }>;
+  avatars: Array<{ name: string; grade: string; slot?: string; effect?: string; isInner?: boolean }>;
 };
 
 const SUPPORT_CLASS_NAMES = ["바드", "홀리나이트", "도화가"];
@@ -87,6 +89,7 @@ type ImportDebug = {
 };
 
 const SLOT_ORDER: EquipmentSlot[] = ["helmet", "shoulder", "chest", "pants", "gloves", "weapon"];
+const LOSTARK_API_BASE = "https://developer-lostark.game.onstove.com";
 const SLOT_KEYWORDS: Array<[EquipmentSlot, RegExp]> = [
   ["helmet", /(투구|머리|머리장식|머리 방어구|헤드)/],
   ["shoulder", /(견갑|어깨|어깨장식)/],
@@ -671,6 +674,257 @@ async function fetchHtml(url: string) {
   return response.text();
 }
 
+function getLostarkApiKey() {
+  const fromProcess = String(process.env.LOSTARK_API_KEY || process.env.LOA_API_KEY || process.env.VITE_LOSTARK_API_KEY || "").trim();
+  if (fromProcess) return fromProcess;
+  for (const fileName of [".env.local", ".env"]) {
+    try {
+      const file = fs.readFileSync(path.join(process.cwd(), fileName), "utf8");
+      const line = file.split(/\r?\n/).find((row) => /^(LOSTARK_API_KEY|LOA_API_KEY|VITE_LOSTARK_API_KEY)=/.test(row.trim()));
+      const value = line?.replace(/^[^=]+=/, "").trim().replace(/^['"]|['"]$/g, "");
+      if (value) return value;
+    } catch {
+      // Ignore missing local env files in production.
+    }
+  }
+  return "";
+}
+
+function lostarkAuthHeaders(apiKey: string) {
+  return {
+    accept: "application/json",
+    authorization: /^bearer\s+/i.test(apiKey) ? apiKey : `bearer ${apiKey}`,
+  };
+}
+
+async function fetchLostarkApi(apiKey: string, path: string) {
+  const response = await fetch(`${LOSTARK_API_BASE}${path}`, {
+    headers: lostarkAuthHeaders(apiKey),
+  });
+  if (!response.ok) throw new Error(`LOSTARK_API_${response.status}`);
+  return response.json();
+}
+
+function tooltipToText(input: unknown) {
+  const raw = typeof input === "string" ? input : JSON.stringify(input ?? "");
+  return stripHtml(raw)
+    .replace(/\\r|\\n|\r|\n/g, " ")
+    .replace(/\\"/g, '"')
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function openApiSlot(type: string): EquipmentSlot | null {
+  if (/무기/.test(type)) return "weapon";
+  if (/투구|머리/.test(type)) return "helmet";
+  if (/어깨|견갑/.test(type)) return "shoulder";
+  if (/상의/.test(type)) return "chest";
+  if (/하의/.test(type)) return "pants";
+  if (/장갑/.test(type)) return "gloves";
+  return null;
+}
+
+function openApiAccessoryName(type: string) {
+  if (/목걸이/.test(type)) return "목걸이";
+  if (/귀걸이/.test(type)) return "귀걸이";
+  if (/반지/.test(type)) return "반지";
+  if (/팔찌/.test(type)) return "팔찌";
+  return "";
+}
+
+function pickEffectLines(text: string) {
+  return Array.from(
+    new Set(
+      text
+        .split(/(?:\s{2,}|<BR>|\\n|ㆍ|,)/i)
+        .map((line) => line.replace(/\s+/g, " ").trim())
+        .filter((line) => /(공격력|무기 공격력|추가 피해|적에게 주는 피해|치명|특화|신속|쿨타임|피해량|아군|낙인|옵션)/.test(line))
+        .slice(0, 6)
+    )
+  );
+}
+
+function parseOpenApiPiece(row: any, fallbackIndex: number): ParsedPiece | null {
+  const slot = openApiSlot(String(row?.Type || ""));
+  if (!slot) return null;
+  const name = String(row?.Name || "");
+  const tooltip = tooltipToText(row?.Tooltip);
+  const honingLevel = Number((name.match(/\+(\d{1,2})/) ?? tooltip.match(/(\d{1,2})\s*단계/))?.[1] ?? 0);
+  const advancedRefiningLevel = Number((tooltip.match(/상급\s*재련[^0-9]{0,20}(\d{1,2})/) ?? tooltip.match(/엘라[^0-9]{0,20}(\d{1,2})/))?.[1] ?? 0);
+  const itemLevel = parseNumber((tooltip.match(/아이템\s*레벨[^0-9]{0,20}([0-9,.]+)/) ?? [])[1]) ?? null;
+  return {
+    slot: slot ?? SLOT_ORDER[fallbackIndex] ?? "weapon",
+    itemName: name,
+    itemLevel,
+    honingLevel,
+    advancedRefiningLevel,
+  };
+}
+
+function normalizeOpenApiAccessoryName(type: string) {
+  if (/목걸이|Necklace/i.test(type)) return "목걸이";
+  if (/귀걸이|Earring/i.test(type)) return "귀걸이";
+  if (/반지|Ring/i.test(type)) return "반지";
+  if (/팔찌|Bracelet/i.test(type)) return "팔찌";
+  return openApiAccessoryName(type);
+}
+
+function pickOpenApiAccessoryEffects(text: string) {
+  const normalized = text
+    .replace(/\\"/g, '"')
+    .replace(/\\n/g, " ")
+    .replace(/[{}[\]"]/g, " ")
+    .replace(/\s+/g, " ");
+  const matches = Array.from(
+    normalized.matchAll(
+      /(추가 피해\s*\+?\s*[0-9.]+%|적에게 주는 피해\s*\+?\s*[0-9.]+%|공격력\s*\+?\s*[0-9,.]+%?|무기 공격력\s*\+?\s*[0-9,.]+%?|치명타 피해\s*\+?\s*[0-9.]+%|치명타 적중률\s*\+?\s*[0-9.]+%|치명\s*\+?\s*[0-9,.]+|특화\s*\+?\s*[0-9,.]+|신속\s*\+?\s*[0-9,.]+)/g
+    )
+  ).map((match) => match[1].replace(/\s+/g, " ").trim());
+  return Array.from(new Set(matches)).slice(0, 6);
+}
+
+function parseOpenApiAccessories(equipment: any[]) {
+  return equipment
+    .map((row) => {
+      const name = normalizeOpenApiAccessoryName(String(row?.Type || ""));
+      if (!name) return null;
+      return {
+        name,
+        quality: Number(row?.GradeQuality ?? 0) || undefined,
+        effects: pickOpenApiAccessoryEffects(tooltipToText(row?.Tooltip)),
+      };
+    })
+    .filter(Boolean) as Array<{ name: string; quality?: number; effects: string[] }>;
+}
+
+async function fetchOfficialOpenApiProfile(nickname: string) {
+  const apiKey = getLostarkApiKey();
+  if (!apiKey) throw new Error("LOSTARK_API_KEY_MISSING");
+  const encoded = encodeURIComponent(nickname);
+  const [profiles, equipment, avatars, gems, engravings, arkPassive] = await Promise.all([
+    fetchLostarkApi(apiKey, `/armories/characters/${encoded}/profiles`).catch(() => null),
+    fetchLostarkApi(apiKey, `/armories/characters/${encoded}/equipment`).catch(() => []),
+    fetchLostarkApi(apiKey, `/armories/characters/${encoded}/avatars`).catch(() => []),
+    fetchLostarkApi(apiKey, `/armories/characters/${encoded}/gems`).catch(() => null),
+    fetchLostarkApi(apiKey, `/armories/characters/${encoded}/engravings`).catch(() => null),
+    fetchLostarkApi(apiKey, `/armories/characters/${encoded}/arkpassive`).catch(() => null),
+  ]);
+  const equipmentRows = Array.isArray(equipment) ? equipment : [];
+  const pieces = dedupePieces(
+    equipmentRows.map((row, index) => parseOpenApiPiece(row, index)).filter((piece): piece is ParsedPiece => Boolean(piece))
+  );
+  const accessories = parseOpenApiAccessories(equipmentRows);
+  const gemRows = Array.isArray(gems?.Gems) ? gems.Gems : [];
+  const parsedGems = gemRows
+    .map((gem: any, index: number) => {
+      const effect = Array.isArray(gems?.Effects) ? gems.Effects.find((row: any) => String(row?.GemSlot ?? "") === String(gem?.Slot ?? "")) : null;
+      return {
+        name: String(effect?.Name || gem?.Name || `보석 ${index + 1}`),
+        level: Number(gem?.Level || 0),
+        type: /작열|쿨|멸화|홍염/.test(`${gem?.Name || ""} ${effect?.Description || ""}`) ? "작열" : "겁화",
+      };
+    })
+    .filter((gem: any) => gem.level > 0);
+  const finalGemSkillRows = Array.isArray(gems?.Effects)
+    ? gems.Effects.flatMap((effect: any) => (Array.isArray(effect?.Skills) ? effect.Skills : []))
+    : [];
+  const finalGems = gemRows
+    .map((gem: any, index: number) => {
+      const skill = finalGemSkillRows.find((row: any) => Number(row?.GemSlot) === Number(gem?.Slot));
+      const tooltip = tooltipToText(gem?.Tooltip);
+      const tooltipSkill = tooltip.match(/\]\s*([\u3131-\uD79DA-Za-z\s]+?)\s*(?:\uD53C\uD574|\uC7AC\uC0AC\uC6A9|\uCFE8\uD0C0\uC784)/)?.[1]?.trim();
+      const effectText = `${skill?.Description?.join?.(" ") || ""} ${skill?.Option || ""} ${tooltip}`;
+      return {
+        name: String(skill?.Name || tooltipSkill || `Gem ${index + 1}`).replace(/\s+\uACC4\uC5F4$/, ""),
+        level: Number(gem?.Level || 0),
+        type: /\uC7AC\uC0AC\uC6A9|\uCFE8\uD0C0\uC784|cool/i.test(effectText) ? "\uC791\uC5F4" : "\uAC81\uD654",
+      };
+    })
+    .filter((gem: any) => gem.level > 0);
+  const gemSkillRows = Array.isArray(gems?.Effects)
+    ? gems.Effects.flatMap((effect: any) => (Array.isArray(effect?.Skills) ? effect.Skills : []))
+    : [];
+  const resolvedGems = gemRows
+    .map((gem: any, index: number) => {
+      const skill = gemSkillRows.find((row: any) => Number(row?.GemSlot) === Number(gem?.Slot));
+      const tooltip = tooltipToText(gem?.Tooltip);
+      const tooltipSkill = tooltip.match(/\]\s*([가-힣A-Za-z\s]+?)\s*(?:피해|재사용|쿨타임)/)?.[1]?.trim();
+      const effectText = `${skill?.Description?.join?.(" ") || ""} ${skill?.Option || ""} ${tooltip}`;
+      return {
+        name: String(skill?.Name || tooltipSkill || parsedGems[index]?.name || `보석 ${index + 1}`).replace(/\s+계열$/, ""),
+        level: Number(gem?.Level || parsedGems[index]?.level || 0),
+        type: /재사용|쿨타임|cool/i.test(effectText) ? "작열" : "겁화",
+      };
+    })
+    .filter((gem: any) => gem.level > 0);
+  const engravingRows = Array.isArray(engravings?.ArkPassiveEffects)
+    ? engravings.ArkPassiveEffects
+    : Array.isArray(engravings?.Effects)
+      ? engravings.Effects
+      : Array.isArray(engravings?.Engravings)
+        ? engravings.Engravings
+        : [];
+  const parsedEngravings = engravingRows.map((row: any) => ({
+    name: String(row?.Name || row?.Engraving?.Name || ""),
+    grade: String(row?.Grade || row?.Engraving?.Grade || "") || undefined,
+    level: Number(row?.Level || row?.Engraving?.Level || 0) || undefined,
+    points: Number(row?.Point || row?.Points || 0) || undefined,
+  })).filter((row: any) => row.name);
+  const arkPoint = (name: string) => {
+    const points = Array.isArray(arkPassive?.Points) ? arkPassive.Points : [];
+    const found = points.find((row: any) => String(row?.Name || row?.Type || "").includes(name));
+    return Number(found?.Value ?? found?.Point ?? found?.Points ?? 0) || 0;
+  };
+  const systems: CombatProfileSystems = {
+    engravingCount: parsedEngravings.length,
+    engravingNames: parsedEngravings.map((row: any) => row.name),
+    engravings: parsedEngravings,
+    gemLevelSum: finalGems.reduce((sum: number, gem: any) => sum + gem.level, 0),
+    gemCount: finalGems.length,
+    gems: finalGems,
+    arkPassivePoints: arkPoint("진화") + arkPoint("깨달음") + arkPoint("도약"),
+    arkPassive: {
+      evolution: arkPoint("진화"),
+      enlightenment: arkPoint("깨달음"),
+      leap: arkPoint("도약"),
+    },
+    arkGridPoints: 0,
+    arkGrid: [],
+    accessoryCount: accessories.length,
+    accessories,
+    avatarCount: Array.isArray(avatars) ? avatars.length : 0,
+    avatarGradeLevel: Array.isArray(avatars) && avatars.some((avatar: any) => /스페셜/.test(String(avatar?.Grade || avatar?.Name || ""))) ? 2 : Array.isArray(avatars) && avatars.some((avatar: any) => /전설/.test(String(avatar?.Grade || avatar?.Name || ""))) ? 1 : 0,
+    avatars: Array.isArray(avatars)
+      ? avatars.map((avatar: any) => ({ name: String(avatar?.Name || ""), grade: String(avatar?.Grade || ""), slot: String(avatar?.Type || ""), effect: tooltipToText(avatar?.Tooltip).slice(0, 120), isInner: Boolean(avatar?.IsInner) }))
+      : [],
+  };
+
+  return {
+    source: "official" as const,
+    sourceUrl: `${LOSTARK_API_BASE}/armories/characters/${encoded}`,
+    currentItemLevel: parseNumber(profiles?.ItemAvgLevel) ?? null,
+    combatPower: parseNumber(profiles?.TotalCombatPower ?? profiles?.CombatPower) ?? null,
+    className: String(profiles?.CharacterClassName || "") || null,
+    combatDetails: {
+      combatLevel: Number(profiles?.CharacterLevel || 0) || undefined,
+      pureBaseAttack: undefined,
+      maxHp: undefined,
+      arkEvolutionPoints: systems.arkPassive.evolution || undefined,
+      arkEnlightenmentPoints: systems.arkPassive.enlightenment || undefined,
+      arkLeapPoints: systems.arkPassive.leap || undefined,
+      t4GemLevelSum: systems.gemLevelSum || undefined,
+    },
+    combatSystems: systems,
+    pieces,
+    debug: {
+      officialLevelFound: Boolean(profiles?.ItemAvgLevel),
+      officialPieceCount: pieces.length,
+      officialLevelSnippet: String(profiles?.ItemAvgLevel || ""),
+      officialFirstPieceSnippet: pieces[0]?.itemName ?? "",
+    },
+  };
+}
+
 async function fetchOfficialProfile(nickname: string) {
   const url = `https://lostark.game.onstove.com/Profile/Character/${encodeURIComponent(nickname)}`;
   const html = await fetchHtml(url);
@@ -791,7 +1045,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     };
 
     try {
-      const official = await fetchOfficialProfile(nickname);
+      const official = await fetchOfficialOpenApiProfile(nickname).catch(() => fetchOfficialProfile(nickname));
       currentItemLevel = official.currentItemLevel;
       combatPower = official.combatPower;
       className = official.className;
@@ -855,8 +1109,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (currentItemLevel == null) warnings.push("현재 아이템레벨을 자동으로 찾지 못했어. 아래 검토 폼에서 확인해줘.");
     if (pieces.length === 0) warnings.push("장비 강화 정보는 아직 자동으로 못 읽었어. 공식 페이지 툴팁/OCR/직접 입력으로 보정해줘.");
     if (pieces.length > 0 && pieces.length < 6) warnings.push(`장비 ${pieces.length}부위만 읽었어. 부족한 부위는 직접 보정해줘.`);
-    warnings.push("장인의 기운과 현재 단계 재련 경험치는 툴팁 값이라 계속 직접 입력 기준으로 둘게.");
-
     return res.status(200).json({
       ok: true,
       source,
