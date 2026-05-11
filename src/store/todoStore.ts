@@ -341,7 +341,17 @@ function getSelectedWeeklyRaidTitles(
     return pickedRaids.filter((raid, index, arr) => arr.indexOf(raid) === index);
   }
 
-  return getEligibleWeeklyRaidTitles(weeklyRaidTasks, ilvl);
+  // 레이드 팝업 선택값이 아직 없는 구버전/초기 캐릭터는 "가능한 주간 레이드 전체"를
+  // 공유하면 남은 캐릭터 목록에 선택하지 않은 2막/익스트림까지 전부 뜬다.
+  // 명시 선택이 없을 때는 익스트림을 제외하고, 입장 레벨이 높은 최신 레이드 3개만 기본 후보로 보낸다.
+  return getEligibleWeeklyRaidTitles(weeklyRaidTasks, ilvl)
+    .filter((raid) => !raid.includes("익스트림"))
+    .sort((a, b) => {
+      const aMin = WEEKLY_RAID_MIN_ILVL[a] ?? 0;
+      const bMin = WEEKLY_RAID_MIN_ILVL[b] ?? 0;
+      return bMin - aMin;
+    })
+    .slice(0, 3);
 }
 
 function withDiff(raid: string, ilvl: number): string {

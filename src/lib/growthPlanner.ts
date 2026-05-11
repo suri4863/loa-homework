@@ -9,6 +9,7 @@ export type EquipmentSlot = "weapon" | "helmet" | "shoulder" | "chest" | "pants"
 export type RefiningMode = "normal" | "advanced" | "hybrid";
 
 export type MaterialFamily = "legacy" | "successor";
+export type RefiningAction = "normal" | "advanced" | "transfer";
 
 export type EquipmentPieceState = {
   slot: EquipmentSlot;
@@ -184,7 +185,7 @@ export type RefiningRouteStep = {
   slot: EquipmentSlot;
   slotLabel: string;
   itemName: string;
-  action: "normal" | "advanced";
+  action: RefiningAction;
   fromLevel: number;
   toLevel: number;
   materialFamily: MaterialFamily;
@@ -198,6 +199,7 @@ export type RefiningRouteStep = {
   supportSavedGold: number;
   notes: string[];
   confirmed?: boolean;
+  hidden?: boolean;
 };
 
 export type GrowthEstimate = {
@@ -263,7 +265,7 @@ type AdvancedRefineCostRow = {
 
 type RefiningActionCandidate = {
   piece: EquipmentPieceState;
-  action: "normal" | "advanced";
+  action: RefiningAction;
   fromLevel: number;
   toLevel: number;
   materialFamily: MaterialFamily;
@@ -335,6 +337,8 @@ function scaleMaterialNeeds(patch: MaterialNeedPatch, multiplier: number): Mater
 
 function materialFamilyForPiece(piece: EquipmentPieceState): MaterialFamily {
   const label = piece.tierLabel || "";
+  if (label.includes("전율") || label.includes("상위")) return "successor";
+  if (Number(piece.honingLevel || 0) <= 16 && Number(piece.itemLevel || 0) >= 1730) return "successor";
   if (label.includes("전율")) return "successor";
   return "legacy";
 }
@@ -355,7 +359,7 @@ function deriveEquipmentItemLevel(piece: EquipmentPieceState) {
   if (!Number.isFinite(honingLevel) || honingLevel <= 0) return 0;
 
   const advancedLevel = Math.max(0, Number(piece.advancedRefiningLevel || 0));
-  const inferred = 1590 + honingLevel * 5 + advancedLevel;
+  const inferred = materialFamilyForPiece(piece) === "successor" ? 1675 + honingLevel * 5 + advancedLevel : 1590 + honingLevel * 5 + advancedLevel;
   return Number.isFinite(inferred) && inferred >= 1500 && inferred <= 1900 ? inferred : 0;
 }
 
@@ -1035,6 +1039,43 @@ function consumeMaterials(materials: MaterialInventory, patch: MaterialNeedPatch
   consumeSingleMaterial(materials, "enhancedUpheavalMetallurgyBook19", patch.enhancedUpheavalMetallurgyBook19 || 0);
 }
 
+function canTransferToSuccessor(piece: EquipmentPieceState, characterItemLevel: number) {
+  return (
+    materialFamilyForPiece(piece) === "legacy" &&
+    Number(characterItemLevel || 0) >= 1730 &&
+    Number(piece.honingLevel || 0) >= 20 &&
+    Number(piece.advancedRefiningLevel || 0) >= 40
+  );
+}
+
+function successorHoningLevelFromLegacy(piece: EquipmentPieceState) {
+  return Math.max(11, Number(piece.honingLevel || 0) - 9);
+}
+
+function createTransferCandidate(piece: EquipmentPieceState, characterItemLevel: number): RefiningActionCandidate | null {
+  if (!canTransferToSuccessor(piece, characterItemLevel)) return null;
+  const nextHoning = successorHoningLevelFromLegacy(piece);
+  const currentItemLevel = deriveEquipmentItemLevel(piece);
+  const nextItemLevel = 1675 + nextHoning * 5;
+  const levelGain = Math.max(0, (nextItemLevel - currentItemLevel) / 6);
+  return {
+    piece,
+    action: "transfer",
+    fromLevel: piece.honingLevel,
+    toLevel: nextHoning,
+    materialFamily: "successor",
+    levelGain,
+    directGold: 0,
+    expectedMaterials: {},
+    averageCost: 0,
+    efficiency: -0.01,
+    supportName: "",
+    supportWorthUsing: null,
+    supportSavedGold: 0,
+    notes: ["전율 계승 가능 조건 충족: 강화 +20 이상, 상급재련 40단계 이상", "계승 후 전율 재련 테이블(t4_1730)로 다음 강화 비용을 계산"],
+  };
+}
+
 function createCandidate(
   piece: EquipmentPieceState,
   action: "normal" | "advanced",
@@ -1225,9 +1266,14 @@ function applyCandidate(piece: EquipmentPieceState, candidate: RefiningActionCan
   if (candidate.action === "normal") {
     piece.honingLevel += 1;
     piece.itemLevel = Math.max(0, Number(piece.itemLevel || 0)) + 5;
-  } else {
+  } else if (candidate.action === "advanced") {
     piece.advancedRefiningLevel += 1;
     piece.itemLevel = Math.max(0, Number(piece.itemLevel || 0)) + 1;
+  } else {
+    piece.honingLevel = candidate.toLevel;
+    piece.advancedRefiningLevel = 0;
+    piece.tierLabel = "전율";
+    piece.itemLevel = Math.max(0, 1675 + candidate.toLevel * 5);
   }
   piece.artisanEnergy = 0;
   piece.currentRefiningExp = 0;
@@ -1244,12 +1290,19 @@ function sumPieceItemLevel(pieces: EquipmentPieceState[]) {
 }
 
 function candidateItemLevelGain(candidate: RefiningActionCandidate) {
-  return candidate.action === "normal" ? 5 : 1;
+  if (candidate.action === "normal") return 5;
+  if (candidate.action === "advanced") return 1;
+  return 0;
 }
 
 function advancedGroupEnd(fromLevel: number) {
   const remainder = fromLevel % 5;
   return fromLevel + (remainder === 0 ? 5 : 5 - remainder);
+}
+
+function preferredAdvancedGroupEnd(fromLevel: number) {
+  if (fromLevel >= 30 && fromLevel < 40) return 40;
+  return advancedGroupEnd(fromLevel);
 }
 
 function routeStepFromCandidate(candidate: RefiningActionCandidate, confirmed = false): RefiningRouteStep {
@@ -1271,7 +1324,18 @@ function routeStepFromCandidate(candidate: RefiningActionCandidate, confirmed = 
     supportSavedGold: round(candidate.supportSavedGold),
     notes: confirmed ? ["확정 스펙업", ...candidate.notes] : candidate.notes,
     confirmed,
+    hidden: candidate.action === "transfer",
   };
+}
+
+export function estimateRefiningStep(
+  piece: EquipmentPieceState,
+  action: "normal" | "advanced",
+  market: MarketPriceSnapshot,
+  materials?: MaterialInventory
+): RefiningRouteStep | null {
+  const candidate = createCandidate({ ...piece }, action, market, materials);
+  return candidate ? routeStepFromCandidate(candidate) : null;
 }
 
 function planCheapestRoute(input: GrowthPlannerState) {
@@ -1314,20 +1378,22 @@ function planCheapestRoute(input: GrowthPlannerState) {
   }
 
   for (let i = 0; i < maxSteps && gainedItemLevel + targetEpsilon < targetGapItemLevel; i += 1) {
+    const routeCharacterItemLevel = (sumPieceItemLevel(pieces) ?? currentLevel * 6) / 6;
     const candidates = pieces
       .flatMap((piece) => {
+        const transfer = createTransferCandidate(piece, routeCharacterItemLevel);
         const normal = input.character.preferredMode !== "advanced" ? createCandidate(piece, "normal", input.market, remainingMaterials) : null;
         const advanced = input.character.preferredMode !== "normal" ? createCandidate(piece, "advanced", input.market, remainingMaterials) : null;
-        return [normal, advanced].filter(Boolean) as RefiningActionCandidate[];
+        return [transfer, normal, advanced].filter(Boolean) as RefiningActionCandidate[];
       })
       .map((candidate) => {
         const itemLevelGain = candidateItemLevelGain(candidate);
         const remaining = Math.max(0, targetGapItemLevel - gainedItemLevel);
         const overshoot = Math.max(0, itemLevelGain - remaining);
-        const overshootPenalty = overshoot > 0 ? candidate.averageCost * (overshoot / itemLevelGain) * 0.35 : 0;
+        const overshootPenalty = itemLevelGain > 0 && overshoot > 0 ? candidate.averageCost * (overshoot / itemLevelGain) * 0.35 : 0;
         return {
           candidate,
-          score: candidate.efficiency + overshootPenalty,
+          score: candidate.action === "transfer" ? -1 : candidate.efficiency + overshootPenalty,
         };
       })
       .sort((a, b) => a.score - b.score)
@@ -1361,13 +1427,21 @@ function planCheapestRoute(input: GrowthPlannerState) {
 
       if (forcedAdvancedEnd == null) {
         if (candidate.action !== "advanced") break;
-        forcedAdvancedEnd = advancedGroupEnd(candidate.fromLevel);
+        forcedAdvancedEnd = preferredAdvancedGroupEnd(candidate.fromLevel);
       }
       if (forcedAdvancedEnd == null || targetPiece.advancedRefiningLevel >= forcedAdvancedEnd) break;
       i += 1;
       if (i >= maxSteps) break;
     }
   }
+
+  const finalCharacterItemLevel = (sumPieceItemLevel(pieces) ?? currentLevel * 6) / 6;
+  pieces.forEach((piece) => {
+    const transfer = createTransferCandidate(piece, finalCharacterItemLevel);
+    if (!transfer) return;
+    steps.push(routeStepFromCandidate(transfer));
+    applyCandidate(piece, transfer);
+  });
 
   return {
     steps,

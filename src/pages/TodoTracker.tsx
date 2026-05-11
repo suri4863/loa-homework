@@ -3562,11 +3562,14 @@ export default function TodoTracker() {
         ]);
       }
 
-      const fallback = getDefaultNextWeekPlanRaids(ilvl, normalized);
+      // 구버전/넓은 스냅샷은 "가능한 레이드 전체"가 들어올 수 있다.
+      // 이 경우 익스트림을 자동 보존하면 선택하지 않은 1막/2막 익스트림이 전 캐릭터에 뜨므로,
+      // 실제 명시 선택으로 보기 어려운 넓은 목록에서는 일반 레이드 top3만 다시 산정한다.
+      const fallback = calcWeeklyTop3Gold(ilvl).top3.map((row) => normalizeRaidName(row.raid));
       const fallbackNormals = fallback.filter(
         (raidName) => !DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(canonicalRaidName(raidName))
       );
-      return uniqueCanonicalRaidNames([...fallbackNormals.slice(0, 3), ...extremeRaids]);
+      return uniqueCanonicalRaidNames(fallbackNormals.slice(0, 3));
     }
 
     function getSelectableNextWeekRaidNames(ilvl: number) {
@@ -4254,7 +4257,47 @@ export default function TodoTracker() {
       return clearedSet;
     }
 
-    const friendCandidates = rows
+    function filterAccountWideExtremeRaids<T extends {
+      key: string;
+      ilvl: number;
+      power: number;
+      allRaids: string[];
+      activeRaids: string[];
+      remainingRaids: string[];
+      clearedRaids?: string[];
+    }>(candidates: T[]): T[] {
+      const extremeOwnerByRaid = new Map<string, string>();
+
+      for (const raid of Array.from(DEFAULT_EXTREME_WEEKLY_RAID_TITLES)) {
+        const raidKey = normalizeRaidName(raid);
+        const owner = candidates
+          .filter((candidate) =>
+            [...candidate.allRaids, ...candidate.activeRaids, ...candidate.remainingRaids]
+              .some((candidateRaid) => normalizeRaidName(canonicalRaidName(candidateRaid)) === raidKey)
+          )
+          .sort((a, b) => (b.ilvl - a.ilvl) || (b.power - a.power))[0];
+
+        if (owner) extremeOwnerByRaid.set(raidKey, owner.key);
+      }
+
+      const filterRaids = (candidate: T, raids: string[]) =>
+        raids.filter((raid) => {
+          const canonical = canonicalRaidName(raid);
+          const raidKey = normalizeRaidName(canonical);
+          if (!DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(canonical)) return true;
+          return extremeOwnerByRaid.get(raidKey) === candidate.key;
+        });
+
+      return candidates.map((candidate) => ({
+        ...candidate,
+        allRaids: filterRaids(candidate, candidate.allRaids),
+        activeRaids: filterRaids(candidate, candidate.activeRaids),
+        remainingRaids: filterRaids(candidate, candidate.remainingRaids),
+        clearedRaids: candidate.clearedRaids ? filterRaids(candidate, candidate.clearedRaids) : candidate.clearedRaids,
+      }));
+    }
+
+    const friendCandidates = filterAccountWideExtremeRaids(rows
       .filter((row: any) => {
         const tableName = String(row.tableName ?? "").trim();
         return !excludedFriendKkanbuTableNames.includes(tableName);
@@ -4337,7 +4380,7 @@ export default function TodoTracker() {
           x.ilvl >= levelRange.min &&
           x.ilvl <= levelRange.max &&
           x.allRaids.length > 0
-      );
+      ));
 
     const hasNoFriendCandidates = friendCandidates.length === 0;
     const hasNoMyCandidates = myCandidates.length === 0;

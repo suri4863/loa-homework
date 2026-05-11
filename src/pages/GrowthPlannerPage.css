@@ -1,6 +1,8 @@
 .growthPage {
   display: grid;
+  grid-template-columns: minmax(300px, 390px) minmax(0, 1fr);
   gap: 14px;
+  align-items: start;
 }
 
 .growthHero,
@@ -13,6 +15,7 @@
 }
 
 .growthHero {
+  grid-column: 1 / -1;
   display: flex;
   justify-content: space-between;
   gap: 16px;
@@ -49,15 +52,28 @@
 
 .growthTopGrid {
   display: grid;
-  grid-template-columns: minmax(420px, 5fr) minmax(360px, 4fr);
+  grid-column: 2;
+  grid-row: 2;
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   align-items: start;
 }
 
 .setupCard {
-  order: 2;
-  grid-column: 2;
-  grid-row: 1 / span 2;
+  grid-column: 1;
+}
+
+.setupSplitGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(360px, 0.85fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.setupPanel {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
 }
 
 .scanDetails {
@@ -120,10 +136,7 @@
 }
 
 .plannerWorkLayout {
-  display: grid;
-  grid-template-columns: minmax(340px, 430px) minmax(0, 1fr);
-  gap: 14px;
-  align-items: start;
+  display: contents;
 }
 
 .plannerSideColumn,
@@ -133,7 +146,15 @@
   min-width: 0;
 }
 
+.plannerSideColumn {
+  grid-column: 1;
+  grid-row: 2 / span 12;
+  align-self: start;
+}
+
 .plannerMainColumn {
+  grid-column: 2;
+  grid-row: 3;
   grid-template-columns: minmax(220px, 1fr) minmax(340px, 2fr) minmax(340px, 2fr);
   align-items: start;
 }
@@ -187,6 +208,10 @@
 }
 
 .weeklyRewardTabsCard {
+  grid-column: 1 / -1;
+}
+
+.combatUpgradeRecommendation {
   grid-column: 1 / -1;
 }
 
@@ -388,6 +413,7 @@
 .kloaBox {
   display: grid;
   gap: 10px;
+  align-content: start;
 }
 
 .growthInlineActions,
@@ -1428,14 +1454,42 @@
   display: grid;
   gap: 10px;
   border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card-soft);
+  border-radius: 16px;
+  background: var(--card);
   padding: 12px;
 }
 
-.combatDetailEditor {
+.combatCategoryRail {
   display: grid;
-  gap: 10px;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.combatCategoryRail label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--soft-2);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.combatCategoryRail label.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.combatCategoryRail input {
+  width: 15px;
+  min-height: 15px;
+  accent-color: var(--primary);
+  padding: 0;
 }
 
 .combatDetailGrid {
@@ -1462,6 +1516,374 @@
   font-size: 18px;
 }
 
+.combatCostBreakdown {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 10px;
+}
+
+.combatCostBreakdown div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.combatCostBreakdown span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.combatCostBreakdown strong {
+  color: var(--text);
+  font-size: 16px;
+}
+
+.combatCostBreakdown p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.combatIncludedRouteList {
+  display: grid;
+  gap: 8px;
+}
+
+.combatIncludedRouteRows {
+  display: grid;
+  gap: 6px;
+}
+
+.combatIncludedRouteRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px 130px;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  padding: 9px 12px;
+}
+
+.combatIncludedRouteRow span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.combatIncludedRouteRow strong {
+  text-align: right;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.combatIncludedRouteRow em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  text-align: right;
+}
+
+.combatAutoBuilder {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--soft-2);
+  padding: 9px 10px;
+}
+
+.combatAutoBuilder summary {
+  cursor: pointer;
+  list-style: none;
+  color: var(--text);
+  font-weight: 900;
+}
+
+.combatAutoBuilder summary::-webkit-details-marker {
+  display: none;
+}
+
+.combatAutoGrid {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr) minmax(300px, 0.9fr);
+  gap: 10px;
+  align-items: start;
+  margin-top: 10px;
+}
+
+.combatAutoSection {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  padding: 9px;
+  min-width: 0;
+  max-height: 560px;
+  overflow: auto;
+}
+
+.combatAutoSectionWide {
+  grid-column: auto;
+}
+
+.combatAutoHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.combatAutoHeader > div {
+  display: grid;
+  gap: 3px;
+}
+
+.combatAutoHeader strong {
+  color: var(--text);
+}
+
+.combatAutoHeader span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.combatAutoSection label {
+  gap: 3px;
+}
+
+.combatAutoSection label > span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.combatAutoSection input,
+.combatAutoSection select {
+  min-height: 31px;
+  padding: 6px 8px;
+  border-radius: 9px;
+}
+
+.combatEquipmentList,
+.combatGemList,
+.combatToggleGrid {
+  display: grid;
+  gap: 6px;
+}
+
+.combatGemList {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.combatGemMarketGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(72px, 1fr));
+  gap: 6px;
+}
+
+.combatEquipmentRow,
+.combatGemSlot,
+.combatToggleRow {
+  display: grid;
+  gap: 8px;
+  align-items: end;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--soft-2);
+  padding: 7px;
+}
+
+.combatEquipmentRow {
+  grid-template-columns: 64px repeat(3, minmax(58px, 1fr));
+}
+
+.combatGemSlot {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 6px;
+  padding: 7px;
+}
+
+.combatGemIcon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  aspect-ratio: 1;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 900;
+  overflow: hidden;
+}
+
+.combatGemIcon.damage {
+  background: linear-gradient(135deg, #2563eb, #7c3aed 58%, #f97316);
+}
+
+.combatGemIcon.cooldown {
+  background: linear-gradient(135deg, #0f766e, #2563eb 55%, #a855f7);
+}
+
+.combatGemIcon span {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  min-width: 18px;
+  border-radius: 5px;
+  background: #2563eb;
+  line-height: 18px;
+  text-align: center;
+}
+
+.combatGemControls {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.combatGemTopLine {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.combatGemTopLine strong {
+  color: var(--text);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.combatGemBound {
+  display: inline-flex !important;
+  grid-template-columns: none !important;
+  align-items: center;
+  gap: 4px !important;
+  white-space: nowrap;
+}
+
+.combatGemBound input {
+  width: 14px;
+  min-height: 14px;
+  padding: 0;
+}
+
+.combatGemEditGrid {
+  display: grid;
+  grid-template-columns: 1fr 0.66fr;
+  gap: 4px;
+}
+
+.combatGemSkillInput {
+  width: 100%;
+  min-height: 29px !important;
+}
+
+.combatGemCostInput {
+  grid-template-columns: 68px minmax(0, 1fr) !important;
+  align-items: center;
+  gap: 4px !important;
+}
+
+.combatToggleRow {
+  grid-template-columns: 86px repeat(2, minmax(80px, 1fr));
+}
+
+.combatToggleRowSplit {
+  grid-template-columns: 1fr;
+}
+
+.combatSystemItemList {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 5px;
+}
+
+.combatSystemItemToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.combatSystemItemToolbar .growthAction {
+  min-height: 30px;
+  padding: 5px 9px;
+  font-size: 12px;
+}
+
+.combatSystemItem {
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  padding: 6px 8px;
+}
+
+.combatSystemItem strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.combatSystemItem span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.combatSystemItemEditable {
+  gap: 7px;
+}
+
+.combatSystemItemFields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.combatSystemItemFields label {
+  min-width: 0;
+}
+
+.combatSystemItemFields input {
+  width: 100%;
+}
+
+.combatCheckLabel {
+  display: flex !important;
+  grid-template-columns: none !important;
+  align-items: center;
+  gap: 7px !important;
+}
+
+.combatCheckLabel input {
+  width: 15px;
+  min-height: 15px;
+  padding: 0;
+}
+
+.combatUpgradeEditor input:read-only {
+  color: var(--muted);
+  background: var(--soft-2);
+}
+
 .combatUpgradeEditorGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1470,7 +1892,7 @@
 
 .combatUpgradeEditor {
   display: grid;
-  grid-template-columns: minmax(120px, 1.2fr) repeat(4, minmax(82px, 1fr));
+  grid-template-columns: minmax(120px, 1.2fr) repeat(3, minmax(82px, 1fr));
   gap: 8px;
   align-items: end;
   border: 1px solid var(--border);
@@ -1493,6 +1915,12 @@
   font-size: 11px;
 }
 
+.combatUpgradeEditor small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .combatUpgradeEditor label {
   gap: 4px;
 }
@@ -1512,6 +1940,135 @@
   gap: 8px;
 }
 
+.combatPriorityPanel {
+  display: grid;
+  gap: 8px;
+}
+
+.combatTableHeader {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 150px 130px 130px 56px;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--text);
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.combatTableHeader span:first-child {
+  grid-column: 1 / 3;
+}
+
+.combatTableHeader span:not(:first-child) {
+  text-align: right;
+}
+
+.combatTableHeader.compact {
+  margin-top: 4px;
+}
+
+.combatPriorityList {
+  display: grid;
+  gap: 8px;
+}
+
+.combatPriorityRow {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 10px 12px;
+}
+
+.combatPriorityRow.selected {
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+  background: var(--card);
+}
+
+.combatPriorityRow summary {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 150px 130px 130px 56px;
+  gap: 12px;
+  align-items: center;
+  cursor: pointer;
+  list-style: none;
+}
+
+.combatPriorityRow summary::after {
+  content: "펼치기";
+  justify-self: end;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.combatPriorityRow[open] summary::after {
+  content: "접기";
+}
+
+.combatPriorityRow summary::-webkit-details-marker {
+  display: none;
+}
+
+.combatPriorityRow summary::after {
+  content: "펼치기";
+}
+
+.combatPriorityRow[open] summary::after {
+  content: "접기";
+}
+
+.combatPriorityGoal {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.combatPriorityGoal strong {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.combatPriorityGoal span {
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.combatPriorityMetric,
+.combatPriorityCost {
+  display: grid;
+  gap: 3px;
+  text-align: right;
+}
+
+.combatPriorityMetric strong {
+  color: var(--text);
+}
+
+.combatPriorityMetric span {
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.combatPriorityCost strong {
+  color: var(--text);
+}
+
+.combatPriorityCost span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .combatUpgradeRow {
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -1520,8 +2077,9 @@
 }
 
 .combatUpgradeRow summary {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: start;
   gap: 12px;
   cursor: pointer;
   list-style: none;
@@ -1534,10 +2092,17 @@
 .combatUpgradeRow summary > div {
   display: grid;
   gap: 4px;
+  min-width: 0;
 }
 
 .combatUpgradeRow summary > div:last-child {
   text-align: right;
+}
+
+.combatUpgradeIndex {
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.4;
 }
 
 .combatUpgradeRow span {
@@ -1680,6 +2245,15 @@
   padding: 12px;
 }
 
+.goldCashRateBox {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 12px;
+}
+
 .cathedralExchangeHeader,
 .cathedralExchangeResult {
   display: grid;
@@ -1697,6 +2271,25 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: end;
+}
+
+.goldCashRateControl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  color: var(--text);
+  font-weight: 900;
+}
+
+.goldCashRateControl input {
+  min-height: 36px;
+}
+
+.goldCashRateControl em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
 }
 
 .cathedralCheck {
@@ -1771,9 +2364,11 @@
 }
 
 @media (max-width: 900px) {
+  .growthPage,
   .growthHero,
   .growthGrid,
   .growthTopGrid,
+  .setupSplitGrid,
   .growthFieldGrid,
   .goalQuickGrid,
   .ocrDesignerGrid,
@@ -1792,8 +2387,30 @@
   .combatTargetGrid,
   .combatDetailGrid,
   .combatResultPanel,
+  .combatCostBreakdown,
+  .combatCategoryRail,
+  .combatAutoGrid,
+  .combatGemMarketGrid,
+  .combatSystemItemFields,
+  .combatUpgradeEditorGrid,
   .recommendGrid {
     grid-template-columns: 1fr;
+  }
+
+  .combatIncludedRouteRow {
+    grid-template-columns: 1fr;
+  }
+
+  .combatIncludedRouteRow strong,
+  .combatIncludedRouteRow em {
+    text-align: left;
+  }
+
+  .growthTopGrid,
+  .plannerSideColumn,
+  .plannerMainColumn {
+    grid-column: 1;
+    grid-row: auto;
   }
 
   .estimateOptionCard {
@@ -1841,6 +2458,52 @@
   .confirmedUpgradeItem {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .combatUpgradeEditor {
+    grid-template-columns: 1fr;
+  }
+
+  .combatAutoSectionWide {
+    grid-column: auto;
+  }
+
+  .combatGemList {
+    grid-template-columns: 1fr;
+  }
+
+  .combatEquipmentRow,
+  .combatGemSlot,
+  .combatToggleRow {
+    grid-template-columns: 1fr;
+  }
+
+  .combatUpgradeRow summary {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+
+  .combatUpgradeRow summary > div:last-child {
+    grid-column: 2;
+    text-align: left;
+  }
+
+  .combatTableHeader {
+    display: none;
+  }
+
+  .combatPriorityRow summary {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+
+  .combatPriorityMetric,
+  .combatPriorityCost {
+    grid-column: 2;
+    text-align: left;
+  }
+
+  .combatPriorityRow summary::after {
+    grid-column: 2;
+    justify-self: start;
   }
 
   .confirmedRouteSummary .routeUsageRow {
