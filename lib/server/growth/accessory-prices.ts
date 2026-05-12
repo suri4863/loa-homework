@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const LOSTARK_API_BASE = "https://developer-lostark.game.onstove.com";
+const ACCESSORY_PRICE_QUERY_VERSION = "buy-price-high-options-v2";
 
 type AccessoryPart = "목걸이" | "귀걸이" | "반지";
 
@@ -10,6 +11,7 @@ type AccessoryAuctionItem = {
   part: AccessoryPart;
   target: string;
   itemName: string;
+  grade: string;
   quality: number;
   buyPrice: number;
   options: string[];
@@ -29,36 +31,99 @@ const ACCESSORY_CATEGORIES: Record<AccessoryPart, number> = {
 const PREFERRED_OPTION_SEARCHES: Record<AccessoryPart, AccessoryTargetSearch[]> = {
   목걸이: [
     {
-      label: "추가 피해 + 적에게 주는 피해 상옵",
+      label: "추가 피해 상 + 적에게 주는 피해 상",
       options: [
-        { secondOption: 41, minValue: 150 },
-        { secondOption: 42, minValue: 90 },
+        { secondOption: 41, minValue: 260 },
+        { secondOption: 42, minValue: 200 },
       ],
     },
-    { label: "추가 피해 상옵", options: [{ secondOption: 41, minValue: 150 }] },
-    { label: "적에게 주는 피해 상옵", options: [{ secondOption: 42, minValue: 90 }] },
+    {
+      label: "적에게 주는 피해 상 + 추가 피해 중",
+      options: [
+        { secondOption: 42, minValue: 200 },
+        { secondOption: 41, minValue: 160 },
+      ],
+    },
+    {
+      label: "추가 피해 상 + 적에게 주는 피해 중",
+      options: [
+        { secondOption: 41, minValue: 260 },
+        { secondOption: 42, minValue: 120 },
+      ],
+    },
+    {
+      label: "적에게 주는 피해 중 + 추가 피해 중",
+      options: [
+        { secondOption: 42, minValue: 120 },
+        { secondOption: 41, minValue: 160 },
+      ],
+    },
+    { label: "적에게 주는 피해 상", options: [{ secondOption: 42, minValue: 200 }] },
+    { label: "추가 피해 상", options: [{ secondOption: 41, minValue: 260 }] },
   ],
   귀걸이: [
     {
-      label: "무기 공격력 % + 공격력 % 상옵",
+      label: "공격력 상 + 무기 공격력 상",
       options: [
-        { secondOption: 46, minValue: 136 },
-        { secondOption: 45, minValue: 70 },
+        { secondOption: 45, minValue: 155 },
+        { secondOption: 46, minValue: 300 },
       ],
     },
-    { label: "무기 공격력 % 상옵", options: [{ secondOption: 46, minValue: 136 }] },
-    { label: "공격력 % 상옵", options: [{ secondOption: 45, minValue: 70 }] },
+    {
+      label: "공격력 상 + 무기 공격력 중",
+      options: [
+        { secondOption: 45, minValue: 155 },
+        { secondOption: 46, minValue: 180 },
+      ],
+    },
+    {
+      label: "무기 공격력 상 + 공격력 중",
+      options: [
+        { secondOption: 46, minValue: 300 },
+        { secondOption: 45, minValue: 95 },
+      ],
+    },
+    {
+      label: "공격력 중 + 무기 공격력 중",
+      options: [
+        { secondOption: 45, minValue: 95 },
+        { secondOption: 46, minValue: 180 },
+      ],
+    },
+    { label: "공격력 상", options: [{ secondOption: 45, minValue: 155 }] },
+    { label: "무기 공격력 상", options: [{ secondOption: 46, minValue: 300 }] },
   ],
   반지: [
     {
-      label: "치명타 피해 + 치명타 적중률 상옵",
+      label: "치명타 피해 상 + 치명타 적중률 상",
       options: [
-        { secondOption: 50, minValue: 179 },
-        { secondOption: 49, minValue: 70 },
+        { secondOption: 50, minValue: 400 },
+        { secondOption: 49, minValue: 155 },
       ],
     },
-    { label: "치명타 피해 상옵", options: [{ secondOption: 50, minValue: 179 }] },
-    { label: "치명타 적중률 상옵", options: [{ secondOption: 49, minValue: 70 }] },
+    {
+      label: "치명타 피해 상 + 치명타 적중률 중",
+      options: [
+        { secondOption: 50, minValue: 400 },
+        { secondOption: 49, minValue: 95 },
+      ],
+    },
+    {
+      label: "치명타 적중률 상 + 치명타 피해 중",
+      options: [
+        { secondOption: 49, minValue: 155 },
+        { secondOption: 50, minValue: 240 },
+      ],
+    },
+    {
+      label: "치명타 피해 중 + 치명타 적중률 중",
+      options: [
+        { secondOption: 50, minValue: 240 },
+        { secondOption: 49, minValue: 95 },
+      ],
+    },
+    { label: "치명타 피해 상", options: [{ secondOption: 50, minValue: 400 }] },
+    { label: "치명타 적중률 상", options: [{ secondOption: 49, minValue: 155 }] },
   ],
 };
 
@@ -115,8 +180,6 @@ function readBuyPrice(item: any) {
       auctionInfo?.buyPrice ??
       item?.BuyPrice ??
       item?.buyPrice ??
-      item?.CurrentMinPrice ??
-      item?.currentMinPrice ??
       0
   );
   return Number.isFinite(price) && price > 0 ? price : 0;
@@ -146,11 +209,13 @@ async function fetchAccessoryTargetPrice(
   apiKey: string,
   part: AccessoryPart,
   target: AccessoryTargetSearch,
-  minQuality: number
+  minQuality: number,
+  itemGrade: string
 ): Promise<AccessoryAuctionItem | null> {
   const basePayload = {
     CategoryCode: ACCESSORY_CATEGORIES[part],
     ItemTier: 4,
+    ItemGrade: itemGrade,
     Sort: "BUY_PRICE",
     SortCondition: "ASC",
     SkillOptions: [],
@@ -188,6 +253,7 @@ async function fetchAccessoryTargetPrice(
     part,
     target: target.label,
     itemName: String(best.item?.Name ?? best.item?.name ?? part),
+    grade: String(best.item?.Grade ?? best.item?.grade ?? itemGrade),
     quality: Number(best.item?.GradeQuality ?? best.item?.gradeQuality ?? 0) || 0,
     buyPrice: best.price,
     options: best.options,
@@ -196,7 +262,16 @@ async function fetchAccessoryTargetPrice(
 
 function parseMinQuality(input: unknown) {
   const value = Number(Array.isArray(input) ? input[0] : input);
-  return Number.isFinite(value) && value > 0 ? Math.max(10, Math.min(100, Math.floor(value))) : 90;
+  return Number.isFinite(value) && value > 0 ? Math.max(10, Math.min(100, Math.floor(value))) : 67;
+}
+
+function parseGrades(input: unknown) {
+  const raw = Array.isArray(input) ? input.join(",") : String(input || "");
+  const grades = raw
+    .split(",")
+    .map((grade) => grade.trim())
+    .filter((grade) => grade === "고대" || grade === "유물");
+  return grades.length ? Array.from(new Set(grades)) : ["고대", "유물"];
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -215,6 +290,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const minQuality = parseMinQuality(req.query.minQuality);
+    const grades = parseGrades(req.query.grade || req.query.grades);
     const requested = String(req.query.parts || "")
       .split(",")
       .map((part) => part.trim())
@@ -225,26 +301,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const warnings: string[] = [];
     for (const part of parts) {
       for (const target of PREFERRED_OPTION_SEARCHES[part]) {
-        try {
-          const item = await fetchAccessoryTargetPrice(apiKey, part, target, minQuality);
-          if (item) {
-            items.push(item);
-            break;
+        let foundForTarget = false;
+        for (const grade of grades) {
+          if (foundForTarget) break;
+          try {
+            const item = await fetchAccessoryTargetPrice(apiKey, part, target, minQuality, grade);
+            if (item) {
+              items.push(item);
+              foundForTarget = true;
+              break;
+            }
+          } catch (error: any) {
+            warnings.push(`${part}/${grade}/${target.label}: ${String(error?.message || error)}`);
+            if (String(error?.message || "").includes("LOSTARK_API_429")) break;
           }
-        } catch (error: any) {
-          warnings.push(String(error?.message || error));
-          if (String(error?.message || "").includes("LOSTARK_API_429")) break;
+          await delay(250);
         }
-        await delay(250);
       }
     }
 
     const pricesByPart: Record<string, number> = {};
     const targetsByPart: Record<string, AccessoryAuctionItem> = {};
+    const candidatesByPart: Record<string, AccessoryAuctionItem[]> = {};
     for (const item of items) {
-      if (pricesByPart[item.part]) continue;
-      pricesByPart[item.part] = item.buyPrice;
-      targetsByPart[item.part] = item;
+      candidatesByPart[item.part] = [...(candidatesByPart[item.part] ?? []), item].sort((a, b) => a.buyPrice - b.buyPrice);
+      const current = targetsByPart[item.part];
+      if (!current || item.buyPrice < current.buyPrice) {
+        pricesByPart[item.part] = item.buyPrice;
+        targetsByPart[item.part] = item;
+      }
     }
 
     return res.status(200).json({
@@ -252,9 +337,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       source: "lostark-openapi-auctions",
       sourceUrl: `${LOSTARK_API_BASE}/auctions/items`,
       fetchedAt: new Date().toISOString(),
+      queryVersion: ACCESSORY_PRICE_QUERY_VERSION,
       minQuality,
+      grades,
       pricesByPart,
       targetsByPart,
+      candidatesByPart,
       items,
       warnings,
     });

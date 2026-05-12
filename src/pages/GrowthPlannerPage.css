@@ -1656,6 +1656,22 @@
   font-size: 12px;
 }
 
+.combatInlineControls {
+  display: flex;
+  align-items: end;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.combatInlineSelect {
+  min-width: 92px;
+}
+
+.combatInlineSelect select {
+  width: 100%;
+}
+
 .combatAutoSection label {
   gap: 3px;
 }
