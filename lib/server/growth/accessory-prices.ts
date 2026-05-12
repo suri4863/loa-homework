@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const LOSTARK_API_BASE = "https://developer-lostark.game.onstove.com";
-const ACCESSORY_PRICE_QUERY_VERSION = "buy-price-high-options-v2";
+const ACCESSORY_PRICE_QUERY_VERSION = "buy-price-efficiency-candidates-v4";
 
 type AccessoryPart = "목걸이" | "귀걸이" | "반지";
 
@@ -11,9 +11,11 @@ type AccessoryAuctionItem = {
   part: AccessoryPart;
   target: string;
   itemName: string;
-  grade: string;
+  grade?: string;
   quality: number;
   buyPrice: number;
+  tradeAllowCount: number;
+  basicStats: string[];
   options: string[];
 };
 
@@ -30,100 +32,34 @@ const ACCESSORY_CATEGORIES: Record<AccessoryPart, number> = {
 
 const PREFERRED_OPTION_SEARCHES: Record<AccessoryPart, AccessoryTargetSearch[]> = {
   목걸이: [
-    {
-      label: "추가 피해 상 + 적에게 주는 피해 상",
-      options: [
-        { secondOption: 41, minValue: 260 },
-        { secondOption: 42, minValue: 200 },
-      ],
-    },
-    {
-      label: "적에게 주는 피해 상 + 추가 피해 중",
-      options: [
-        { secondOption: 42, minValue: 200 },
-        { secondOption: 41, minValue: 160 },
-      ],
-    },
-    {
-      label: "추가 피해 상 + 적에게 주는 피해 중",
-      options: [
-        { secondOption: 41, minValue: 260 },
-        { secondOption: 42, minValue: 120 },
-      ],
-    },
-    {
-      label: "적에게 주는 피해 중 + 추가 피해 중",
-      options: [
-        { secondOption: 42, minValue: 120 },
-        { secondOption: 41, minValue: 160 },
-      ],
-    },
-    { label: "적에게 주는 피해 상", options: [{ secondOption: 42, minValue: 200 }] },
+    { label: "추가 피해 상 + 적에게 주는 피해 상", options: [{ secondOption: 41, minValue: 260 }, { secondOption: 42, minValue: 200 }] },
+    { label: "추가 피해 상 + 적에게 주는 피해 중", options: [{ secondOption: 41, minValue: 260 }, { secondOption: 42, minValue: 120 }] },
+    { label: "추가 피해 중 + 적에게 주는 피해 상", options: [{ secondOption: 41, minValue: 160 }, { secondOption: 42, minValue: 200 }] },
+    { label: "추가 피해 중 + 적에게 주는 피해 중", options: [{ secondOption: 41, minValue: 160 }, { secondOption: 42, minValue: 120 }] },
     { label: "추가 피해 상", options: [{ secondOption: 41, minValue: 260 }] },
+    { label: "적에게 주는 피해 상", options: [{ secondOption: 42, minValue: 200 }] },
+    { label: "추가 피해 중", options: [{ secondOption: 41, minValue: 160 }] },
+    { label: "적에게 주는 피해 중", options: [{ secondOption: 42, minValue: 120 }] },
   ],
   귀걸이: [
-    {
-      label: "공격력 상 + 무기 공격력 상",
-      options: [
-        { secondOption: 45, minValue: 155 },
-        { secondOption: 46, minValue: 300 },
-      ],
-    },
-    {
-      label: "공격력 상 + 무기 공격력 중",
-      options: [
-        { secondOption: 45, minValue: 155 },
-        { secondOption: 46, minValue: 180 },
-      ],
-    },
-    {
-      label: "무기 공격력 상 + 공격력 중",
-      options: [
-        { secondOption: 46, minValue: 300 },
-        { secondOption: 45, minValue: 95 },
-      ],
-    },
-    {
-      label: "공격력 중 + 무기 공격력 중",
-      options: [
-        { secondOption: 45, minValue: 95 },
-        { secondOption: 46, minValue: 180 },
-      ],
-    },
-    { label: "공격력 상", options: [{ secondOption: 45, minValue: 155 }] },
+    { label: "공격력 상 + 무기 공격력 상", options: [{ secondOption: 45, minValue: 155 }, { secondOption: 46, minValue: 300 }] },
+    { label: "공격력 상 + 무기 공격력 중", options: [{ secondOption: 45, minValue: 155 }, { secondOption: 46, minValue: 180 }] },
+    { label: "공격력 중 + 무기 공격력 상", options: [{ secondOption: 45, minValue: 95 }, { secondOption: 46, minValue: 300 }] },
+    { label: "공격력 중 + 무기 공격력 중", options: [{ secondOption: 45, minValue: 95 }, { secondOption: 46, minValue: 180 }] },
     { label: "무기 공격력 상", options: [{ secondOption: 46, minValue: 300 }] },
+    { label: "공격력 상", options: [{ secondOption: 45, minValue: 155 }] },
+    { label: "무기 공격력 중", options: [{ secondOption: 46, minValue: 180 }] },
+    { label: "공격력 중", options: [{ secondOption: 45, minValue: 95 }] },
   ],
   반지: [
-    {
-      label: "치명타 피해 상 + 치명타 적중률 상",
-      options: [
-        { secondOption: 50, minValue: 400 },
-        { secondOption: 49, minValue: 155 },
-      ],
-    },
-    {
-      label: "치명타 피해 상 + 치명타 적중률 중",
-      options: [
-        { secondOption: 50, minValue: 400 },
-        { secondOption: 49, minValue: 95 },
-      ],
-    },
-    {
-      label: "치명타 적중률 상 + 치명타 피해 중",
-      options: [
-        { secondOption: 49, minValue: 155 },
-        { secondOption: 50, minValue: 240 },
-      ],
-    },
-    {
-      label: "치명타 피해 중 + 치명타 적중률 중",
-      options: [
-        { secondOption: 50, minValue: 240 },
-        { secondOption: 49, minValue: 95 },
-      ],
-    },
+    { label: "치명타 피해 상 + 치명타 적중률 상", options: [{ secondOption: 50, minValue: 400 }, { secondOption: 49, minValue: 155 }] },
+    { label: "치명타 피해 상 + 치명타 적중률 중", options: [{ secondOption: 50, minValue: 400 }, { secondOption: 49, minValue: 95 }] },
+    { label: "치명타 피해 중 + 치명타 적중률 상", options: [{ secondOption: 50, minValue: 240 }, { secondOption: 49, minValue: 155 }] },
+    { label: "치명타 피해 중 + 치명타 적중률 중", options: [{ secondOption: 50, minValue: 240 }, { secondOption: 49, minValue: 95 }] },
     { label: "치명타 피해 상", options: [{ secondOption: 50, minValue: 400 }] },
     { label: "치명타 적중률 상", options: [{ secondOption: 49, minValue: 155 }] },
+    { label: "치명타 피해 중", options: [{ secondOption: 50, minValue: 240 }] },
+    { label: "치명타 적중률 중", options: [{ secondOption: 49, minValue: 95 }] },
   ],
 };
 
@@ -144,10 +80,9 @@ function getApiKey() {
 }
 
 function authHeaders(apiKey: string) {
-  const normalized = /^bearer\s+/i.test(apiKey) ? apiKey : `bearer ${apiKey}`;
   return {
     accept: "application/json",
-    authorization: normalized,
+    authorization: /^bearer\s+/i.test(apiKey) ? apiKey : `bearer ${apiKey}`,
   };
 }
 
@@ -175,14 +110,14 @@ function delay(ms: number) {
 
 function readBuyPrice(item: any) {
   const auctionInfo = item?.AuctionInfo ?? item?.auctionInfo ?? {};
-  const price = Number(
-    auctionInfo?.BuyPrice ??
-      auctionInfo?.buyPrice ??
-      item?.BuyPrice ??
-      item?.buyPrice ??
-      0
-  );
+  const price = Number(auctionInfo?.BuyPrice ?? auctionInfo?.buyPrice ?? item?.BuyPrice ?? item?.buyPrice ?? 0);
   return Number.isFinite(price) && price > 0 ? price : 0;
+}
+
+function readTradeAllowCount(item: any) {
+  const auctionInfo = item?.AuctionInfo ?? item?.auctionInfo ?? {};
+  const count = Number(auctionInfo?.TradeAllowCount ?? auctionInfo?.tradeAllowCount ?? item?.TradeAllowCount ?? item?.tradeAllowCount ?? 0);
+  return Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
 }
 
 function readOptions(item: any) {
@@ -200,8 +135,22 @@ function readOptions(item: any) {
     .filter(Boolean);
 }
 
-function isSaneAccessoryPrice(part: AccessoryPart, price: number) {
-  const minimum = part === "목걸이" ? 1000 : 500;
+function readBasicStats(item: any) {
+  const options = Array.isArray(item?.Options) ? item.Options : Array.isArray(item?.options) ? item.options : [];
+  const wantedNames = new Set(["힘", "민첩", "지능", "체력"]);
+  return options
+    .map((option: any) => {
+      const name = String(option?.OptionName ?? option?.optionName ?? "");
+      if (!wantedNames.has(name)) return "";
+      const value = Number(option?.Value ?? option?.value ?? 0);
+      if (!Number.isFinite(value) || value === 0) return name;
+      return `${name} +${value.toLocaleString()}`;
+    })
+    .filter(Boolean);
+}
+
+function isSaneAccessoryBuyPrice(part: AccessoryPart, price: number) {
+  const minimum = part === "목걸이" ? 10_000 : 5_000;
   return Number.isFinite(price) && price >= minimum;
 }
 
@@ -209,13 +158,11 @@ async function fetchAccessoryTargetPrice(
   apiKey: string,
   part: AccessoryPart,
   target: AccessoryTargetSearch,
-  minQuality: number,
-  itemGrade: string
+  minQuality: number
 ): Promise<AccessoryAuctionItem | null> {
   const basePayload = {
     CategoryCode: ACCESSORY_CATEGORIES[part],
     ItemTier: 4,
-    ItemGrade: itemGrade,
     Sort: "BUY_PRICE",
     SortCondition: "ASC",
     SkillOptions: [],
@@ -227,24 +174,33 @@ async function fetchAccessoryTargetPrice(
     })),
   };
 
-  const rows: Array<{ item: any; price: number; options: string[] }> = [];
+  const rows: Array<{ item: any; price: number; options: string[]; basicStats: string[] }> = [];
   for (let pageNo = 1; pageNo <= 5; pageNo += 1) {
     const data = await lostarkFetch(apiKey, "/auctions/items", {
       method: "POST",
       body: JSON.stringify({ ...basePayload, PageNo: pageNo }),
     });
     const items = Array.isArray(data?.Items) ? data.Items : Array.isArray(data?.items) ? data.items : [];
-    rows.push(...items.map((item: any) => ({ item, price: readBuyPrice(item), options: readOptions(item) })));
+    rows.push(
+      ...items.map((item: any) => ({
+        item,
+        price: readBuyPrice(item),
+        options: readOptions(item),
+        basicStats: readBasicStats(item),
+      }))
+    );
     const totalCount = Number(data?.TotalCount ?? data?.totalCount ?? 0);
     const pageSize = Math.max(1, Number(data?.PageSize ?? data?.pageSize ?? items.length) || 10);
     if (!items.length || pageNo * pageSize >= totalCount) break;
-    await delay(150);
+    await delay(120);
   }
 
   const best = rows
+    .filter((row) => String(row.item?.Grade ?? row.item?.grade ?? "") === "고대")
+    .filter((row) => Number(row.item?.Level ?? row.item?.level ?? 0) >= 1680)
     .filter((row) => Number(row.item?.GradeQuality ?? row.item?.gradeQuality ?? 0) >= minQuality)
     .filter((row) => row.price > 0 && row.options.length > 0)
-    .filter((row) => isSaneAccessoryPrice(part, row.price))
+    .filter((row) => isSaneAccessoryBuyPrice(part, row.price))
     .sort((a, b) => a.price - b.price)[0];
 
   if (!best) return null;
@@ -253,25 +209,26 @@ async function fetchAccessoryTargetPrice(
     part,
     target: target.label,
     itemName: String(best.item?.Name ?? best.item?.name ?? part),
-    grade: String(best.item?.Grade ?? best.item?.grade ?? itemGrade),
+    grade: String(best.item?.Grade ?? best.item?.grade ?? ""),
     quality: Number(best.item?.GradeQuality ?? best.item?.gradeQuality ?? 0) || 0,
     buyPrice: best.price,
+    tradeAllowCount: readTradeAllowCount(best.item),
+    basicStats: best.basicStats,
     options: best.options,
   };
 }
 
 function parseMinQuality(input: unknown) {
   const value = Number(Array.isArray(input) ? input[0] : input);
-  return Number.isFinite(value) && value > 0 ? Math.max(10, Math.min(100, Math.floor(value))) : 67;
+  return Number.isFinite(value) && value > 0 ? Math.max(10, Math.min(100, Math.floor(value))) : 70;
 }
 
-function parseGrades(input: unknown) {
-  const raw = Array.isArray(input) ? input.join(",") : String(input || "");
-  const grades = raw
+function parseParts(input: unknown): AccessoryPart[] {
+  const requested = String(Array.isArray(input) ? input[0] : input || "")
     .split(",")
-    .map((grade) => grade.trim())
-    .filter((grade) => grade === "고대" || grade === "유물");
-  return grades.length ? Array.from(new Set(grades)) : ["고대", "유물"];
+    .map((part) => part.trim())
+    .filter((part): part is AccessoryPart => part === "목걸이" || part === "귀걸이" || part === "반지");
+  return requested.length ? Array.from(new Set(requested)) : ["목걸이", "귀걸이", "반지"];
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -285,61 +242,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({
         ok: false,
         error: "LOSTARK_API_KEY_REQUIRED",
-        detail: "공식 경매장 악세 시세를 불러오려면 LOSTARK_API_KEY가 필요해.",
+        detail: "공식 경매장 시세를 불러오려면 서버 환경변수 LOSTARK_API_KEY가 필요해.",
       });
     }
 
     const minQuality = parseMinQuality(req.query.minQuality);
-    const grades = parseGrades(req.query.grade || req.query.grades);
-    const requested = String(req.query.parts || "")
-      .split(",")
-      .map((part) => part.trim())
-      .filter((part): part is AccessoryPart => part === "목걸이" || part === "귀걸이" || part === "반지");
-    const parts = requested.length ? Array.from(new Set(requested)) : (["목걸이", "귀걸이", "반지"] as AccessoryPart[]);
-
+    const parts = parseParts(req.query.parts);
     const items: AccessoryAuctionItem[] = [];
+    const candidatesByPart: Record<string, AccessoryAuctionItem[]> = {};
     const warnings: string[] = [];
+
     for (const part of parts) {
       for (const target of PREFERRED_OPTION_SEARCHES[part]) {
-        let foundForTarget = false;
-        for (const grade of grades) {
-          if (foundForTarget) break;
-          try {
-            const item = await fetchAccessoryTargetPrice(apiKey, part, target, minQuality, grade);
-            if (item) {
-              items.push(item);
-              foundForTarget = true;
-              break;
-            }
-          } catch (error: any) {
-            warnings.push(`${part}/${grade}/${target.label}: ${String(error?.message || error)}`);
-            if (String(error?.message || "").includes("LOSTARK_API_429")) break;
+        try {
+          const item = await fetchAccessoryTargetPrice(apiKey, part, target, minQuality);
+          if (item) {
+            items.push(item);
+            candidatesByPart[part] = [...(candidatesByPart[part] ?? []), item];
           }
-          await delay(250);
+        } catch (error: any) {
+          warnings.push(String(error?.message || error));
+          if (String(error?.message || "").includes("LOSTARK_API_429")) break;
         }
+        await delay(180);
       }
     }
 
     const pricesByPart: Record<string, number> = {};
     const targetsByPart: Record<string, AccessoryAuctionItem> = {};
-    const candidatesByPart: Record<string, AccessoryAuctionItem[]> = {};
-    for (const item of items) {
-      candidatesByPart[item.part] = [...(candidatesByPart[item.part] ?? []), item].sort((a, b) => a.buyPrice - b.buyPrice);
-      const current = targetsByPart[item.part];
-      if (!current || item.buyPrice < current.buyPrice) {
-        pricesByPart[item.part] = item.buyPrice;
-        targetsByPart[item.part] = item;
-      }
+    for (const [part, candidates] of Object.entries(candidatesByPart)) {
+      const cheapest = [...candidates].sort((a, b) => a.buyPrice - b.buyPrice)[0];
+      if (!cheapest) continue;
+      pricesByPart[part] = cheapest.buyPrice;
+      targetsByPart[part] = cheapest;
     }
 
     return res.status(200).json({
       ok: true,
       source: "lostark-openapi-auctions",
       sourceUrl: `${LOSTARK_API_BASE}/auctions/items`,
-      fetchedAt: new Date().toISOString(),
       queryVersion: ACCESSORY_PRICE_QUERY_VERSION,
+      fetchedAt: new Date().toISOString(),
       minQuality,
-      grades,
       pricesByPart,
       targetsByPart,
       candidatesByPart,

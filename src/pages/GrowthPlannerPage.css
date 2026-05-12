@@ -1661,15 +1661,34 @@
   align-items: end;
   justify-content: flex-end;
   gap: 8px;
-  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.combatInlineControls label {
+  display: grid;
+  gap: 3px;
+  min-width: 76px;
 }
 
 .combatInlineSelect {
-  min-width: 92px;
+  min-width: 76px;
 }
 
-.combatInlineSelect select {
-  width: 100%;
+.combatAutoHeaderStack {
+  align-items: flex-start;
+}
+
+.combatAutoHeaderStack > div {
+  min-width: 0;
+}
+
+.combatAutoHeaderStack > div span {
+  max-width: 52ch;
+  line-height: 1.45;
+}
+
+.combatAutoHeaderStack > span {
+  white-space: nowrap;
 }
 
 .combatAutoSection label {
@@ -1727,39 +1746,6 @@
   align-items: start;
   gap: 6px;
   padding: 7px;
-}
-
-.combatGemIcon {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 42px;
-  aspect-ratio: 1;
-  border-radius: 7px;
-  border: 1px solid var(--border);
-  color: #fff;
-  font-size: 14px;
-  font-weight: 900;
-  overflow: hidden;
-}
-
-.combatGemIcon.damage {
-  background: linear-gradient(135deg, #2563eb, #7c3aed 58%, #f97316);
-}
-
-.combatGemIcon.cooldown {
-  background: linear-gradient(135deg, #0f766e, #2563eb 55%, #a855f7);
-}
-
-.combatGemIcon span {
-  position: absolute;
-  top: 2px;
-  right: 3px;
-  min-width: 18px;
-  border-radius: 5px;
-  background: #2563eb;
-  line-height: 18px;
-  text-align: center;
 }
 
 .combatGemControls {
@@ -1862,6 +1848,113 @@
   color: var(--muted);
   font-size: 11px;
   line-height: 1.35;
+}
+
+.accessoryCandidatePanel {
+  display: grid;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  padding: 8px;
+}
+
+.accessoryCandidatePanel summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.accessoryCandidatePanel summary::-webkit-details-marker {
+  display: none;
+}
+
+.accessoryCandidatePanel summary::after {
+  content: "펼치기";
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.accessoryCandidatePanel[open] summary::after {
+  content: "접기";
+}
+
+.accessoryCandidatePanel.recommendation {
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.accessoryCandidateHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.accessoryCandidateHeader strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.accessoryCandidateHeader span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.accessoryCandidateTable {
+  display: grid;
+  gap: 5px;
+}
+
+.accessoryCandidateTableHead,
+.accessoryCandidateRow {
+  display: grid;
+  grid-template-columns: minmax(86px, 0.8fr) minmax(180px, 2fr) 54px 88px 92px;
+  gap: 8px;
+  align-items: center;
+}
+
+.accessoryCandidateTableHead {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  padding: 0 4px;
+}
+
+.accessoryCandidateTableHead span:nth-child(n + 3) {
+  text-align: right;
+}
+
+.accessoryCandidateRow {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--soft);
+  padding: 7px 8px;
+}
+
+.accessoryCandidateRow > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.accessoryCandidateRow strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.accessoryCandidateRow > strong,
+.accessoryCandidateRow > div:last-child {
+  text-align: right;
+}
+
+.accessoryCandidateRow span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .combatSystemItemEditable {
@@ -2134,6 +2227,11 @@
   padding-top: 10px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.combatUpgradeDetailList div {
+  white-space: pre-line;
+  line-height: 1.65;
 }
 
 .resourceTabsHeader {
@@ -2505,6 +2603,29 @@
 
   .combatTableHeader {
     display: none;
+  }
+
+  .accessoryCandidateHeader {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .accessoryCandidateTableHead {
+    display: none;
+  }
+
+  .accessoryCandidateRow {
+    grid-template-columns: 1fr;
+  }
+
+  .accessoryCandidateRow > strong,
+  .accessoryCandidateRow > div:last-child {
+    text-align: left;
+  }
+
+  .accessoryCandidateRow > strong::before {
+    color: var(--muted);
+    margin-right: 6px;
   }
 
   .combatPriorityRow summary {

@@ -31,7 +31,7 @@ const STORAGE_KEY = "loa-growth-planner:v1";
 const CHARACTER_MATERIALS_STORAGE_PREFIX = "loa-growth-planner:character-materials:v1";
 const COMBAT_STORAGE_KEY = "loa-growth-combat-target:v1";
 const GOLD_CASH_RATE_STORAGE_KEY = "loa-growth-gold-cash-rate:v1";
-const ACCESSORY_PRICE_QUERY_VERSION = "buy-price-high-options-v2";
+const ACCESSORY_PRICE_QUERY_VERSION = "buy-price-efficiency-candidates-v4";
 
 const SLOT_ORDER: EquipmentSlot[] = ["helmet", "shoulder", "chest", "pants", "gloves", "weapon"];
 
@@ -349,8 +349,8 @@ type AccessoryAuctionPriceResponse = {
   ok: boolean;
   source: string;
   sourceUrl: string;
-  fetchedAt: string;
   queryVersion?: string;
+  fetchedAt: string;
   minQuality: number;
   pricesByPart: Record<string, number>;
   targetsByPart?: Record<
@@ -359,9 +359,10 @@ type AccessoryAuctionPriceResponse = {
       part: string;
       target: string;
       itemName: string;
-      grade?: string;
       quality: number;
       buyPrice: number;
+      tradeAllowCount?: number;
+      basicStats?: string[];
       options: string[];
     }
   >;
@@ -374,6 +375,8 @@ type AccessoryAuctionPriceResponse = {
       grade?: string;
       quality: number;
       buyPrice: number;
+      tradeAllowCount?: number;
+      basicStats?: string[];
       options: string[];
     }>
   >;
@@ -384,6 +387,8 @@ type AccessoryAuctionPriceResponse = {
     grade?: string;
     quality: number;
     buyPrice: number;
+    tradeAllowCount?: number;
+    basicStats?: string[];
     options: string[];
   }>;
   warnings?: string[];
@@ -410,6 +415,7 @@ type EngravingMarketPriceResponse = {
     }
   >;
   missingNames?: string[];
+  warnings?: string[];
   error?: string;
   detail?: string;
 };
@@ -562,6 +568,19 @@ const GEM_TYPE_OPTIONS = ["겁화", "작열", "멸화", "홍염", "보석"];
 const GEM_LEVEL_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 const AVATAR_TARGET_SLOTS = ["무기", "머리", "상의", "하의"];
 const AVATAR_GRADE_OPTIONS = ["영웅", "전설", "스페셜", "현재 유지"];
+const LEGENDARY_AVATAR_TOTAL_COST = 800000;
+const LEGENDARY_AVATAR_SLOT_COST = LEGENDARY_AVATAR_TOTAL_COST / AVATAR_TARGET_SLOTS.length;
+const AVATAR_MAIN_STAT_PERCENT_BY_GRADE: Record<string, number> = {
+  미착용: 0,
+  미확인: 0,
+  영웅: 1,
+  전설: 2,
+  스페셜: 2,
+};
+// 아바타 등급은 주스탯을 올리므로 전투력 직접 증가율보다 낮게 환산한다.
+const AVATAR_COMBAT_GAIN_PERCENT_PER_MAIN_STAT_PERCENT = 0.12;
+const LEGENDARY_AVATAR_SLOT_GAIN_PERCENT = AVATAR_COMBAT_GAIN_PERCENT_PER_MAIN_STAT_PERCENT;
+const LEGENDARY_AVATAR_TOTAL_GAIN_PERCENT = LEGENDARY_AVATAR_SLOT_GAIN_PERCENT * AVATAR_TARGET_SLOTS.length;
 const AVATAR_GRADE_RANK: Record<string, number> = {
   미착용: 0,
   미확인: 0,
@@ -569,24 +588,46 @@ const AVATAR_GRADE_RANK: Record<string, number> = {
   전설: 2,
   스페셜: 3,
 };
+// 전율/계승 장비 후보는 로펙 시뮬레이터 실측 전투력 증가폭에 맞춘 환산율이다.
+const SUCCESSOR_NORMAL_GAIN_PERCENT_BY_SLOT: Record<EquipmentSlot, number> = {
+  weapon: 1.25,
+  helmet: 0.226,
+  shoulder: 0.19,
+  chest: 0.174,
+  pants: 0.191,
+  gloves: 0.24,
+};
+// T4 보석은 로펙 8겁화 -> 9겁화 실측(+52점대, 6600점대 기준)에 맞춰 레벨당 0.8%로 환산한다.
 const T4_GEM_COMBAT_GAIN_BY_LEVEL: Record<number, number> = {
-  1: 0.64,
-  2: 1.28,
-  3: 1.92,
-  4: 2.56,
-  5: 3.2,
-  6: 3.84,
-  7: 4.48,
-  8: 5.12,
-  9: 5.76,
-  10: 6.4,
+  1: 0.8,
+  2: 1.6,
+  3: 2.4,
+  4: 3.2,
+  5: 4,
+  6: 4.8,
+  7: 5.6,
+  8: 6.4,
+  9: 7.2,
+  10: 8,
 };
 
 function makeDefaultCombatCategoryFlags(): Record<CombatCategory, boolean> {
-  return Object.fromEntries(COMBAT_CATEGORIES.map((category) => [category, !["팔찌", "아크그리드", "아크패시브"].includes(category)])) as Record<CombatCategory, boolean>;
+  return Object.fromEntries(
+    COMBAT_CATEGORIES.map((category) => [category, category !== "팔찌" && category !== "아크그리드" && category !== "아크패시브"])
+  ) as Record<CombatCategory, boolean>;
 }
 
 const DEFAULT_COMBAT_OPTIONS: CombatUpgradeOption[] = [
+  {
+    id: "chaos-core-auto",
+    name: "혼돈 코어 자동 조정",
+    category: "아크그리드",
+    detail: "달(부수는 일격 -> 불타는 일격) / 별(무기 -> 공격)",
+    fromTo: "효율표 기준 자동 조정",
+    availableSteps: 1,
+    costPerStep: 0,
+    combatGainPercentPerStep: 0.7,
+  },
   {
     id: "helmet-adv-38-40",
     name: "투구 상급재련 38 -> 40",
@@ -694,8 +735,8 @@ const DEFAULT_COMBAT_OPTIONS: CombatUpgradeOption[] = [
     detail: "전투력 효율표 기준 착용/등급/부위 보정",
     fromTo: "미적용 -> 적용",
     availableSteps: 1,
-    costPerStep: 80000,
-    combatGainPercentPerStep: 0.35,
+    costPerStep: LEGENDARY_AVATAR_TOTAL_COST,
+    combatGainPercentPerStep: LEGENDARY_AVATAR_TOTAL_GAIN_PERCENT,
   },
   {
     id: "bracelet-fixed-attack",
@@ -717,17 +758,17 @@ const DEFAULT_COMBAT_OPTIONS: CombatUpgradeOption[] = [
     costPerStep: 95000,
     combatGainPercentPerStep: 0.58,
   },
+  {
+    id: "ark-passive-core",
+    name: "아크패시브 코어 상향",
+    category: "아크패시브",
+    detail: "질서/혼돈 코어 포인트 및 옵션 효율표 기준",
+    fromTo: "현재 코어 -> 추천 코어",
+    availableSteps: 1,
+    costPerStep: 90000,
+    combatGainPercentPerStep: 0.62,
+  },
 ];
-
-function isExcludedCombatRecommendation(option: Pick<CombatUpgradeOption, "id" | "name" | "category">) {
-  const text = `${option.id} ${option.name} ${option.category}`;
-  return (
-    option.category === "팔찌" ||
-    option.category === "아크그리드" ||
-    option.category === "아크패시브" ||
-    /bracelet|chaos-core|arkGrid|arkPassive|팔찌|혼돈 코어|아크그리드|아크패시브|카르마/.test(text)
-  );
-}
 
 function makeDefaultCombatProfile(): CombatProfileInputs {
   const equipmentDefaults: Record<EquipmentSlot, Pick<CombatEquipmentInput, "normalCostPerStep" | "advancedCostPerStep" | "normalGainPercent" | "advancedGainPercent">> = {
@@ -760,15 +801,17 @@ function makeDefaultCombatProfile(): CombatProfileInputs {
     gemPriceFetchedAt: "",
     accessoryPricesByPart: {},
     accessoryPriceFetchedAt: "",
+    accessoryPriceQueryVersion: "",
     accessoryTargetsByPart: {},
+    accessoryCandidatesByPart: {},
     engravingItems: [],
     engravingPricesByName: {},
     engravingPriceFetchedAt: "",
     avatarPriceFetchedAt: "",
     avatarPriceItemsBySlot: {},
     avatarItems: [],
-    avatar: { enabled: true, currentLabel: "현재", targetLabel: "공격력 계열 보정", cost: 800000, gainPercent: 0.35 },
-    accessory: { enabled: true, currentLabel: "현재 악세 옵션", targetLabel: "유효 옵션 1단계 보정", cost: 180000, gainPercent: 0.72 },
+    avatar: { enabled: true, currentLabel: "현재", targetLabel: "전설 아바타 4부위", cost: LEGENDARY_AVATAR_TOTAL_COST, gainPercent: LEGENDARY_AVATAR_TOTAL_GAIN_PERCENT },
+    accessory: { enabled: true, currentLabel: "현재 악세 옵션", targetLabel: "현재보다 효율 좋은 매물", cost: 180000, gainPercent: 0.72 },
     bracelet: { enabled: false, currentLabel: "현재 옵션", targetLabel: "추천 제외", cost: 0, gainPercent: 0 },
     engraving: { enabled: false, currentLabel: "현재 각인", targetLabel: "각인서 직접 입력", cost: 95000, gainPercent: 0.58 },
     arkGrid: { enabled: false, currentLabel: "달/별 현재", targetLabel: "추천 제외", cost: 0, gainPercent: 0 },
@@ -835,6 +878,7 @@ function normalizeCombatPlanner(raw: unknown): CombatPlannerState {
     avatar: { ...base.profile.avatar, ...(rawProfile?.avatar ?? {}) },
   };
   const normalizedAvatarItems = makeAvatarSlotRows(savedAvatarProfile.avatarItems, savedAvatarProfile);
+  const hasCurrentAccessoryPrices = rawProfile?.accessoryPriceQueryVersion === ACCESSORY_PRICE_QUERY_VERSION;
   return {
     currentCombatPower: Number(source.currentCombatPower || 0),
     targetCombatPower: Number(source.targetCombatPower || 0),
@@ -854,17 +898,14 @@ function normalizeCombatPlanner(raw: unknown): CombatPlannerState {
         ...(rawProfile?.gemPricesByLevel ?? {}),
       },
       gemPriceFetchedAt: String(rawProfile?.gemPriceFetchedAt ?? ""),
-      accessoryPricesByPart:
-        rawProfile?.accessoryPriceQueryVersion === ACCESSORY_PRICE_QUERY_VERSION
-          ? {
-              ...base.profile.accessoryPricesByPart,
-              ...(rawProfile?.accessoryPricesByPart ?? {}),
-            }
-          : {},
-      accessoryPriceFetchedAt: rawProfile?.accessoryPriceQueryVersion === ACCESSORY_PRICE_QUERY_VERSION ? String(rawProfile?.accessoryPriceFetchedAt ?? "") : "",
-      accessoryPriceQueryVersion: rawProfile?.accessoryPriceQueryVersion === ACCESSORY_PRICE_QUERY_VERSION ? ACCESSORY_PRICE_QUERY_VERSION : "",
-      accessoryTargetsByPart: rawProfile?.accessoryPriceQueryVersion === ACCESSORY_PRICE_QUERY_VERSION ? rawProfile?.accessoryTargetsByPart ?? {} : {},
-      accessoryCandidatesByPart: rawProfile?.accessoryPriceQueryVersion === ACCESSORY_PRICE_QUERY_VERSION ? rawProfile?.accessoryCandidatesByPart ?? {} : {},
+      accessoryPricesByPart: {
+        ...base.profile.accessoryPricesByPart,
+        ...(hasCurrentAccessoryPrices ? (rawProfile?.accessoryPricesByPart ?? {}) : {}),
+      },
+      accessoryPriceFetchedAt: hasCurrentAccessoryPrices ? String(rawProfile?.accessoryPriceFetchedAt ?? "") : "",
+      accessoryPriceQueryVersion: hasCurrentAccessoryPrices ? ACCESSORY_PRICE_QUERY_VERSION : "",
+      accessoryTargetsByPart: hasCurrentAccessoryPrices ? (rawProfile?.accessoryTargetsByPart ?? {}) : {},
+      accessoryCandidatesByPart: hasCurrentAccessoryPrices ? (rawProfile?.accessoryCandidatesByPart ?? {}) : {},
       engravingItems: Array.isArray(rawProfile?.engravingItems) ? rawProfile.engravingItems : [],
       engravingPricesByName: {
         ...base.profile.engravingPricesByName,
@@ -876,25 +917,26 @@ function normalizeCombatPlanner(raw: unknown): CombatPlannerState {
       accessoryItems: rawProfile?.accessoryItems ?? [],
       braceletItems: rawProfile?.braceletItems ?? [],
       avatarItems: normalizedAvatarItems,
-      avatar: { ...base.profile.avatar, ...(rawProfile?.avatar ?? {}) },
+      avatar: syncAvatarSummaryFromItems(
+        { ...base.profile, avatarItems: normalizedAvatarItems, avatar: { ...base.profile.avatar, ...(rawProfile?.avatar ?? {}) } },
+        normalizedAvatarItems
+      ).avatar,
       accessory: { ...base.profile.accessory, ...(rawProfile?.accessory ?? {}) },
-      bracelet: { ...base.profile.bracelet, ...(rawProfile?.bracelet ?? {}), enabled: false, cost: 0, gainPercent: 0, targetLabel: "추천 제외" },
+      bracelet: { ...base.profile.bracelet, ...(rawProfile?.bracelet ?? {}), enabled: false, targetLabel: "추천 제외", cost: 0, gainPercent: 0 },
       engraving: { ...engravingProfile, enabled: isLegacyAutoEngraving ? false : Boolean(engravingProfile.enabled) },
-      arkGrid: { ...base.profile.arkGrid, ...(rawProfile?.arkGrid ?? {}), enabled: false, cost: 0, gainPercent: 0, targetLabel: "추천 제외" },
-      arkPassive: { ...base.profile.arkPassive, ...(rawProfile?.arkPassive ?? {}), enabled: false, cost: 0, gainPercent: 0, targetLabel: "추천 제외" },
+      arkGrid: { ...base.profile.arkGrid, ...(rawProfile?.arkGrid ?? {}), enabled: false, targetLabel: "추천 제외", cost: 0, gainPercent: 0 },
+      arkPassive: { ...base.profile.arkPassive, ...(rawProfile?.arkPassive ?? {}), enabled: false, targetLabel: "추천 제외", cost: 0, gainPercent: 0 },
     },
-    options: base.options
-      .map((option) => {
-        const saved = optionMap.get(option.id);
-        return {
-          ...option,
-          ...saved,
-          availableSteps: Math.max(0, Math.floor(Number(saved?.availableSteps ?? option.availableSteps) || 0)),
-          costPerStep: Math.max(0, Number(saved?.costPerStep ?? option.costPerStep) || 0),
-          combatGainPercentPerStep: Math.max(0, Number(saved?.combatGainPercentPerStep ?? option.combatGainPercentPerStep) || 0),
-        };
-      })
-      .filter((option) => !isExcludedCombatRecommendation(option)),
+    options: base.options.map((option) => {
+      const saved = optionMap.get(option.id);
+      return {
+        ...option,
+        ...saved,
+        availableSteps: Math.max(0, Math.floor(Number(saved?.availableSteps ?? option.availableSteps) || 0)),
+        costPerStep: Math.max(0, Number(saved?.costPerStep ?? option.costPerStep) || 0),
+        combatGainPercentPerStep: Math.max(0, Number(saved?.combatGainPercentPerStep ?? option.combatGainPercentPerStep) || 0),
+      };
+    }),
   };
 }
 
@@ -1014,6 +1056,12 @@ function getGemBoardScore(gems: CombatGemInput[]) {
   return gems.reduce((sum, gem) => sum + Math.max(0, Number(gem.currentLevel || 0)), 0);
 }
 
+function getSharedGemLevel(gems: CombatGemInput[]) {
+  if (!gems.length) return "";
+  const firstLevel = Math.max(1, Math.min(10, Number(gems[0].currentLevel || 0)));
+  return gems.every((gem) => Math.max(1, Math.min(10, Number(gem.currentLevel || 0))) === firstLevel) ? String(firstLevel) : "";
+}
+
 function getAdvancedRefiningBasicEffectGainPercent(fromLevel: number, toLevel: number) {
   void fromLevel;
   void toLevel;
@@ -1028,9 +1076,19 @@ function getAdvancedRefiningCombatGainPercent(row: CombatEquipmentInput, fromLev
   return baseGain + getAdvancedRefiningBasicEffectGainPercent(from, to);
 }
 
+function getNormalRefiningCombatGainPercent(row: CombatEquipmentInput, successor: boolean) {
+  if (successor) return SUCCESSOR_NORMAL_GAIN_PERCENT_BY_SLOT[row.slot] ?? Math.max(0, Number(row.normalGainPercent || 0));
+  return Math.max(0, Number(row.normalGainPercent || 0));
+}
+
 function getNextAdvancedRefiningBreak(currentLevel: number, targetLevel: number) {
   const nextFiveStep = Math.ceil((currentLevel + 1) / 5) * 5;
   return Math.min(targetLevel, Math.max(currentLevel + 1, nextFiveStep));
+}
+
+function isSuccessorEquipmentPiece(piece?: { tierLabel?: string; itemName?: string; itemLevel?: number | null; honingLevel?: number }) {
+  const label = `${piece?.tierLabel || ""} ${piece?.itemName || ""}`;
+  return label.includes("전율") || label.includes("상위") || (Number(piece?.honingLevel || 0) <= 16 && Number(piece?.itemLevel || 0) >= 1730);
 }
 
 function isBraceletSystemItem(item: { name?: string; effects?: string[] }) {
@@ -1076,136 +1134,224 @@ function getAccessoryEffectSummary(item: { effects?: string[] }, maxCount = 3) {
   return effects.slice(0, maxCount).join(" / ") || "옵션 미확인";
 }
 
-const ACCESSORY_TARGET_KEYWORDS: Record<string, string[]> = {
-  목걸이: ["적에게 주는 피해", "추가 피해"],
-  귀걸이: ["무기 공격력", "공격력 %"],
-  반지: ["치명타 피해", "치명타 적중률"],
+type AccessoryCandidate = NonNullable<AccessoryAuctionPriceResponse["items"]>[number];
+type AccessoryCandidateTableRow = {
+  id: string;
+  slotLabel: string;
+  part: string;
+  currentSummary: string;
+  target: string;
+  itemName: string;
+  quality: number;
+  buyPrice: number;
+  tradeAllowCount: number;
+  basicStats: string[];
+  options: string[];
+  currentScore: number;
+  currentOptionScore: number;
+  candidateScore: number;
+  candidateOptionScore: number;
+  scoreGain: number;
+  efficiencyGoldPerScore: number;
 };
 
-const ACCESSORY_OPTION_TIER_RULES: Record<string, Array<{ min: number; tier: number; label: string }>> = {
-  "적에게 주는 피해": [
-    { min: 2, tier: 3, label: "상" },
-    { min: 1.2, tier: 2, label: "중" },
-  ],
-  "추가 피해": [
-    { min: 2.6, tier: 3, label: "상" },
-    { min: 1.6, tier: 2, label: "중" },
-  ],
-  "공격력 %": [
-    { min: 1.55, tier: 3, label: "상" },
-    { min: 0.95, tier: 2, label: "중" },
-  ],
-  "무기 공격력": [
-    { min: 3, tier: 3, label: "상" },
-    { min: 1.8, tier: 2, label: "중" },
-  ],
-  "치명타 피해": [
-    { min: 4, tier: 3, label: "상" },
-    { min: 2.4, tier: 2, label: "중" },
-  ],
-  "치명타 적중률": [
-    { min: 1.55, tier: 3, label: "상" },
-    { min: 0.95, tier: 2, label: "중" },
-  ],
-};
+const ACCESSORY_OPTION_RULES = [
+  { keywords: ["추가 피해"], high: 2.6, mid: 1.6, highScore: 120, midScore: 70, requirePercent: true },
+  { keywords: ["적에게 주는 피해"], high: 2.0, mid: 1.2, highScore: 110, midScore: 65, requirePercent: true },
+  { keywords: ["무기 공격력"], high: 3.0, mid: 1.8, highScore: 100, midScore: 58, requirePercent: true },
+  { keywords: ["공격력"], high: 1.55, mid: 0.95, highScore: 90, midScore: 52, requirePercent: true },
+  { keywords: ["치명타 피해"], high: 4.0, mid: 2.4, highScore: 100, midScore: 58, requirePercent: true },
+  { keywords: ["치명타 적중률"], high: 1.55, mid: 0.95, highScore: 90, midScore: 52, requirePercent: true },
+];
 
-function accessoryEffectMatchesKeyword(effect: string, keyword: string) {
-  const text = cleanAccessoryEffect(effect);
-  if (keyword === "공격력 %") return /공격력\s*\+\s*\d+(?:\.\d+)?%/.test(text) && !text.includes("무기 공격력");
-  return text.includes(keyword);
-}
-
-function readAccessoryEffectValue(effect: string) {
-  const match = cleanAccessoryEffect(effect).match(/([0-9]+(?:\.[0-9]+)?)\s*%/);
+function readAccessoryOptionValue(text: string) {
+  const match = String(text || "").match(/([+-]?\d+(?:\.\d+)?)\s*%?/);
   return match ? Number(match[1]) : 0;
 }
 
-function getAccessoryEffectTier(effect: string, keyword: string) {
-  if (!accessoryEffectMatchesKeyword(effect, keyword)) return { tier: 0, label: "없음" };
-  const value = readAccessoryEffectValue(effect);
-  const rule = (ACCESSORY_OPTION_TIER_RULES[keyword] ?? []).find((row) => value >= row.min);
-  return rule ?? { tier: value > 0 ? 1 : 0, label: value > 0 ? "하" : "없음" };
+function scoreAccessoryEffects(effects: string[] = []) {
+  return effects.reduce((sum, rawEffect) => {
+    const effect = cleanAccessoryEffect(rawEffect);
+    const value = readAccessoryOptionValue(effect);
+    const rule = ACCESSORY_OPTION_RULES.find((row) => row.keywords.every((keyword) => effect.includes(keyword)));
+    if (!rule || !Number.isFinite(value) || value <= 0) return sum;
+    if (rule.requirePercent && !effect.includes("%")) return sum;
+    if (value >= rule.high) return sum + rule.highScore;
+    if (value >= rule.mid) return sum + rule.midScore;
+    return sum + Math.max(1, Math.round(rule.midScore * (value / rule.mid) * 0.6));
+  }, 0);
 }
 
-function getAccessoryBestTier(item: { effects?: string[] }, keyword: string) {
-  return (item.effects ?? []).reduce(
-    (best, effect) => {
-      const tier = getAccessoryEffectTier(effect, keyword);
-      return tier.tier > best.tier ? tier : best;
-    },
-    { tier: 0, label: "없음" }
-  );
+function getAccessoryCandidateScore(candidate?: AccessoryCandidate | null) {
+  if (!candidate) return 0;
+  return scoreAccessoryEffects(candidate.options ?? []) + Math.max(0, Number(candidate.quality || 0)) * 0.12;
 }
 
-function getAccessoryOptionScore(item: { effects?: string[] }, part: string) {
-  return (ACCESSORY_TARGET_KEYWORDS[part] ?? []).reduce((sum, keyword) => sum + getAccessoryBestTier(item, keyword).tier, 0);
+function getAccessoryCurrentScore(item: { quality?: number; effects?: string[] }) {
+  return scoreAccessoryEffects(item.effects ?? []) + Math.max(0, Number(item.quality || 0)) * 0.12;
 }
 
-function getTargetAccessoryTier(target: { target?: string; options?: string[] }, keyword: string) {
-  const text = `${target.target ?? ""} ${(target.options ?? []).join(" ")}`;
-  if (!text.includes(keyword === "공격력 %" ? "공격력" : keyword)) return { tier: 0, label: "없음" };
-  if (new RegExp(`${keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*상|상\\s*${keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`).test(text)) {
-    return { tier: 3, label: "상" };
-  }
-  if (new RegExp(`${keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*중|중\\s*${keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`).test(text)) {
-    return { tier: 2, label: "중" };
-  }
-  const fromOptions = (target.options ?? []).reduce(
-    (best, option) => {
-      const tier = getAccessoryEffectTier(option, keyword);
-      return tier.tier > best.tier ? tier : best;
-    },
-    { tier: 0, label: "없음" }
-  );
-  return fromOptions;
+function isBetterAccessoryCandidate(
+  item: { quality?: number; effects?: string[] },
+  candidate: AccessoryCandidate,
+  candidateScore = getAccessoryCandidateScore(candidate)
+) {
+  const currentOptionScore = scoreAccessoryEffects(item.effects ?? []);
+  const candidateOptionScore = scoreAccessoryEffects(candidate.options ?? []);
+  const currentScore = getAccessoryCurrentScore(item);
+  return currentOptionScore > 0 && candidateScore > currentScore && candidateOptionScore > currentOptionScore;
 }
 
-function getAccessoryTargetScore(target: { target?: string; options?: string[] }, part: string) {
-  return (ACCESSORY_TARGET_KEYWORDS[part] ?? []).reduce((sum, keyword) => sum + getTargetAccessoryTier(target, keyword).tier, 0);
+function formatAccessoryCandidateGuide(part: string, target?: AccessoryCandidate | null) {
+  if (!target) return `${part} 현재보다 좋은 즉시구매 매물 미확인`;
+  const options = (target.options ?? []).slice(0, 3).join(" / ");
+  const basicStats = formatAccessoryBasicStats(target.basicStats ?? []);
+  const trade = formatAccessoryTradeAllowCount(target.tradeAllowCount);
+  return `${target.itemName}${target.quality ? ` 품질 ${target.quality}` : ""}${basicStats ? ` · ${basicStats}` : ""} · ${trade} · ${target.target}${options ? ` · ${options}` : ""}`;
 }
 
-function pickBetterAccessoryCandidate(profile: CombatProfileInputs, item: { effects?: string[] }, part: string) {
-  const currentScore = getAccessoryOptionScore(item, part);
-  const candidates = profile.accessoryCandidatesByPart?.[part] ?? Object.values(profile.accessoryTargetsByPart?.[part] ? { target: profile.accessoryTargetsByPart[part] } : {});
-  return candidates
-    .map((candidate) => ({
-      candidate,
-      targetScore: getAccessoryTargetScore(candidate, part),
-      scoreGain: getAccessoryTargetScore(candidate, part) - currentScore,
-      efficiency: Number(candidate.buyPrice || 0) / Math.max(0.1, getAccessoryTargetScore(candidate, part) - currentScore),
-    }))
-    .filter((row) => row.scoreGain > 0 && Number(row.candidate.buyPrice || 0) > 0)
-    .sort((a, b) => a.efficiency - b.efficiency || a.candidate.buyPrice - b.candidate.buyPrice)[0]?.candidate;
+function findAccessoryOptionForTarget(targetLabel: string, options: string[]) {
+  const label = targetLabel.replace(/\s+(상|중|하)$/g, "").trim();
+  const matcher =
+    label === "공격력"
+      ? (option: string) => /^공격력\s/.test(option)
+      : label === "무기 공격력"
+        ? (option: string) => /^무기 공격력\s/.test(option)
+        : (option: string) => option.includes(label);
+  return options.find(matcher) ?? "";
 }
 
-function getMissingAccessoryTargetEffects(item: { effects?: string[] }, part: string, target?: { target?: string; options?: string[] }) {
-  return (ACCESSORY_TARGET_KEYWORDS[part] ?? []).filter((keyword) => {
-    const current = getAccessoryBestTier(item, keyword);
-    const required = target ? getTargetAccessoryTier(target, keyword) : { tier: 1, label: "보유" };
-    return current.tier < Math.max(1, required.tier);
+function formatAccessoryTargetOptions(target?: AccessoryCandidate | null) {
+  if (!target) return "";
+  const options = target.options ?? [];
+  const targetLabels = String(target.target || "")
+    .split(/\s*\+\s*/)
+    .map((label) => label.trim())
+    .filter(Boolean);
+  const used = new Set<string>();
+  const primary = targetLabels
+    .map((label) => {
+      const option = findAccessoryOptionForTarget(label, options);
+      if (option) used.add(option);
+      return option ? `${label} ${option}` : label;
+    })
+    .filter(Boolean);
+  const extras = options.filter((option) => !used.has(option));
+  return [primary.join(" + "), extras.join(" / ")].filter(Boolean).join(" / ");
+}
+
+function formatAccessoryUpgradeDetail(displayName: string, currentDetail: string, target: AccessoryCandidate) {
+  const basicStats = formatAccessoryBasicStats(target.basicStats ?? []);
+  const itemLine = [
+    `${target.itemName} 품질 ${target.quality || "-"}`,
+    basicStats,
+    formatAccessoryTradeAllowCount(target.tradeAllowCount),
+  ].filter(Boolean).join(" · ");
+  const targetOptions = formatAccessoryTargetOptions(target);
+  return `${displayName}: ${currentDetail}\n\n${itemLine}\n${targetOptions}`;
+}
+
+function formatAccessoryTradeAllowCount(count?: number) {
+  const value = Math.max(0, Number(count || 0));
+  return value > 0 ? `구매 시 거래 ${value}회 가능` : "구매 시 거래 불가";
+}
+
+function formatAccessoryBasicStats(stats: string[] = []) {
+  const parsed = stats
+    .map((row) => {
+      const match = row.match(/^(힘|민첩|지능|체력)\s*\+?\s*([0-9,]+)/);
+      return match ? { name: match[1], value: Number(match[2].replace(/,/g, "")) } : null;
+    })
+    .filter(Boolean) as Array<{ name: string; value: number }>;
+  const attackStats = parsed.filter((row) => row.name === "힘" || row.name === "민첩" || row.name === "지능");
+  const hp = parsed.find((row) => row.name === "체력");
+  const sameAttackValue = attackStats.length >= 3 && attackStats.every((row) => row.value === attackStats[0].value);
+  const parts = [
+    sameAttackValue
+      ? `힘/민/지 +${attackStats[0].value.toLocaleString()}`
+      : attackStats.map((row) => `${row.name} +${row.value.toLocaleString()}`).join(" / "),
+    hp ? `체력 +${hp.value.toLocaleString()}` : "",
+  ].filter(Boolean);
+  return parts.join(" / ");
+}
+
+function pickBetterAccessoryCandidate(profile: CombatProfileInputs, item: { quality?: number; effects?: string[]; name?: string }, part: string) {
+  const fallbackTarget = profile.accessoryTargetsByPart?.[part];
+  const candidates = profile.accessoryCandidatesByPart?.[part] ?? (fallbackTarget ? [fallbackTarget] : []);
+  const currentScore = getAccessoryCurrentScore(item);
+  const betterCandidates = candidates
+    .map((candidate) => {
+      const score = getAccessoryCandidateScore(candidate);
+      const gain = score - currentScore;
+      const buyPrice = Number(candidate.buyPrice || 0);
+      return { candidate, score, gain, buyPrice, value: gain > 0 && buyPrice > 0 ? buyPrice / gain : Number.POSITIVE_INFINITY };
+    })
+    .filter((row) => row.gain > 0 && row.buyPrice > 0 && isBetterAccessoryCandidate(item, row.candidate, row.score))
+    .sort((a, b) => a.value - b.value || a.buyPrice - b.buyPrice || b.score - a.score);
+  return betterCandidates[0]?.candidate ?? null;
+}
+
+function buildAccessoryCandidateTableRows(profile: CombatProfileInputs, maxRowsPerSlot = 1): AccessoryCandidateTableRow[] {
+  const wornItems = getDisplayAccessoryRows(profile.accessoryItems);
+  const seen = new Set<string>();
+  return wornItems.flatMap((item, index) => {
+    const slotLabel = getAccessoryDisplayName(wornItems, index, item);
+    const part = getAccessoryPartName(item);
+    const fallbackTarget = profile.accessoryTargetsByPart?.[part];
+    const candidates = profile.accessoryCandidatesByPart?.[part] ?? (fallbackTarget ? [fallbackTarget] : []);
+    const currentScore = getAccessoryCurrentScore(item);
+    const currentOptionScore = scoreAccessoryEffects(item.effects ?? []);
+    const currentSummary = getAccessoryEffectSummary(item, 4);
+    return candidates
+      .map((candidate) => {
+        const candidateScore = getAccessoryCandidateScore(candidate);
+        const candidateOptionScore = scoreAccessoryEffects(candidate.options ?? []);
+        const scoreGain = candidateScore - currentScore;
+        const buyPrice = Math.max(0, Number(candidate.buyPrice || 0));
+        return {
+          candidate,
+          candidateScore,
+          candidateOptionScore,
+          scoreGain,
+          buyPrice,
+          efficiencyGoldPerScore: scoreGain > 0 ? buyPrice / scoreGain : Number.POSITIVE_INFINITY,
+        };
+      })
+      .filter(
+        (row) =>
+          row.scoreGain > 0 &&
+          row.buyPrice > 0 &&
+          currentOptionScore > 0 &&
+          row.candidateOptionScore > currentOptionScore
+      )
+      .sort((a, b) => a.efficiencyGoldPerScore - b.efficiencyGoldPerScore || a.buyPrice - b.buyPrice || b.candidateScore - a.candidateScore)
+      .slice(0, maxRowsPerSlot)
+      .map((row, rowIndex) => {
+        const id = `${slotLabel}-${row.candidate.target}-${row.candidate.itemName}-${row.candidate.quality}-${row.buyPrice}-${rowIndex}`;
+        if (seen.has(id)) return null;
+        seen.add(id);
+        return {
+          id,
+          slotLabel,
+          part,
+          currentSummary,
+          target: row.candidate.target,
+          itemName: row.candidate.itemName,
+          quality: Number(row.candidate.quality || 0),
+          buyPrice: row.buyPrice,
+          tradeAllowCount: Number(row.candidate.tradeAllowCount || 0),
+          basicStats: row.candidate.basicStats ?? [],
+          options: row.candidate.options ?? [],
+          currentScore,
+          currentOptionScore,
+          candidateScore: row.candidateScore,
+          candidateOptionScore: row.candidateOptionScore,
+          scoreGain: row.scoreGain,
+          efficiencyGoldPerScore: row.efficiencyGoldPerScore,
+        };
+      })
+      .filter(Boolean) as AccessoryCandidateTableRow[];
   });
-}
-
-function isAccessoryAlreadyTargetLike(item: { quality?: number; effects?: string[] }, part: string, target?: { quality?: number; target?: string; options?: string[] }) {
-  const missingEffects = getMissingAccessoryTargetEffects(item, part, target);
-  const quality = Number(item.quality || 0);
-  const targetQuality = Math.max(67, Number(target?.quality || 0));
-  return missingEffects.length === 0 && quality >= targetQuality;
-}
-
-function getAccessoryUpgradeReason(item: { quality?: number; effects?: string[] }, part: string, target?: { quality?: number; target?: string; options?: string[] }) {
-  const missingEffects = getMissingAccessoryTargetEffects(item, part, target).map((keyword) => {
-    const current = getAccessoryBestTier(item, keyword);
-    const required = target ? getTargetAccessoryTier(target, keyword) : { tier: 1, label: "보유" };
-    return `${keyword} ${current.label} -> ${required.label}`;
-  });
-  const quality = Number(item.quality || 0);
-  const targetQuality = Math.max(67, Number(target?.quality || 0));
-  const reasons: string[] = [];
-  if (missingEffects.length) reasons.push(`옵션 상승: ${missingEffects.join(", ")}`);
-  if (!quality) reasons.push(`현재 품질 미확인, 목표 품질 ${targetQuality}+ 확인 필요`);
-  else if (quality < targetQuality) reasons.push(`품질 ${quality} -> ${targetQuality}+`);
-  return reasons.join(" · ") || "현재보다 높은 품질/상옵 후보";
 }
 
 function getAccessoryAuctionPrice(profile: CombatProfileInputs, part: string) {
@@ -1225,37 +1371,12 @@ function getAccessoryAuctionTargetDetail(profile: CombatProfileInputs, part: str
   const target = profile.accessoryTargetsByPart?.[part];
   if (!target) return "";
   const options = (target.options ?? []).slice(0, 3).join(" / ");
-  return `${target.target} · ${target.grade ? `${target.grade} ` : ""}${target.itemName}${target.quality ? ` 품질 ${target.quality}` : ""}${options ? ` · ${options}` : ""}`;
-}
-
-function formatAccessoryCandidateGuide(part: string, target: { target: string; itemName: string; grade?: string; quality?: number; options?: string[] }) {
-  const options = (target.options ?? []).slice(0, 3).join(" / ");
-  return `${part} 교체: ${target.grade ? `${target.grade} ` : ""}${target.itemName}${target.quality ? ` 품질 ${target.quality}+` : ""} · ${target.target}${options ? ` · ${options}` : ""}`;
+  return `${target.target} · ${target.itemName}${target.quality ? ` 품질 ${target.quality}` : ""}${options ? ` · ${options}` : ""}`;
 }
 
 function getAccessoryPurchaseGuide(profile: CombatProfileInputs, part: string) {
   const target = profile.accessoryTargetsByPart?.[part];
-  if (!target) return `${part} 유효 옵션 매물 미확인 · 악세 시세 불러오기를 먼저 눌러줘`;
-  return formatAccessoryCandidateGuide(part, target);
-}
-
-function getAccessoryUpgradeRows(profile: CombatProfileInputs) {
-  return getDisplayAccessoryRows(profile.accessoryItems).flatMap((item, index) => {
-    const part = getAccessoryPartName(item);
-    const target = pickBetterAccessoryCandidate(profile, item, part);
-    if (!target || isAccessoryAlreadyTargetLike(item, part, target)) return [];
-    return [
-      {
-        item,
-        index,
-        part,
-        displayName: getAccessoryDisplayName(profile.accessoryItems ?? [], index, item),
-        currentDetail: getAccessoryEffectSummary(item),
-        target,
-        reason: getAccessoryUpgradeReason(item, part, target),
-      },
-    ];
-  });
+  return `구매 추천: ${formatAccessoryCandidateGuide(part, target)}`;
 }
 
 function getFallbackAccessoryRows() {
@@ -1283,13 +1404,26 @@ function getDisplayAccessoryRows(items?: Array<{ name?: string; quality?: number
   return rows.sort((a, b) => (order[getAccessoryPartName(a)] ?? 9) - (order[getAccessoryPartName(b)] ?? 9));
 }
 
-function isEngravingComplete(row: Pick<CombatEngravingInput, "grade" | "level" | "targetGrade" | "targetLevel">) {
-  return row.grade === row.targetGrade && Number(row.level || 0) >= Number(row.targetLevel || 0);
+function isEngravingComplete(row: Pick<CombatEngravingInput, "missingBooks">) {
+  return Number(row.missingBooks || 0) <= 0;
 }
 
 function getEngravingMissingBooks(grade: string, level: number, targetGrade = "유물", targetLevel = 4) {
   if (grade === targetGrade) return Math.max(0, targetLevel - Number(level || 0)) * 5;
   return targetLevel * 5;
+}
+
+function getDefaultEngravingBookMissingCount(targetLevel = 4) {
+  return Math.max(0, Number(targetLevel || 4)) * 5;
+}
+
+function normalizeImportedEngraving(row: CharacterImportResponse["combatSystems"] extends infer T ? T extends { engravings: infer E } ? E extends Array<infer R> ? R : never : never : never) {
+  const name = String(row?.name || "").trim();
+  const grade = String(row?.grade || "").trim() || "유물";
+  const rawLevel = Number(row?.level || 0);
+  const rawPoints = Number(row?.points || 0);
+  const level = rawLevel > 0 ? rawLevel : grade === "유물" || rawPoints > 0 ? 4 : 0;
+  return { ...row, name, grade, level };
 }
 
 function getEngravingBookCost(row: CombatEngravingInput, profile: CombatProfileInputs) {
@@ -1320,20 +1454,42 @@ function isAvatarGradeComplete(grade: string, targetGrade: string) {
 }
 
 function getDefaultAvatarCost(className?: string | null) {
-  return className ? 200000 : 20000;
+  void className;
+  return LEGENDARY_AVATAR_SLOT_COST;
+}
+
+function getDefaultAvatarGainPercent(currentGrade: string, targetGrade: string) {
+  if (!targetGrade || targetGrade === "현재 유지") return 0;
+  const currentMainStatPercent = AVATAR_MAIN_STAT_PERCENT_BY_GRADE[currentGrade] ?? 0;
+  const targetMainStatPercent = AVATAR_MAIN_STAT_PERCENT_BY_GRADE[targetGrade] ?? currentMainStatPercent;
+  const addedMainStatPercent = Math.max(0, targetMainStatPercent - currentMainStatPercent);
+  return addedMainStatPercent * AVATAR_COMBAT_GAIN_PERCENT_PER_MAIN_STAT_PERCENT;
+}
+
+function shouldReplaceSavedAvatarGain(savedGain: number, defaultGain: number, currentGrade: string, targetGrade: string) {
+  if (!Number.isFinite(savedGain) || savedGain <= 0) return true;
+  if (targetGrade !== "전설") return false;
+  const gradeGap = Math.max(0, (AVATAR_GRADE_RANK[targetGrade] ?? 0) - (AVATAR_GRADE_RANK[currentGrade] ?? 0));
+  if (gradeGap <= 0) return true;
+  const legacyDirectCombatPercent = LEGENDARY_AVATAR_TOTAL_COST / AVATAR_TARGET_SLOTS.length > 0 ? 1.88 / AVATAR_TARGET_SLOTS.length : 0.47;
+  return savedGain >= Math.max(defaultGain * 2, legacyDirectCombatPercent * 0.8);
 }
 
 function makeAvatarSlotRows(
-  importedAvatars: Array<{ name?: string; grade?: string; slot?: string }>,
+  importedAvatars: Array<{ name?: string; grade?: string; slot?: string; isInner?: boolean }>,
   prevProfile: CombatProfileInputs,
   className?: string | null
 ): CombatAvatarInput[] {
-  const importedBySlot = new Map(
-    importedAvatars
-      .map((avatar) => ({ ...avatar, slot: normalizeAvatarSlot(avatar.slot || avatar.name || "") }))
-      .filter((avatar) => AVATAR_TARGET_SLOTS.includes(avatar.slot))
-      .map((avatar) => [avatar.slot, avatar])
-  );
+  const avatarRank = (avatar: { grade?: string; isInner?: boolean }) =>
+    (avatar.isInner ? 100 : 0) + (AVATAR_GRADE_RANK[avatar.grade || ""] ?? 0);
+  const importedBySlot = importedAvatars
+    .map((avatar) => ({ ...avatar, slot: normalizeAvatarSlot(avatar.slot || avatar.name || "") }))
+    .filter((avatar) => AVATAR_TARGET_SLOTS.includes(avatar.slot))
+    .reduce((map, avatar) => {
+      const prev = map.get(avatar.slot);
+      if (!prev || avatarRank(avatar) > avatarRank(prev)) map.set(avatar.slot, avatar);
+      return map;
+    }, new Map<string, { name?: string; grade?: string; slot: string; isInner?: boolean }>());
 
   return AVATAR_TARGET_SLOTS.map((slot) => {
     const avatar = importedBySlot.get(slot);
@@ -1343,6 +1499,8 @@ function makeAvatarSlotRows(
     const complete = isAvatarGradeComplete(grade, targetGrade);
     const defaultCost = getDefaultAvatarCost(className);
     const savedCost = Number(prev?.cost || 0);
+    const savedGain = Number(prev?.gainPercent || 0);
+    const defaultGain = getDefaultAvatarGainPercent(grade, targetGrade);
     return {
       id: `avatar-${makeCombatSlug(slot, slot)}`,
       slot,
@@ -1351,7 +1509,7 @@ function makeAvatarSlotRows(
       targetGrade,
       enabled: complete ? false : (prev?.enabled ?? true),
       cost: savedCost > 20000 ? savedCost : defaultCost,
-      gainPercent: prev?.gainPercent ?? Math.max(0.03, Number(prevProfile.avatar.gainPercent || 0) / AVATAR_TARGET_SLOTS.length),
+      gainPercent: shouldReplaceSavedAvatarGain(savedGain, defaultGain, grade, targetGrade) ? defaultGain : savedGain,
     };
   });
 }
@@ -1416,14 +1574,22 @@ function buildCombatProfileFromImport(data: CharacterImportResponse, prevProfile
   const accessoryLabel =
     accessoryEffects.length ? accessoryEffects.slice(0, 5).join(" / ") : accessoryItems.length ? `악세 ${accessoryItems.length}부위` : prevProfile.accessory.currentLabel;
   const braceletRow = braceletItems[0];
-  const importedEngravings = systems?.engravings ?? [];
+  const importedEngravings = Array.from(
+    new Map((systems?.engravings ?? []).map(normalizeImportedEngraving).filter((row) => row.name).map((row) => [row.name, row])).values()
+  ).slice(0, 5);
   const engravingItems = importedEngravings.map((row, index) => {
-    const grade = row.grade || "미확인";
+    const grade = row.grade || "유물";
     const level = Number(row.level || 0);
     const prev = prevProfile.engravingItems.find((item) => item.name === row.name) ?? prevProfile.engravingItems[index];
     const targetGrade = prev?.targetGrade || "유물";
     const targetLevel = Number(prev?.targetLevel || 4);
-    const missingBooks = getEngravingMissingBooks(grade, level, targetGrade, targetLevel);
+    const savedMissingBooks = prev?.name === row.name ? Number(prev.missingBooks) : NaN;
+    const missingBooks =
+      level > 0
+        ? getEngravingMissingBooks(grade, level, targetGrade, targetLevel)
+        : Number.isFinite(savedMissingBooks)
+          ? Math.max(0, savedMissingBooks)
+          : getDefaultEngravingBookMissingCount(targetLevel);
     return {
       name: row.name,
       grade,
@@ -1478,10 +1644,7 @@ function buildCombatProfileFromImport(data: CharacterImportResponse, prevProfile
     bracelet: {
       ...prevProfile.bracelet,
       currentLabel: braceletRow?.effects?.join(" / ") || prevProfile.bracelet.currentLabel,
-      targetLabel: "추천 제외",
-      enabled: false,
-      cost: 0,
-      gainPercent: 0,
+      enabled: true,
     },
     engraving: {
       ...prevProfile.engraving,
@@ -1494,18 +1657,14 @@ function buildCombatProfileFromImport(data: CharacterImportResponse, prevProfile
     arkGrid: {
       ...prevProfile.arkGrid,
       currentLabel: arkGridLabel,
-      targetLabel: "추천 제외",
-      enabled: false,
-      cost: 0,
-      gainPercent: 0,
+      targetLabel: "효율 코어/카르마 조정",
+      enabled: true,
     },
     arkPassive: {
       ...prevProfile.arkPassive,
       currentLabel: arkPassiveLabel,
-      targetLabel: "추천 제외",
-      enabled: false,
-      cost: 0,
-      gainPercent: 0,
+      targetLabel: arkPassiveUpgradeLabel,
+      enabled: true,
     },
   });
 }
@@ -1565,10 +1724,11 @@ function buildGeneratedCombatOptions(
     const currentHoning = Number(piece?.honingLevel || row.currentHoning || 0);
     const currentAdvanced = Number(piece?.advancedRefiningLevel || row.currentAdvanced || 0);
     const transferredInRoute = includedRouteSteps.some((step) => step.slot === row.slot && step.action === "transfer");
+    const successorPiece = transferredInRoute || isSuccessorEquipmentPiece(piece);
     const rawTargetHoning = Number(row.targetHoning || currentHoning);
     const defaultOldTarget = Number(row.baseHoning || row.currentHoning || currentHoning) + 1;
     const targetHoning = transferredInRoute && rawTargetHoning <= defaultOldTarget ? currentHoning + 1 : Math.max(currentHoning, rawTargetHoning);
-    const targetAdvanced = transferredInRoute ? currentAdvanced : Math.max(currentAdvanced, Number(row.targetAdvanced || currentAdvanced));
+    const targetAdvanced = successorPiece ? currentAdvanced : Math.max(currentAdvanced, Number(row.targetAdvanced || currentAdvanced));
 
     let advancedLevel = currentAdvanced;
     while (advancedLevel < targetAdvanced) {
@@ -1595,7 +1755,14 @@ function buildGeneratedCombatOptions(
     for (let level = currentHoning; level < targetHoning; level += 1) {
       if (isEquipmentRangeAlreadyInRoute(includedRouteSteps, row.slot, "normal", level, level + 1)) continue;
       const weaponText = row.slot === "weapon" ? "무기" : SLOT_NAMES[row.slot];
-      const isSuccessor = String(piece?.tierLabel || "").includes("전율") || String(piece?.tierLabel || "").includes("상위");
+      const isSuccessor = isSuccessorEquipmentPiece(piece);
+      const transferredBeforeThisStep = includedRouteSteps.some((step) => step.slot === row.slot && step.action === "transfer");
+      const normalUpgradeName = isSuccessor
+        ? `${weaponText} ${transferredBeforeThisStep ? "계승 후 " : ""}${level}강 -> ${level + 1}강`
+        : `${weaponText} +${level} -> +${level + 1}`;
+      const normalUpgradeFromTo = isSuccessor
+        ? `${transferredBeforeThisStep ? "계승 후 " : ""}${level}강 -> ${level + 1}강`
+        : `+${level} -> +${level + 1}`;
       const simulatedPiece = {
         ...(piece ?? {
           slot: row.slot,
@@ -1615,10 +1782,11 @@ function buildGeneratedCombatOptions(
       const estimatedStep =
         market && materials ? estimateRefiningStep(simulatedPiece, "normal", market, materials) : null;
       const estimatedCost = estimatedStep && estimatedStep.averageCost > 0 ? estimatedStep.averageCost : row.normalCostPerStep;
+      const normalGainPercent = getNormalRefiningCombatGainPercent(row, isSuccessor);
       options.push(
         makeCombatOption({
           id: `auto-equipment-${row.slot}-normal-${level}-${level + 1}`,
-          name: isSuccessor ? `${weaponText} 계승 후 ${level}강 -> ${level + 1}강` : `${weaponText} +${level} -> +${level + 1}`,
+          name: normalUpgradeName,
           category: "장비",
           detail: estimatedStep
             ? "아이스펭 기대비용 기준 · 현재 시세/보유 재료 반영"
@@ -1627,9 +1795,9 @@ function buildGeneratedCombatOptions(
             : row.slot === "weapon"
               ? "노숨/풀숨 평균 비용은 후보 비용값 기준"
               : "방어구 강화 평균 비용은 후보 비용값 기준",
-          fromTo: isSuccessor ? `계승 후 ${level}강 -> ${level + 1}강` : `+${level} -> +${level + 1}`,
+          fromTo: normalUpgradeFromTo,
           costPerStep: estimatedCost,
-          combatGainPercentPerStep: row.normalGainPercent,
+          combatGainPercentPerStep: normalGainPercent,
         })
       );
     }
@@ -1655,19 +1823,24 @@ function buildGeneratedCombatOptions(
   });
 
   if (state.enabledCategories["악세"] && state.profile.accessory.enabled) {
-    const upgradeRows = getAccessoryUpgradeRows(state.profile);
-    if (upgradeRows.length) {
-      const gainPerItem = Math.max(0, Number(state.profile.accessory.gainPercent || 0)) / Math.max(1, upgradeRows.length);
-      upgradeRows.forEach((row) => {
-        const purchaseGuide = formatAccessoryCandidateGuide(row.part, row.target);
+    const recommendationItems = getDisplayAccessoryRows(state.profile.accessoryItems);
+    if (recommendationItems.length) {
+      const gainPerItem = Math.max(0, Number(state.profile.accessory.gainPercent || 0)) / Math.max(1, recommendationItems.length);
+      recommendationItems.forEach((item, index) => {
+        const displayName = getAccessoryDisplayName(recommendationItems, index);
+        const part = getAccessoryPartName(item);
+        const currentDetail = getAccessoryEffectSummary(item);
+        const target = pickBetterAccessoryCandidate(state.profile, item, part);
+        if (!target) return;
+        const upgradeDetail = formatAccessoryUpgradeDetail(displayName, currentDetail, target);
         options.push(
           makeCombatOption({
-            id: `auto-accessory-${row.index}-${makeCombatSlug(row.displayName, String(row.index))}`,
-            name: `${row.displayName} 더 좋은 악세로 교체`,
+            id: `auto-accessory-${index}-${makeCombatSlug(displayName, String(index))}`,
+            name: `${displayName} 더 좋은 악세로 교체`,
             category: "악세",
-            detail: `${row.reason} · ${row.currentDetail} -> ${purchaseGuide}`,
-            fromTo: `${row.displayName}: ${row.currentDetail} -> ${purchaseGuide}`,
-            costPerStep: Number(row.target.buyPrice || 0),
+            detail: upgradeDetail.replace(/\n+/g, " · "),
+            fromTo: upgradeDetail,
+            costPerStep: Number(target.buyPrice || 0),
             combatGainPercentPerStep: gainPerItem,
           })
         );
@@ -1740,16 +1913,21 @@ function buildGeneratedCombatOptions(
     }
   }
 
-  const toggleRows: Array<[keyof Pick<CombatProfileInputs, "avatar" | "accessory" | "bracelet" | "engraving">, string, string]> = [
+  const toggleRows: Array<[keyof Pick<CombatProfileInputs, "avatar" | "accessory" | "bracelet" | "engraving" | "arkGrid" | "arkPassive">, string, string]> = [
     ["bracelet", "팔찌 고정 공격력/추가 피해 보정", "팔찌"],
+    ["arkGrid", "혼돈 코어 자동 조정", "아크그리드"],
+    ["arkPassive", "카르마 깨달음 레벨 조정", "아크패시브"],
   ];
 
   toggleRows.forEach(([key, name, category]) => {
     const row = state.profile[key];
     if (!state.enabledCategories[category as CombatCategory]) return;
     if (!row.enabled) return;
-    const optionName = name;
-    const optionDetail = `${row.currentLabel} -> ${row.targetLabel}`;
+    const optionName = key === "arkPassive" ? row.targetLabel || name : name;
+    const optionDetail =
+      key === "arkPassive"
+        ? `${row.currentLabel} -> ${row.targetLabel || "카르마 레벨 조정"}`
+        : `${row.currentLabel} -> ${row.targetLabel}`;
     options.push(
       makeCombatOption({
         id: `auto-${key}`,
@@ -1763,7 +1941,7 @@ function buildGeneratedCombatOptions(
     );
   });
 
-  return options.filter((option) => !isExcludedCombatRecommendation(option));
+  return options;
 }
 
 function estimateLevelPlanCombatGainPercent(routeSteps: RefiningRouteStep[], profile: CombatProfileInputs) {
@@ -1776,7 +1954,7 @@ function estimateLevelPlanCombatGainPercent(routeSteps: RefiningRouteStep[], pro
     if (step.action === "advanced") {
       return sum + getAdvancedRefiningCombatGainPercent(row, step.fromLevel, step.toLevel);
     }
-    return sum + Math.max(0, Number(row.normalGainPercent || 0)) * levelCount;
+    return sum + getNormalRefiningCombatGainPercent(row, step.materialFamily === "successor") * levelCount;
   }, 0);
 }
 
@@ -1810,17 +1988,16 @@ function buildCombatUpgradePlan(
   }
 
   const requiredGainPercent = ((targetCombatPower / projectedCombatPower) - 1) * 100;
-  const candidateOptions = options.filter((option) => !isExcludedCombatRecommendation(option));
   const scale = 100;
   const requiredUnits = Math.ceil(requiredGainPercent * scale);
   const maxUnits = Math.max(
     requiredUnits,
-    Math.ceil(candidateOptions.reduce((sum, option) => sum + option.availableSteps * option.combatGainPercentPerStep, 0) * scale)
+    Math.ceil(options.reduce((sum, option) => sum + option.availableSteps * option.combatGainPercentPerStep, 0) * scale)
   );
   const dp: Array<{ cost: number; counts: Record<string, number>; gainUnits: number } | null> = Array.from({ length: maxUnits + 1 }, () => null);
   dp[0] = { cost: 0, counts: {}, gainUnits: 0 };
 
-  candidateOptions.forEach((option) => {
+  options.forEach((option) => {
     const stepCount = Math.max(0, Math.floor(option.availableSteps || 0));
     const gainUnits = Math.max(0, Math.round((option.combatGainPercentPerStep || 0) * scale));
     const cost = Math.max(0, option.costPerStep || 0);
@@ -1851,7 +2028,7 @@ function buildCombatUpgradePlan(
     Object.entries(counts)
       .map(([optionId, count]) => {
         const option = state.options.find((entry) => entry.id === optionId);
-        const generatedOption = candidateOptions.find((entry) => entry.id === optionId);
+        const generatedOption = options.find((entry) => entry.id === optionId);
         const resolvedOption = generatedOption ?? option;
         if (!resolvedOption || count <= 0) return null;
         return {
@@ -2192,17 +2369,6 @@ function formatCompactWon(value: number) {
     return `약 ${man.toLocaleString()}만 원`;
   }
   return `약 ${rounded.toLocaleString()}원`;
-}
-
-function getCombatActionGuide(option: CombatUpgradeOption) {
-  if (option.category === "악세") return option.fromTo;
-  if (option.category === "장비") return `${option.name} 진행 · ${option.fromTo}`;
-  if (option.category === "보석") return `${option.name} 교체/합성 · ${option.fromTo}`;
-  if (option.category === "각인") return `${option.name} 구매/학습 · ${option.fromTo}`;
-  if (option.category === "아바타") return `${option.name} 구매/교체 · ${option.fromTo}`;
-  if (option.category === "아크그리드" || option.category === "아크패시브") return `${option.name} · ${option.fromTo}`;
-  if (option.category === "팔찌") return `${option.name} · ${option.fromTo}`;
-  return `${option.name} · ${option.fromTo}`;
 }
 
 function goldToCash(gold: number, cashPer100Gold: number) {
@@ -3267,11 +3433,13 @@ export default function GrowthPlannerPage() {
   const currentWeeklyBoundGold = tradableOnlyEstimate ? 0 : currentRaidGold.boundGold;
   const currentWeeklyGoldForEstimate = tradableOnlyEstimate ? currentRaidGold.tradableGold : currentRaidGold.totalGold;
   const targetWeeklyGoldForEstimate = tradableOnlyEstimate ? targetRaidGold.tradableGold : targetRaidGold.totalGold;
+  const hasTargetItemLevel = Number(planner.character.targetItemLevel || 0) > Number(planner.character.currentItemLevel || 0);
   const estimateInput = useMemo(() => {
     return {
       ...planner,
       character: {
         ...planner.character,
+        targetItemLevel: hasTargetItemLevel ? planner.character.targetItemLevel : planner.character.currentItemLevel,
         currentWeeklyGold: currentWeeklyGoldForEstimate,
         targetWeeklyGold: targetWeeklyGoldForEstimate,
         currentWeeklyBoundGold,
@@ -3281,7 +3449,7 @@ export default function GrowthPlannerPage() {
         boundGold: tradableOnlyEstimate ? 0 : effectiveMaterials.boundGold,
       },
     };
-  }, [currentWeeklyBoundGold, currentWeeklyGoldForEstimate, effectiveMaterials, planner, targetWeeklyGoldForEstimate, tradableOnlyEstimate]);
+  }, [currentWeeklyBoundGold, currentWeeklyGoldForEstimate, effectiveMaterials, hasTargetItemLevel, planner, targetWeeklyGoldForEstimate, tradableOnlyEstimate]);
   const deferredEstimateInput = useDeferredValue(estimateInput);
   const preliminaryEstimate = useMemo(() => estimateGrowthPlan(deferredEstimateInput), [deferredEstimateInput]);
   const cathedralExchangePlan = useMemo(
@@ -3355,7 +3523,6 @@ export default function GrowthPlannerPage() {
     let cumulativeCost = displayedTotalSpendGold;
     let previousCombatPower = Math.round(combatPlan.projectedCombatPower);
     return [...combatPlan.picks]
-      .filter((pick) => !isExcludedCombatRecommendation(pick.option))
       .sort((a, b) => a.totalCost - b.totalCost || a.totalCost / Math.max(0.0001, a.totalGainPercent) - b.totalCost / Math.max(0.0001, b.totalGainPercent))
       .map((pick, index) => {
         cumulativeGainPercent += pick.totalGainPercent;
@@ -3374,6 +3541,10 @@ export default function GrowthPlannerPage() {
         };
       });
   }, [combatPlan.picks, combatPlan.projectedCombatPower, displayedTotalSpendGold]);
+  const accessoryCandidateRows = useMemo(
+    () => buildAccessoryCandidateTableRows(combatPlanner.profile),
+    [combatPlanner.profile]
+  );
   const combatGemBoardScore = useMemo(() => getGemBoardScore(combatPlanner.profile.gems), [combatPlanner.profile.gems]);
   const displayCurrentBoundGold = Math.max(0, Number(effectiveMaterials.boundGold || 0));
   const displayWeeklyBoundGold = Math.max(0, Number(planner.character.currentWeeklyBoundGold || 0));
@@ -3741,7 +3912,7 @@ export default function GrowthPlannerPage() {
   }
 
   function setAllCombatGemLevels(level: number) {
-    const normalizedLevel = Math.max(1, Math.min(10, Math.floor(Number(level) || 0)));
+    const normalizedLevel = Math.max(1, Math.min(10, Number(level) || 1));
     setCombatPlanner((prev) => ({
       ...prev,
       profile: {
@@ -3751,6 +3922,23 @@ export default function GrowthPlannerPage() {
           currentLevel: normalizedLevel,
           targetLevel: Math.max(normalizedLevel, Number(row.targetLevel || normalizedLevel)),
         })),
+      },
+    }));
+  }
+
+  function resetCombatGemLevelsToCurrentSetting() {
+    setCombatPlanner((prev) => ({
+      ...prev,
+      profile: {
+        ...prev.profile,
+        gems: prev.profile.gems.map((row) => {
+          const baseLevel = Math.max(1, Math.min(10, Number(row.baseLevel || row.currentLevel || 1)));
+          return {
+            ...row,
+            currentLevel: baseLevel,
+            targetLevel: Math.max(baseLevel, Number(row.targetLevel || baseLevel)),
+          };
+        }),
       },
     }));
   }
@@ -4309,10 +4497,13 @@ export default function GrowthPlannerPage() {
     setAccessoryPriceLoading(true);
     setAccessoryPriceError("");
     try {
-      const response = await fetch("/api/growth/accessory-prices?minQuality=67&grades=%EA%B3%A0%EB%8C%80,%EC%9C%A0%EB%AC%BC");
+      const response = await fetch("/api/growth/accessory-prices?minQuality=70");
       const data = (await response.json()) as AccessoryAuctionPriceResponse;
       if (!response.ok || !data.ok) {
         throw new Error(data.detail || data.error || "경매장 악세 시세를 불러오지 못했어.");
+      }
+      if (!Object.values(data.candidatesByPart ?? {}).some((rows) => rows.length > 0)) {
+        throw new Error("즉시구매가가 있는 악세 후보를 찾지 못했어. 품질 조건을 낮추거나 잠시 뒤 다시 눌러줘.");
       }
       setAccessoryPriceSummary(data);
       setCombatPlanner((prev) => ({
@@ -4326,20 +4517,13 @@ export default function GrowthPlannerPage() {
             ),
           },
           accessoryTargetsByPart: {
-            ...(prev.profile.accessoryTargetsByPart ?? {}),
             ...(data.targetsByPart ?? {}),
           },
-          accessoryCandidatesByPart: {
-            ...(prev.profile.accessoryCandidatesByPart ?? {}),
-            ...(data.candidatesByPart ?? {}),
-          },
-          accessoryPriceFetchedAt: data.fetchedAt,
+          accessoryCandidatesByPart: data.candidatesByPart ?? {},
           accessoryPriceQueryVersion: data.queryVersion || ACCESSORY_PRICE_QUERY_VERSION,
+          accessoryPriceFetchedAt: data.fetchedAt,
         },
       }));
-      if (!Object.keys(data.pricesByPart ?? {}).length) {
-        setAccessoryPriceError("현재 조건보다 좋은 악세 매물을 찾지 못했어. 품질/옵션 조건을 낮추거나 수동값을 확인해줘.");
-      }
     } catch (error: any) {
       setAccessoryPriceError(error?.message || "경매장 악세 시세를 불러오지 못했어.");
     } finally {
@@ -4362,6 +4546,18 @@ export default function GrowthPlannerPage() {
         throw new Error(data.detail || data.error || "거래소 각인서 시세를 불러오지 못했어.");
       }
       setEngravingPriceSummary(data);
+      const loadedCount = Object.keys(data.pricesByName ?? {}).length;
+      const missingCount = data.missingNames?.length ?? 0;
+      const rateLimited = data.warnings?.some((message) => message.includes("LOSTARK_API_429"));
+      if (rateLimited) {
+        setEngravingPriceError(
+          loadedCount
+            ? `일부만 반영했어. 공식 API 호출 제한 때문에 ${missingCount.toLocaleString()}개는 1분 뒤 다시 눌러줘.`
+            : "공식 API 호출 제한에 걸렸어. 1분 정도 뒤에 다시 눌러줘."
+        );
+      } else if (missingCount > 0) {
+        setEngravingPriceError(`${data.missingNames?.join(", ")} 각인서 시세를 찾지 못했어.`);
+      }
       setCombatPlanner((prev) => ({
         ...prev,
         profile: {
@@ -4814,9 +5010,11 @@ export default function GrowthPlannerPage() {
                   <input
                     type="number"
                     step="0.01"
+                    placeholder="전투력만 볼 땐 비워둬도 돼"
                     value={planner.character.targetItemLevel || ""}
                     onChange={(event) => patchCharacter({ targetItemLevel: Number(event.target.value) || 0 })}
                   />
+                  {!hasTargetItemLevel ? <small className="resultMaterialDetail">목표 레벨 없이 전투력 추천만 계산해.</small> : null}
                 </label>
                 <label>
                   <span>현재 주간 골드</span>
@@ -5069,17 +5267,24 @@ export default function GrowthPlannerPage() {
                         <span>{combatPlanner.profile.gems.length.toLocaleString()}개 착용 / {combatGemBoardScore.toLocaleString()} 로어</span>
                       </div>
                       <div className="combatInlineControls">
-                        <label className="combatInlineSelect">
+                        <label>
                           <span>전체 레벨</span>
-                          <select defaultValue="" onChange={(event) => event.target.value && setAllCombatGemLevels(Number(event.target.value))}>
+                          <select
+                            className="combatInlineSelect"
+                            value={getSharedGemLevel(combatPlanner.profile.gems)}
+                            onChange={(event) => event.target.value && setAllCombatGemLevels(Number(event.target.value))}
+                          >
                             <option value="">-</option>
                             {GEM_LEVEL_OPTIONS.map((level) => (
-                              <option key={level} value={level}>
+                              <option value={level} key={level}>
                                 {level}
                               </option>
                             ))}
                           </select>
                         </label>
+                        <button type="button" className="growthAction secondary" onClick={resetCombatGemLevelsToCurrentSetting}>
+                          현재 세팅
+                        </button>
                         <button type="button" className="growthAction secondary" onClick={fetchGemAuctionPrices} disabled={gemPriceLoading}>
                           {gemPriceLoading ? "시세 불러오는 중" : "경매장 시세 불러오기"}
                         </button>
@@ -5162,23 +5367,30 @@ export default function GrowthPlannerPage() {
                   </section>
                   ) : null}
 
-                  <div className="growthHint">* 팔찌, 현재 아크그리드 코어 포인트, 아크패시브 카르마 정보는 불러오지만 스펙업 수단에는 넣지 않습니다.</div>
-                  {([
-                    ["avatar", "아바타", "아바타"],
-                    ["accessory", "악세", "악세"],
-                    ["engraving", "각인", "각인"],
-                  ] as const).some(([, , category]) => combatPlanner.enabledCategories[category]) ? (
+                  {([ "avatar", "accessory", "bracelet", "engraving", "arkGrid", "arkPassive" ] as const).some(
+                    (key) =>
+                      key === "arkGrid" || key === "arkPassive"
+                        ? combatPlanner.enabledCategories[key === "arkGrid" ? "아크그리드" : "아크패시브"]
+                        : combatPlanner.enabledCategories[
+                            key === "avatar" ? "아바타" : key === "accessory" ? "악세" : key === "bracelet" ? "팔찌" : "각인"
+                          ]
+                  ) ? (
                   <section className="combatAutoSection combatAutoSectionWide">
-                    <div className="combatAutoHeader">
-                      <strong>아바타 / 악세 / 팔찌 / 각인</strong>
+                    <div className="combatAutoHeader combatAutoHeaderStack">
+                      <div>
+                        <strong>아바타 / 악세 / 팔찌 / 각인</strong>
+                        <span>* 팔찌, 현재 아크그리드 코어 포인트, 아크패시브 카르마 정보는 불러오지만 스펙업 수단에는 넣지 않습니다.</span>
+                      </div>
                       <span>체크된 항목만 후보로 생성</span>
                     </div>
-                    <div className="growthHint">* 팔찌, 현재 아크그리드 코어 포인트, 젬 옵션은 추천하지 않습니다.</div>
                     <div className="combatToggleGrid">
                       {([
                         ["avatar", "아바타", "아바타"],
                         ["accessory", "악세", "악세"],
+                        ["bracelet", "팔찌", "팔찌"],
                         ["engraving", "각인", "각인"],
+                        ["arkGrid", "아크그리드", "아크그리드"],
+                        ["arkPassive", "아크패시브", "아크패시브"],
                       ] as const).filter(([, , category]) => combatPlanner.enabledCategories[category]).map(([key, label]) => {
                         const row = combatPlanner.profile[key];
                         const showSplitEditor = key === "engraving" && combatPlanner.profile.engravingItems.length > 0;
@@ -5306,7 +5518,7 @@ export default function GrowthPlannerPage() {
                                   ) : combatPlanner.profile.accessoryPriceFetchedAt ? (
                                     <span>저장: {formatDateTime(combatPlanner.profile.accessoryPriceFetchedAt)}</span>
                                   ) : (
-                                    <span>67품질 이상 상중/중상/중중 기준 최저가</span>
+                                    <span>70품질 이상 상/중상/중중 즉시구매가 기준</span>
                                   )}
                                 </div>
                                 {accessoryPriceError ? <div className="growthError">{accessoryPriceError}</div> : null}
@@ -5321,31 +5533,60 @@ export default function GrowthPlannerPage() {
                                     </strong>
                                     <span>{getAccessoryEffectSummary(item)}</span>
                                     <span>
-                                      경매장 목표가: {formatCompactGold(getAccessoryAuctionPrice(combatPlanner.profile, getAccessoryPartName(item)))}
-                                      {isAccessoryAuctionPriceLoaded(combatPlanner.profile, getAccessoryPartName(item)) && getAccessoryAuctionTargetDetail(combatPlanner.profile, getAccessoryPartName(item))
-                                        ? ` · ${getAccessoryAuctionTargetDetail(combatPlanner.profile, getAccessoryPartName(item))}`
-                                        : " · 수동 기본값"}
+                                      {(() => {
+                                        const part = getAccessoryPartName(item);
+                                        const target = pickBetterAccessoryCandidate(combatPlanner.profile, item, part);
+                                        return target
+                                          ? `추천 즉구가: ${formatCompactGold(target.buyPrice)} · ${formatAccessoryCandidateGuide(part, target)}`
+                                          : isAccessoryAuctionPriceLoaded(combatPlanner.profile, part)
+                                            ? "현재 착용 악세보다 효율 좋은 즉시구매 후보 없음"
+                                            : "악세 시세 불러오기를 눌러 즉시구매 후보를 확인해줘";
+                                      })()}
                                     </span>
                                   </div>
                                 ))}
-                                {combatPlanner.profile.accessoryPriceFetchedAt ? (
-                                  <div className="combatSystemItemList">
-                                    <strong>현재보다 좋은 악세 후보</strong>
-                                    {getAccessoryUpgradeRows(combatPlanner.profile).length ? (
-                                      getAccessoryUpgradeRows(combatPlanner.profile).map((row) => (
-                                        <div className="combatSystemItem" key={`accessory-upgrade-${row.displayName}-${row.index}`}>
-                                          <strong>{row.displayName} 교체 추천</strong>
-                                          <span>{row.reason}</span>
-                                          <span>
-                                            {formatAccessoryCandidateGuide(row.part, row.target)} · 예상 비용 {formatGold(Number(row.target.buyPrice || 0))}
-                                          </span>
+                                <details className="accessoryCandidatePanel">
+                                  <summary className="accessoryCandidateHeader">
+                                    <strong>악세 후보표</strong>
+                                    <span>현재 착용 악세보다 옵션 점수가 높은 최적 후보</span>
+                                  </summary>
+                                  {accessoryCandidateRows.length ? (
+                                    <div className="accessoryCandidateTable">
+                                      <div className="accessoryCandidateTableHead">
+                                        <span>부위</span>
+                                        <span>옵션 / 기본 효과</span>
+                                        <span>품질</span>
+                                        <span>즉구가</span>
+                                        <span>효율</span>
+                                      </div>
+                                      {accessoryCandidateRows.map((row) => (
+                                        <div className="accessoryCandidateRow" key={row.id}>
+                                          <div>
+                                            <strong>{row.slotLabel}</strong>
+                                            <span>{row.part} · 현재 {row.currentSummary}</span>
+                                          </div>
+                                          <div>
+                                            <strong>{row.target}</strong>
+                                            <span>{row.itemName}</span>
+                                            {row.basicStats.length ? <span>{formatAccessoryBasicStats(row.basicStats)}</span> : null}
+                                            <span>{formatAccessoryTradeAllowCount(row.tradeAllowCount)}</span>
+                                            <span>{row.options.slice(0, 3).join(" / ")}</span>
+                                          </div>
+                                          <strong>{row.quality || "-"}</strong>
+                                          <strong>{formatGold(row.buyPrice)}</strong>
+                                          <div>
+                                            <strong>{formatGold(row.efficiencyGoldPerScore)}</strong>
+                                            <span>점수 +{row.scoreGain.toFixed(1)}</span>
+                                          </div>
                                         </div>
-                                      ))
-                                    ) : (
-                                      <div className="growthEmpty">현재 착용 악세가 목표 옵션/품질을 이미 만족하거나, 더 좋은 매물이 아직 확인되지 않았어.</div>
-                                    )}
-                                  </div>
-                                ) : null}
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <div className="growthEmpty">
+                                      악세 시세를 불러오면 현재보다 좋은 후보를 부위 / 옵션 / 품질 / 즉구가 / 효율 기준으로 보여줘.
+                                    </div>
+                                  )}
+                                </details>
                               </div>
                             ) : null}
                             {key === "engraving" && combatPlanner.profile.engravingItems.length ? (
@@ -5424,27 +5665,23 @@ export default function GrowthPlannerPage() {
                                 })}
                               </div>
                             ) : null}
+                            {key === "bracelet" && combatPlanner.profile.braceletItems?.length ? (
+                              <div className="combatSystemItemList">
+                                {combatPlanner.profile.braceletItems.map((item, index) => (
+                                  <div className="combatSystemItem" key={`${item.name}-${index}`}>
+                                    <strong>{item.name}{item.quality ? ` 품질 ${item.quality}` : ""}</strong>
+                                    <span>{item.effects.slice(0, 4).join(" / ") || "옵션 미확인"}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
                           </div>
                         );
                       })}
                     </div>
-                    {combatPlanner.profile.braceletItems?.length ? (
-                      <div className="combatSystemItemList">
-                        <strong>팔찌 정보</strong>
-                        {combatPlanner.profile.braceletItems.map((item, index) => (
-                          <div className="combatSystemItem" key={`${item.name}-${index}`}>
-                            <strong>
-                              {item.name}
-                              {item.quality ? ` 품질 ${item.quality}` : ""}
-                            </strong>
-                            <span>{item.effects.slice(0, 4).join(" / ") || "옵션 미확인"}</span>
-                            <span>스펙업 추천 계산에서는 제외돼.</span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
                   </section>
                   ) : null}
+
                 </div>
                 <div className="growthHint">자동 생성 후보 {generatedCombatOptions.length.toLocaleString()}개가 아래 최저비용 추천에 사용돼.</div>
               </details>
@@ -5946,7 +6183,7 @@ export default function GrowthPlannerPage() {
           <div className="combatCostBreakdown">
             <div>
               <span>목표 레벨 강화비용</span>
-              <strong>{formatGold(displayedTotalSpendGold)}</strong>
+              <strong>{hasTargetItemLevel ? formatGold(displayedTotalSpendGold) : "목표 없음"}</strong>
             </div>
             <div>
               <span>전투력 추가비용</span>
@@ -5957,11 +6194,13 @@ export default function GrowthPlannerPage() {
               <strong>{combatPlan.picks.length || combatPlan.reachable ? formatGold(combatPlan.totalCost) : "-"}</strong>
             </div>
             <p>
-              목표 레벨 추천 강화순서에 이미 들어간 장비 성장은 전투력 추가비용에서 제외돼.
+              {hasTargetItemLevel
+                ? "목표 레벨 추천 강화순서에 이미 들어간 장비 성장은 전투력 추가비용에서 제외돼."
+                : "목표 아이템레벨을 비워두면 현재 레벨 기준으로 전투력 스펙업만 추천해."}
               {!combatPlan.reachable && combatPlan.picks.length ? " 현재 후보만으로는 목표 전투력까지 부족해서 가능한 후보를 모두 선택했어." : ""}
             </p>
           </div>
-          {displayRouteSteps.length ? (
+          {hasTargetItemLevel && displayRouteSteps.length ? (
             <div className="combatIncludedRouteList">
               <div className="resultSectionTitle">목표 레벨 추천 강화순서</div>
               <div className="combatIncludedRouteRows">
@@ -5976,6 +6215,44 @@ export default function GrowthPlannerPage() {
                 ))}
               </div>
             </div>
+          ) : null}
+          {accessoryCandidateRows.length ? (
+            <details className="accessoryCandidatePanel recommendation">
+              <summary className="accessoryCandidateHeader">
+                <strong>악세 후보표</strong>
+                <span>추천에 사용되는 현재 대비 최적 즉시구매 후보</span>
+              </summary>
+              <div className="accessoryCandidateTable">
+                <div className="accessoryCandidateTableHead">
+                  <span>부위</span>
+                  <span>옵션 / 기본 효과</span>
+                  <span>품질</span>
+                  <span>즉구가</span>
+                  <span>효율</span>
+                </div>
+                {accessoryCandidateRows.map((row) => (
+                  <div className="accessoryCandidateRow" key={`recommendation-${row.id}`}>
+                    <div>
+                      <strong>{row.slotLabel}</strong>
+                      <span>{row.part} · 현재 {row.currentSummary}</span>
+                    </div>
+                    <div>
+                      <strong>{row.target}</strong>
+                      <span>{row.itemName}</span>
+                      {row.basicStats.length ? <span>{formatAccessoryBasicStats(row.basicStats)}</span> : null}
+                      <span>{formatAccessoryTradeAllowCount(row.tradeAllowCount)}</span>
+                      <span>{row.options.slice(0, 3).join(" / ")}</span>
+                    </div>
+                    <strong>{row.quality || "-"}</strong>
+                    <strong>{formatGold(row.buyPrice)}</strong>
+                    <div>
+                      <strong>{formatGold(row.efficiencyGoldPerScore)}</strong>
+                      <span>점수 +{row.scoreGain.toFixed(1)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
           ) : null}
           {combatPriorityRows.length ? (
             <div className="combatPriorityPanel">
@@ -6015,13 +6292,11 @@ export default function GrowthPlannerPage() {
                         </div>
                       </summary>
                       <div className="combatUpgradeDetailList">
-                        <div>해야 할 일: {getCombatActionGuide(row.pick.option)}</div>
-                        <div>현재 {"->"} 목표: {row.pick.option.fromTo}</div>
+                        <div>{row.pick.option.fromTo}</div>
                         <div>분류: {row.pick.option.category}</div>
-                        <div>비용 기준: {row.pick.option.costPerStep <= 0 ? "골드 지출 없음" : `${formatGold(row.pick.option.costPerStep)} / 1회`}</div>
                         <div>전투력 상승: +{row.combatPowerDelta.toLocaleString()}</div>
                         <div>누적 예상 전투력: {row.expectedCombatPower.toLocaleString()}</div>
-                        <div>목표 레벨 비용: {formatGold(displayedTotalSpendGold)}</div>
+                        <div>목표 레벨 비용: {hasTargetItemLevel ? formatGold(displayedTotalSpendGold) : "목표 없음"}</div>
                         <div>전투력 추가 누적: {formatGold(Math.max(0, row.cumulativeCost - displayedTotalSpendGold))}</div>
                         <div>총 누적 비용: {formatGold(row.cumulativeCost)}</div>
                         {equipmentPreview ? (

@@ -338,6 +338,7 @@ function extractEngravings(input: string) {
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const match = source.match(new RegExp(`${escaped}[\\s\\S]{0,80}?(?:Lv\\.?\\s*(\\d+))?[\\s\\S]{0,40}?(?:x\\s*(\\d+))?`, "i"));
     if (!match) continue;
+    if (!match[1] && !match[2]) continue;
     rows.set(name, {
       name,
       level: match[1] ? Number(match[1]) : undefined,

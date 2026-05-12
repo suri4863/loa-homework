@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import accessoryPrices from "../../lib/server/growth/accessory-prices.js";
-import avatarPrices from "../../lib/server/growth/avatar-prices.js";
-import engravingPrices from "../../lib/server/growth/engraving-prices.js";
-import gemPrices from "../../lib/server/growth/gem-prices.js";
+import accessoryPrices from "../../lib/server/growth/accessory-prices";
+import avatarPrices from "../../lib/server/growth/avatar-prices";
+import engravingPrices from "../../lib/server/growth/engraving-prices";
+import gemPrices from "../../lib/server/growth/gem-prices";
 
 const handlers: Record<string, (req: VercelRequest, res: VercelResponse) => Promise<unknown>> = {
   "accessory-prices": accessoryPrices,

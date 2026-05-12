@@ -3,17 +3,13 @@ import fs from "node:fs";
 import path from "node:path";
 
 const LOSTARK_API_BASE = "https://developer-lostark.game.onstove.com";
+const LEGENDARY_AVATAR_SLOT_FALLBACK_PRICE = 200000;
+
 const AVATAR_CATEGORY_BY_SLOT: Record<string, number> = {
-  "무기": 20005,
-  "머리": 20010,
-  "상의": 20050,
-  "하의": 20060,
-};
-const AVATAR_NAME_HINTS_BY_CLASS: Record<string, string[]> = {
-  "가디언나이트": ["영원", "사막"],
-};
-const AVATAR_PRICE_FALLBACK_BY_CLASS: Record<string, number> = {
-  "가디언나이트": 200000,
+  무기: 20005,
+  머리: 20010,
+  상의: 20050,
+  하의: 20060,
 };
 
 type AvatarPriceItem = {
@@ -25,6 +21,7 @@ type AvatarPriceItem = {
   currentMinPrice: number;
   recentPrice: number;
   yDayAvgPrice: number;
+  fallback?: boolean;
 };
 
 function getApiKey() {
@@ -44,29 +41,36 @@ function getApiKey() {
 }
 
 function authHeaders(apiKey: string) {
-  const normalized = /^bearer\s+/i.test(apiKey) ? apiKey : `bearer ${apiKey}`;
   return {
     accept: "application/json",
-    authorization: normalized,
+    authorization: /^bearer\s+/i.test(apiKey) ? apiKey : `bearer ${apiKey}`,
   };
 }
 
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function lostarkFetch(apiKey: string, apiPath: string, init?: RequestInit) {
-  const response = await fetch(`${LOSTARK_API_BASE}${apiPath}`, {
-    ...init,
-    headers: {
-      ...authHeaders(apiKey),
-      ...(init?.body ? { "content-type": "application/json" } : {}),
-      ...(init?.headers ?? {}),
-    },
-  });
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const response = await fetch(`${LOSTARK_API_BASE}${apiPath}`, {
+      ...init,
+      headers: {
+        ...authHeaders(apiKey),
+        ...(init?.body ? { "content-type": "application/json" } : {}),
+        ...(init?.headers ?? {}),
+      },
+    });
 
-  if (!response.ok) {
+    if (response.ok) return response.json();
+
     const detail = await response.text().catch(() => "");
-    throw new Error(`LOSTARK_API_${response.status}${detail ? `:${detail.slice(0, 180)}` : ""}`);
+    lastError = new Error(`LOSTARK_API_${response.status}${detail ? `:${detail.slice(0, 180)}` : ""}`);
+    if (response.status !== 429 || attempt === 2) break;
+    await delay(1200 + attempt * 1600);
   }
-
-  return response.json();
+  throw lastError ?? new Error("LOSTARK_API_FAILED");
 }
 
 function parseList(input: unknown, fallback: string[]) {
@@ -79,10 +83,14 @@ function stripTooltip(input: unknown) {
   return String(input || "")
     .replace(/<BR\s*\/?>/gi, " ")
     .replace(/<[^>]+>/g, " ")
-    .replace(/&[a-z_]+/gi, " ")
+    .replace(/&[a-z_]+;?/gi, " ")
     .replace(/[{}[\]",]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function readItems(data: any) {
+  return Array.isArray(data?.Items) ? data.Items : Array.isArray(data?.items) ? data.items : [];
 }
 
 function readPrice(row: any) {
@@ -101,98 +109,85 @@ function getPickedPrice(row: any) {
   return price.currentMinPrice || price.recentPrice || price.yDayAvgPrice || 0;
 }
 
-async function fetchMarketPage(apiKey: string, categoryCode: number, pageNo: number) {
-  return lostarkFetch(apiKey, "/markets/items", {
+function fallbackAvatarPrice(slot: string, className: string, targetGrade: string): AvatarPriceItem {
+  return {
+    slot,
+    className,
+    targetGrade,
+    itemName: `${className || "직업"} ${targetGrade} ${slot} 아바타 기준가`,
+    itemId: 0,
+    currentMinPrice: LEGENDARY_AVATAR_SLOT_FALLBACK_PRICE,
+    recentPrice: 0,
+    yDayAvgPrice: 0,
+    fallback: true,
+  };
+}
+
+async function searchAvatarPage(apiKey: string, categoryCode: number, itemName: string) {
+  const data = await lostarkFetch(apiKey, "/markets/items", {
     method: "POST",
     body: JSON.stringify({
       CategoryCode: categoryCode,
-      PageNo: pageNo,
+      ItemName: itemName,
+      PageNo: 1,
       Sort: "CURRENT_MIN_PRICE",
       SortCondition: "ASC",
     }),
   });
+  return readItems(data);
 }
 
 async function itemMatchesClass(apiKey: string, itemId: number, className: string) {
+  if (!className || !itemId) return true;
   const detail = await lostarkFetch(apiKey, `/markets/items/${itemId}`);
   const rows = Array.isArray(detail) ? detail : Array.isArray(detail?.value) ? detail.value : [];
   const tooltip = rows.map((row: any) => stripTooltip(row?.ToolTip ?? row?.toolTip ?? "")).join(" ");
   return tooltip.includes(className);
 }
 
-function fallbackAvatarPrice(slot: string, className: string, targetGrade: string): AvatarPriceItem | null {
-  const fallbackPrice = AVATAR_PRICE_FALLBACK_BY_CLASS[className] || 0;
-  if (fallbackPrice <= 0) return null;
-  return {
-    slot,
-    className,
-    targetGrade,
-    itemName: `${className} ${targetGrade} ${slot} 아바타 기준가`,
-    itemId: 0,
-    currentMinPrice: fallbackPrice,
-    recentPrice: 0,
-    yDayAvgPrice: 0,
-  };
-}
-
 async function fetchSlotAvatarPrice(apiKey: string, slot: string, className: string, targetGrade: string) {
   const categoryCode = AVATAR_CATEGORY_BY_SLOT[slot];
-  if (!categoryCode) return null;
+  if (!categoryCode) return fallbackAvatarPrice(slot, className, targetGrade);
 
-  try {
-    const first = await fetchMarketPage(apiKey, categoryCode, 1);
-    const pageSize = Number(first?.PageSize ?? 10) || 10;
-    const totalCount = Number(first?.TotalCount ?? 0) || 0;
-    const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
-    const maxPages = Math.min(pageCount, 160);
-
-    for (let pageNo = 1; pageNo <= maxPages; pageNo += 1) {
-      const page = pageNo === 1 ? first : await fetchMarketPage(apiKey, categoryCode, pageNo);
-      const items = Array.isArray(page?.Items) ? page.Items : Array.isArray(page?.items) ? page.items : [];
-      const candidates = items
-        .filter((row: any) => String(row?.Grade ?? row?.grade ?? "") === targetGrade)
-        .filter((row: any) => getPickedPrice(row) > 0)
-        .sort((a: any, b: any) => getPickedPrice(a) - getPickedPrice(b));
-
-      const classHints = AVATAR_NAME_HINTS_BY_CLASS[className] ?? [];
-      const hinted = candidates.find((row: any) => {
-        const name = String(row?.Name ?? row?.name ?? "");
-        return classHints.some((hint) => name.includes(hint));
-      });
-      if (hinted) {
-        const itemId = Number(hinted?.Id ?? hinted?.id ?? 0) || 0;
-        return {
-          slot,
-          className,
-          targetGrade,
-          itemName: String(hinted?.Name ?? hinted?.name ?? ""),
-          itemId,
-          ...readPrice(hinted),
-        } satisfies AvatarPriceItem;
-      }
-
-      for (const row of candidates) {
-        const itemId = Number(row?.Id ?? row?.id ?? 0) || 0;
-        if (!itemId) continue;
-        let matched = false;
-        try {
-          matched = await itemMatchesClass(apiKey, itemId, className);
-        } catch {
-          matched = false;
-        }
-        if (!matched) continue;
-        return {
-          slot,
-          className,
-          targetGrade,
-          itemName: String(row?.Name ?? row?.name ?? ""),
-          itemId,
-          ...readPrice(row),
-        } satisfies AvatarPriceItem;
-      }
+  const queries = [`${targetGrade} ${slot} 아바타`, `${slot} 아바타`];
+  const candidates: any[] = [];
+  for (const query of queries) {
+    try {
+      const rows = await searchAvatarPage(apiKey, categoryCode, query);
+      candidates.push(...rows);
+    } catch (error: any) {
+      if (String(error?.message || "").includes("LOSTARK_API_429")) throw error;
     }
-  } catch {
-    return fallbackAvatarPrice(slot, className, targetGrade);
+    await delay(250);
+  }
+
+  const unique = new Map<string, any>();
+  candidates.forEach((row) => {
+    const id = String(row?.Id ?? row?.id ?? row?.Name ?? row?.name ?? "");
+    if (id) unique.set(id, row);
+  });
+
+  const sorted = Array.from(unique.values())
+    .filter((row: any) => String(row?.Grade ?? row?.grade ?? "") === targetGrade)
+    .filter((row: any) => getPickedPrice(row) > 0)
+    .sort((a: any, b: any) => getPickedPrice(a) - getPickedPrice(b))
+    .slice(0, 12);
+
+  for (const row of sorted) {
+    const itemId = Number(row?.Id ?? row?.id ?? 0) || 0;
+    try {
+      if (!(await itemMatchesClass(apiKey, itemId, className))) continue;
+    } catch {
+      continue;
+    }
+    return {
+      slot,
+      className,
+      targetGrade,
+      itemName: String(row?.Name ?? row?.name ?? `${targetGrade} ${slot} 아바타`),
+      itemId,
+      ...readPrice(row),
+    } satisfies AvatarPriceItem;
   }
 
   return fallbackAvatarPrice(slot, className, targetGrade);
@@ -224,17 +219,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const targetGrade = String(req.query.grade || "전설").trim() || "전설";
     const slots = parseList(req.query.slots, ["무기", "머리", "상의", "하의"]);
-    const results = await Promise.allSettled(slots.map((slot) => fetchSlotAvatarPrice(apiKey, slot, className, targetGrade)));
-    const items = results
-      .filter((result): result is PromiseFulfilledResult<AvatarPriceItem | null> => result.status === "fulfilled")
-      .map((result) => result.value)
-      .filter((item): item is AvatarPriceItem => Boolean(item));
-    const warnings = results
-      .filter((result): result is PromiseRejectedResult => result.status === "rejected")
-      .map((result) => String(result.reason?.message || result.reason));
+    const items: AvatarPriceItem[] = [];
+    const warnings: string[] = [];
+
+    for (const slot of slots) {
+      try {
+        items.push(await fetchSlotAvatarPrice(apiKey, slot, className, targetGrade));
+      } catch (error: any) {
+        const message = String(error?.message || error);
+        warnings.push(`${slot}: ${message}`);
+        items.push(fallbackAvatarPrice(slot, className, targetGrade));
+        if (message.includes("LOSTARK_API_429")) break;
+      }
+      await delay(350);
+    }
+
     const pricesBySlot: Record<string, number> = {};
     const itemsBySlot: Record<string, AvatarPriceItem> = {};
-
     for (const item of items) {
       const pickedPrice = item.currentMinPrice || item.recentPrice || item.yDayAvgPrice || 0;
       if (pickedPrice > 0) pricesBySlot[item.slot] = pickedPrice;

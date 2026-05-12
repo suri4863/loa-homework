@@ -78,8 +78,7 @@ export default function App() {
 
       <footer className="appFooter border-t">
         <div className={`${shell} py-4 text-sm appSub`}>
-          <span className="font-medium appTitle">Tip</span> : 오늘은 성장 플래너의 첫 버전을 넣어뒀고, 다음 단계에서 OCR과
-          실시간 화면 스캔을 이어붙일 수 있어.
+          <span className="font-medium appTitle">Tip</span> : 성장 플래너에서 목표 레벨과 전투력 목표를 함께 계산할 수 있어.
         </div>
       </footer>
     </div>
