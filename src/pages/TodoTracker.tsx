@@ -1715,8 +1715,8 @@ export default function TodoTracker() {
 
   function getRaidKeysFromNames(raidNames: string[]) {
     return new Set(
-      uniqueCanonicalRaidNames(raidNames)
-        .map((raid) => normalizeScheduleRaidKey(raid))
+      raidNames
+        .map((raid) => normalizeScheduleRaidDiffKey(raid))
         .filter(Boolean)
     );
   }
@@ -1864,7 +1864,7 @@ export default function TodoTracker() {
     if (!liveRaidSets.length) return { currentRaids: [], mismatchedRaidNames: [] };
 
     const mismatchedRaidNames = getScheduleItemRaidNames(item).filter(
-      (raid) => liveRaidSets.some((set) => !set.keys.has(normalizeScheduleRaidKey(raid)))
+      (raid) => liveRaidSets.some((set) => !set.keys.has(normalizeScheduleRaidDiffKey(raid)))
     );
 
     return { currentRaids: [], mismatchedRaidNames };
@@ -1876,14 +1876,21 @@ export default function TodoTracker() {
     raidName: string
   ) {
     const mismatch = getScheduleRaidMismatch(schedule, item);
-    const targetKey = normalizeScheduleRaidKey(raidName);
+    const targetKey = normalizeScheduleRaidDiffKey(raidName);
     return mismatch.mismatchedRaidNames.some(
-      (raid) => normalizeScheduleRaidKey(raid) === targetKey
+      (raid) => normalizeScheduleRaidDiffKey(raid) === targetKey
     );
   }
 
   function normalizeScheduleRaidKey(raidName: string) {
     return normalizeRaidName(getRaidBaseNameForRemainLabel(raidName) || raidName);
+  }
+
+  function normalizeScheduleRaidDiffKey(raidName: string) {
+    const baseName = getRaidBaseNameForRemainLabel(raidName) || raidName;
+    const diffName = getRaidDiffFromLabel(raidName);
+    const baseKey = normalizeRaidName(baseName);
+    return diffName ? `${baseKey}|${diffName}` : baseKey;
   }
 
   function hydrateScheduleWithLocalCompletion(schedule: SharedWeeklySchedule) {
@@ -1984,7 +1991,8 @@ export default function TodoTracker() {
     item: SharedWeeklyScheduleItem,
     raidName: string
   ) {
-    const canonical = canonicalRaidName(raidName);
+    const baseName = getRaidBaseNameForRemainLabel(raidName);
+    const canonical = canonicalRaidName(baseName);
     const pickKey = resolveScheduleWeeklyPickKey(item);
     const pick = pickKey ? weeklyRaidPickByChar[pickKey] : null;
     const pickedDiff =
@@ -2004,7 +2012,7 @@ export default function TodoTracker() {
     const availableDiffs = itemIlvl > 0 ? availableDiffNames(itemIlvl, canonical) : [];
     const parsedDiff = getRaidDiffFromLabel(raidName);
     const diff =
-      ([pickedDiff, parsedDiff].find(
+      ([parsedDiff, pickedDiff].find(
         (candidate) =>
           candidate &&
           (availableDiffs.length === 0 || availableDiffs.includes(candidate as DiffName))
@@ -5003,6 +5011,15 @@ export default function TodoTracker() {
       raidName: string
     ): DiffName | null {
       const baseName = getScheduleRaidBaseName(raidName);
+      const normalized = normalizeRaidName(raidName);
+      const def = RAID_CATALOG.find(
+        (raid) => normalizeRaidName(raid.name) === normalizeRaidName(baseName)
+      );
+      const parsed = def?.diffs.find(
+        (diff) => normalized === `${normalizeRaidName(baseName)}${normalizeRaidName(diff.name)}`
+      );
+      if (parsed) return parsed.name;
+
       const pickKey = resolveScheduleWeeklyPickKey(item);
       const pick = pickKey ? weeklyRaidPickByChar[pickKey] : null;
 
@@ -5015,15 +5032,6 @@ export default function TodoTracker() {
         )?.[1];
 
       if (picked) return picked as DiffName;
-
-      const normalized = normalizeRaidName(raidName);
-      const def = RAID_CATALOG.find(
-        (raid) => normalizeRaidName(raid.name) === normalizeRaidName(baseName)
-      );
-      const parsed = def?.diffs.find(
-        (diff) => normalized === `${normalizeRaidName(baseName)}${normalizeRaidName(diff.name)}`
-      );
-      if (parsed) return parsed.name;
 
       const itemIlvl = getScheduleItemIlvl(item);
       return itemIlvl > 0 ? getHighestAvailableRaidDiffName(baseName, itemIlvl) : null;
@@ -5088,7 +5096,7 @@ export default function TodoTracker() {
         if (!normalized || seen.has(normalized)) continue;
         if (!canFriendCandidateEnterScheduleRaid(item, raid, candidateRaidDiffKeySet)) continue;
         seen.add(normalized);
-        commonRaids.push(baseName);
+        commonRaids.push(raid);
       }
 
       return commonRaids;
