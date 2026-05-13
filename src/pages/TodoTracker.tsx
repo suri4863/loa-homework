@@ -1714,11 +1714,14 @@ export default function TodoTracker() {
   }
 
   function getRaidKeysFromNames(raidNames: string[]) {
-    return new Set(
-      raidNames
-        .map((raid) => normalizeScheduleRaidDiffKey(raid))
-        .filter(Boolean)
-    );
+    const keys = new Set<string>();
+    for (const raid of raidNames) {
+      const baseKey = normalizeScheduleRaidKey(raid);
+      const diffKey = normalizeScheduleRaidDiffKey(raid);
+      if (baseKey) keys.add(baseKey);
+      if (diffKey) keys.add(diffKey);
+    }
+    return keys;
   }
 
   function getWeeklyPickRaidNamesByKey(pickKey: string | null | undefined) {
@@ -1744,7 +1747,8 @@ export default function TodoTracker() {
         )?.[1];
       const raidKey = normalizeScheduleRaidKey(canonical);
       if (!raidKey) continue;
-      keys.add(pickedDiff ? `${raidKey}|${pickedDiff}` : raidKey);
+      keys.add(raidKey);
+      if (pickedDiff) keys.add(`${raidKey}|${pickedDiff}`);
     }
 
     return keys;
@@ -1893,7 +1897,7 @@ export default function TodoTracker() {
     if (!liveRaidSets.length) return { currentRaids: [], mismatchedRaidNames: [] };
 
     const mismatchedRaidNames = getScheduleItemRaidNames(item).filter(
-      (raid) => liveRaidSets.some((set) => !set.keys.has(normalizeScheduleRaidDiffKey(raid)))
+      (raid) => liveRaidSets.some((set) => !doesScheduleRaidSetMatch(set.keys, raid))
     );
 
     return { currentRaids: [], mismatchedRaidNames };
@@ -1905,9 +1909,9 @@ export default function TodoTracker() {
     raidName: string
   ) {
     const mismatch = getScheduleRaidMismatch(schedule, item);
-    const targetKey = normalizeScheduleRaidDiffKey(raidName);
+    const targetKey = normalizeScheduleRaidMatchKey(raidName);
     return mismatch.mismatchedRaidNames.some(
-      (raid) => normalizeScheduleRaidDiffKey(raid) === targetKey
+      (raid) => normalizeScheduleRaidMatchKey(raid) === targetKey
     );
   }
 
@@ -1916,10 +1920,24 @@ export default function TodoTracker() {
   }
 
   function normalizeScheduleRaidDiffKey(raidName: string) {
-    const baseName = getRaidBaseNameForRemainLabel(raidName) || raidName;
+    const baseKey = normalizeScheduleRaidKey(raidName);
     const diffName = getRaidDiffFromLabel(raidName);
-    const baseKey = normalizeRaidName(baseName);
-    return diffName ? `${baseKey}|${diffName}` : baseKey;
+    return baseKey && diffName ? `${baseKey}|${diffName}` : "";
+  }
+
+  function normalizeScheduleRaidMatchKey(raidName: string) {
+    return normalizeScheduleRaidDiffKey(raidName) || normalizeScheduleRaidKey(raidName);
+  }
+
+  function doesScheduleRaidSetMatch(keys: Set<string>, raidName: string) {
+    const baseKey = normalizeScheduleRaidKey(raidName);
+    const diffKey = normalizeScheduleRaidDiffKey(raidName);
+    if (!baseKey) return false;
+    if (!diffKey) return keys.has(baseKey);
+    if (keys.has(diffKey)) return true;
+
+    const hasAnyDiffForBase = Array.from(keys).some((key) => key.startsWith(`${baseKey}|`));
+    return !hasAnyDiffForBase && keys.has(baseKey);
   }
 
   function hydrateScheduleWithLocalCompletion(schedule: SharedWeeklySchedule) {
