@@ -5113,6 +5113,7 @@ export default function TodoTracker() {
         const baseKey = normalizeRaidName(getScheduleRaidBaseName(candidateRaid));
         if (!baseKey) continue;
         const candidateDiffName = getCandidateScheduleRaidDiffName(friend, candidateRaid);
+        keys.add(baseKey);
         keys.add(candidateDiffName ? `${baseKey}|${candidateDiffName}` : baseKey);
       }
 
@@ -5192,6 +5193,41 @@ export default function TodoTracker() {
       });
     }
 
+    function isScheduleRaidAlreadyUsedByCandidate(
+      schedule: SharedWeeklySchedule,
+      item: SharedWeeklyScheduleItem,
+      assigningMySide: boolean,
+      candidate: FriendCandidate,
+      raidName: string
+    ) {
+      const candidateKeys = new Set(compactScheduleKeys([
+        candidate.key,
+        candidate.name,
+        getScheduleSnapshotCandidateKey(candidate.tableName, candidate.name),
+      ]));
+
+      return schedule.items.some((scheduledItem) => {
+        if (scheduledItem.id === item.id) return false;
+
+        const scheduledKeys = assigningMySide
+          ? getScheduleCandidateKeys(
+            scheduledItem.myCharKey,
+            scheduledItem.myTableName,
+            scheduledItem.myCharName,
+            scheduledItem.mySnapshot
+          )
+          : getScheduleCandidateKeys(
+            scheduledItem.friendCharKey,
+            scheduledItem.friendTableName,
+            scheduledItem.friendCharName,
+            scheduledItem.friendSnapshot
+          );
+
+        if (!scheduledKeys.some((key) => candidateKeys.has(key))) return false;
+        return doesScheduleRaidSetMatch(getRaidKeysFromNames(getScheduleItemRaidNames(scheduledItem)), raidName);
+      });
+    }
+
     function getSelectableFriendOptionsForScheduleItem(
       schedule: SharedWeeklySchedule,
       item: SharedWeeklyScheduleItem
@@ -5203,10 +5239,6 @@ export default function TodoTracker() {
       const cached = selectableFriendOptionsCache.get(cacheKey);
       if (cached) return cached;
 
-      const scheduledRaidMap = assigningMySide
-        ? scheduledMyRaidSetByChar
-        : scheduledFriendRaidSetByChar;
-
       const options = sourceCandidates
         .map((fr: FriendCandidate) => {
           const rawCommonRaids = getCommonRaidsForScheduleItem(item, fr);
@@ -5215,16 +5247,10 @@ export default function TodoTracker() {
             fr,
             assigningMySide ? "MY" : "FRIEND"
           );
-          const availableRaidKeySet = getAvailableRaidKeySetForScheduleCandidate(
-            schedule,
-            fr,
-            scheduledRaidMap,
-            assigningMySide ? "MY" : "FRIEND"
-          );
           const commonRaids = rawCommonRaids.filter(
             (raid: string) =>
-              hasScheduleAvailabilityKey(availableRaidKeySet, raid) &&
               !hasScheduleAvailabilityKey(clearedRaidSet, raid) &&
+              !isScheduleRaidAlreadyUsedByCandidate(schedule, item, assigningMySide, fr, raid) &&
               !isExtremeRaidAlreadyScheduledForAccount(schedule, item, assigningMySide, fr.tableName, raid, fr.key)
           );
 
@@ -5296,9 +5322,6 @@ export default function TodoTracker() {
             const friend = candidatePool.find((fr) => fr.key === friendKey);
             if (!friend) return item;
             const assigningMySide = isScheduleAssigningMySide(schedule);
-            const scheduledRaidMap = assigningMySide
-              ? scheduledMyRaidSetByChar
-              : scheduledFriendRaidSetByChar;
 
             const rawCommonRaids = getCommonRaidsForScheduleItem(item, friend);
             const clearedRaidSet = getScheduleClearedRaidSetForCandidate(
@@ -5306,16 +5329,10 @@ export default function TodoTracker() {
               friend,
               assigningMySide ? "MY" : "FRIEND"
             );
-            const availableRaidKeySet = getAvailableRaidKeySetForScheduleCandidate(
-              schedule,
-              friend,
-              scheduledRaidMap,
-              assigningMySide ? "MY" : "FRIEND"
-            );
             const commonRaids = rawCommonRaids.filter(
               (raid) =>
-                hasScheduleAvailabilityKey(availableRaidKeySet, raid) &&
                 !hasScheduleAvailabilityKey(clearedRaidSet, raid) &&
+                !isScheduleRaidAlreadyUsedByCandidate(schedule, item, assigningMySide, friend, raid) &&
                 !isExtremeRaidAlreadyScheduledForAccount(schedule, item, assigningMySide, friend.tableName, raid, friend.key)
             );
             if (!commonRaids.length) return item;
