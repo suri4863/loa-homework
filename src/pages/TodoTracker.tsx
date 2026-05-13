@@ -4291,6 +4291,7 @@ export default function TodoTracker() {
 
     function filterAccountWideExtremeRaids<T extends {
       key: string;
+      tableName?: string;
       ilvl: number;
       power: number;
       allRaids: string[];
@@ -4298,18 +4299,32 @@ export default function TodoTracker() {
       remainingRaids: string[];
       clearedRaids?: string[];
     }>(candidates: T[]): T[] {
-      const extremeOwnerByRaid = new Map<string, string>();
+      const extremeOwnerByTableRaid = new Map<string, string>();
+      const getExtremeGroupKey = (candidate: T, raidKey: string) => {
+        const tableName = String(candidate.tableName ?? "").trim();
+        return `${tableName || "__default__"}::${raidKey}`;
+      };
 
       for (const raid of Array.from(DEFAULT_EXTREME_WEEKLY_RAID_TITLES)) {
         const raidKey = normalizeRaidName(raid);
-        const owner = candidates
-          .filter((candidate) =>
+        const candidatesByTable = new Map<string, T[]>();
+
+        for (const candidate of candidates) {
+          const hasRaid =
             [...candidate.allRaids, ...candidate.activeRaids, ...candidate.remainingRaids]
               .some((candidateRaid) => normalizeRaidName(canonicalRaidName(candidateRaid)) === raidKey)
-          )
-          .sort((a, b) => (b.ilvl - a.ilvl) || (b.power - a.power))[0];
+          if (!hasRaid) continue;
 
-        if (owner) extremeOwnerByRaid.set(raidKey, owner.key);
+          const groupKey = getExtremeGroupKey(candidate, raidKey);
+          const group = candidatesByTable.get(groupKey) ?? [];
+          group.push(candidate);
+          candidatesByTable.set(groupKey, group);
+        }
+
+        for (const [groupKey, group] of candidatesByTable.entries()) {
+          const owner = group.sort((a, b) => (b.ilvl - a.ilvl) || (b.power - a.power))[0];
+          if (owner) extremeOwnerByTableRaid.set(groupKey, owner.key);
+        }
       }
 
       const filterRaids = (candidate: T, raids: string[]) =>
@@ -4317,7 +4332,7 @@ export default function TodoTracker() {
           const canonical = canonicalRaidName(raid);
           const raidKey = normalizeRaidName(canonical);
           if (!DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(canonical)) return true;
-          return extremeOwnerByRaid.get(raidKey) === candidate.key;
+          return extremeOwnerByTableRaid.get(getExtremeGroupKey(candidate, raidKey)) === candidate.key;
         });
 
       return candidates.map((candidate) => ({
