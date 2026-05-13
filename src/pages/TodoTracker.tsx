@@ -9990,9 +9990,9 @@ body.pip-dark .pip-select option{
 
 
   // =========================
-  // ✅ 상단: 주간 레이드 골드 진행률(모든 표/모든 캐릭 · Top3 기준)
-  //   - total: 각 캐릭 Top3 합산
-  //   - done : 체크된 레이드(Top3에 해당)만 합산
+  // ✅ 상단: 주간 레이드 골드 진행률(모든 표/모든 캐릭 · 선택 골드 기준)
+  //   - total: 각 캐릭터의 선택 레이드 골드 합산
+  //   - done : 선택 레이드 중 완료 체크된 골드만 합산
   // =========================
   const weeklyRaidTaskIdByTitle = useMemo(() => {
     const map = new Map<string, string>();
@@ -10011,23 +10011,24 @@ body.pip-dark .pip-select option{
 
     for (const tbl of state.tables) {
       for (const ch of tbl.characters as any[]) {
-        const ilvl = parseIlvl(ch.itemLevel);
+        const ilvl = getCharIlvl(ch);
         if (!Number.isFinite(ilvl) || ilvl <= 0) continue;
 
-        const r = calcWeeklyTop3Gold(ilvl);
+        const charKey = weeklyCharKey(tbl.id, ch.id);
+        const pick = weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(ilvl);
+        const pickedResult = calcWeeklySelectedGold(ilvl, pick);
 
-        for (const x of r.top3) {
-          const split = getGoldSplitByDiffName(x.raid, x.diff);
-          const visibleGold = getVisibleGold(split, includeBoundGold);
+        for (const row of pickedResult.rows) {
+          if (!row.checked) continue;
 
-          total += visibleGold;
+          total += row.gold;
 
-          const taskId = weeklyRaidTaskIdByTitle.get(normalizeRaidName(x.raid ?? ""));
+          const taskId = weeklyRaidTaskIdByTitle.get(normalizeRaidName(row.raid ?? ""));
           if (!taskId) continue;
 
           const cell = getCellByTableId(state, tbl.id, taskId, ch.id);
           if (cell && cell.type === "CHECK" && cell.checked) {
-            done += visibleGold;
+            done += row.gold;
           }
         }
       }
@@ -10035,7 +10036,7 @@ body.pip-dark .pip-select option{
 
     const pct = total > 0 ? Math.round((done / total) * 100) : 0;
     return { total, done, pct };
-  }, [state, weeklyRaidTaskIdByTitle, includeBoundGold]);
+  }, [state, weeklyRaidTaskIdByTitle, weeklyRaidPickByChar, includeBoundGold]);
 
 
   // =========================
