@@ -3559,6 +3559,17 @@ export default function TodoTracker() {
         .trim()
         .replace(/\s*(노말|하드|나이트메어|1단계|2단계|3단계)\s*$/g, "");
 
+    const normalizeRaidFullKey = (name: string) =>
+      String(name ?? "").replace(/\s+/g, "").trim().toLowerCase();
+
+    const normalizeFriendRaidLabel = (name: string) => {
+      const raw = String(name ?? "").trim();
+      if (!raw) return "";
+      const baseName = getRaidBaseNameForRemainLabel(raw);
+      const diffName = getRaidDiffFromLabel(raw);
+      return diffName ? `${baseName} ${diffName}` : normalizeRaidName(raw);
+    };
+
     function getFriendNextResetDefaultRaids(ilvl: number, fallbackRaids: string[]): string[] {
       const normalizedFallbackRaids = Array.isArray(fallbackRaids)
         ? fallbackRaids.map((raid: string) => normalizeRaidName(raid)).filter(Boolean)
@@ -3922,11 +3933,11 @@ export default function TodoTracker() {
                 : Number(row?.charItemLevel ?? 0);
 
             const normalizedAllRaids = Array.isArray(row?.allRaids)
-              ? row.allRaids.map((raid: string) => normalizeRaidName(raid)).filter(Boolean)
+              ? row.allRaids.map((raid: string) => normalizeFriendRaidLabel(raid)).filter(Boolean)
               : [];
 
             const normalizedRemainingRaids = Array.isArray(row?.remainingRaids)
-              ? row.remainingRaids.map((raid: string) => normalizeRaidName(raid)).filter(Boolean)
+              ? row.remainingRaids.map((raid: string) => normalizeFriendRaidLabel(raid)).filter(Boolean)
               : [];
 
             const fallbackRaids = getFriendNextResetDefaultRaids(
@@ -3956,11 +3967,11 @@ export default function TodoTracker() {
                 : Number(row?.charItemLevel ?? 0);
 
             const normalizedAllRaids = Array.isArray(row?.allRaids)
-              ? row.allRaids.map((raid: string) => normalizeRaidName(raid)).filter(Boolean)
+              ? row.allRaids.map((raid: string) => normalizeFriendRaidLabel(raid)).filter(Boolean)
               : [];
 
             const normalizedRemainingRaids = Array.isArray(row?.remainingRaids)
-              ? row.remainingRaids.map((raid: string) => normalizeRaidName(raid)).filter(Boolean)
+              ? row.remainingRaids.map((raid: string) => normalizeFriendRaidLabel(raid)).filter(Boolean)
               : [];
             const displayAllRaids = normalizedAllRaids.length > 0 ? normalizedAllRaids : normalizedRemainingRaids;
 
@@ -4425,12 +4436,12 @@ export default function TodoTracker() {
 
         const normalizedRemainingRaids =
           Array.isArray(row.remainingRaids) && row.remainingRaids.length > 0
-            ? row.remainingRaids.map((raid: string) => normalizeRaidName(raid))
+            ? row.remainingRaids.map((raid: string) => normalizeFriendRaidLabel(raid))
             : [];
 
         const normalizedAllRaids =
           Array.isArray(row.allRaids) && row.allRaids.length > 0
-            ? row.allRaids.map((raid: string) => normalizeRaidName(raid))
+            ? row.allRaids.map((raid: string) => normalizeFriendRaidLabel(raid))
             : normalizedRemainingRaids;
 
         const computedNextResetRaids = narrowFriendPlanRaids(
@@ -4442,7 +4453,7 @@ export default function TodoTracker() {
         );
         const plannedRaidNames =
           nextWeekOverride?.raidNames?.length
-            ? nextWeekOverride.raidNames.map((raid) => normalizeRaidName(raid)).filter(Boolean)
+            ? nextWeekOverride.raidNames.map((raid) => normalizeFriendRaidLabel(raid)).filter(Boolean)
             : computedNextResetRaids;
         const currentPlanRaids = narrowFriendPlanRaids(
           currentIlvl,
@@ -4460,7 +4471,7 @@ export default function TodoTracker() {
             : currentPlanRaids;
 
         const clearedRaids = Array.isArray(row.clearedRaids)
-          ? row.clearedRaids.map((raid: string) => normalizeRaidName(raid))
+          ? row.clearedRaids.map((raid: string) => normalizeFriendRaidLabel(raid))
           : [];
 
         const activeRaids =
@@ -5010,17 +5021,17 @@ export default function TodoTracker() {
 
     function getScheduleRaidBaseName(raidName: string) {
       const raw = String(raidName ?? "").trim();
-      const normalized = normalizeRaidName(raw);
+      const normalized = normalizeRaidFullKey(raw);
       if (!normalized) return "";
 
       const defs = [...RAID_CATALOG].sort(
-        (a, b) => normalizeRaidName(b.name).length - normalizeRaidName(a.name).length
+        (a, b) => normalizeRaidFullKey(b.name).length - normalizeRaidFullKey(a.name).length
       );
       const found = defs.find((raid) => {
-        const base = normalizeRaidName(raid.name);
+        const base = normalizeRaidFullKey(raid.name);
         if (normalized === base) return true;
         return raid.diffs.some(
-          (diff) => normalized === `${base}${normalizeRaidName(diff.name)}`
+          (diff) => normalized === `${base}${normalizeRaidFullKey(diff.name)}`
         );
       });
 
@@ -5066,12 +5077,12 @@ export default function TodoTracker() {
       raidName: string
     ): DiffName | null {
       const baseName = getScheduleRaidBaseName(raidName);
-      const normalized = normalizeRaidName(raidName);
+      const normalized = normalizeRaidFullKey(raidName);
       const def = RAID_CATALOG.find(
-        (raid) => normalizeRaidName(raid.name) === normalizeRaidName(baseName)
+        (raid) => normalizeRaidFullKey(raid.name) === normalizeRaidFullKey(baseName)
       );
       const parsed = def?.diffs.find(
-        (diff) => normalized === `${normalizeRaidName(baseName)}${normalizeRaidName(diff.name)}`
+        (diff) => normalized === `${normalizeRaidFullKey(baseName)}${normalizeRaidFullKey(diff.name)}`
       );
       if (parsed) return parsed.name;
 
@@ -5083,7 +5094,7 @@ export default function TodoTracker() {
         pick?.diffs?.[raidName] ??
         Object.entries(pick?.diffs ?? {}).find(
           ([key]) =>
-            normalizeRaidName(getScheduleRaidBaseName(key)) === normalizeRaidName(baseName)
+            normalizeRaidFullKey(getScheduleRaidBaseName(key)) === normalizeRaidFullKey(baseName)
         )?.[1];
 
       if (picked) return picked as DiffName;
@@ -5113,7 +5124,6 @@ export default function TodoTracker() {
         const baseKey = normalizeRaidName(getScheduleRaidBaseName(candidateRaid));
         if (!baseKey) continue;
         const candidateDiffName = getCandidateScheduleRaidDiffName(friend, candidateRaid);
-        keys.add(baseKey);
         keys.add(candidateDiffName ? `${baseKey}|${candidateDiffName}` : baseKey);
       }
 
@@ -5129,6 +5139,10 @@ export default function TodoTracker() {
       if (!baseKey) return false;
 
       const scheduleDiffName = getScheduleRaidDiffName(item, raidName);
+      const scheduleRaidDef = RAID_CATALOG.find(
+        (raid) => normalizeRaidFullKey(raid.name) === normalizeRaidFullKey(getScheduleRaidBaseName(raidName))
+      );
+      if (!scheduleDiffName && scheduleRaidDef?.diffs.length) return false;
       return candidateRaidDiffKeySet.has(scheduleDiffName ? `${baseKey}|${scheduleDiffName}` : baseKey);
     }
 
