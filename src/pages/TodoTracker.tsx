@@ -4173,14 +4173,39 @@ export default function TodoTracker() {
         }
       }
     }
+
+    const remainScheduleStateCache = new Map<
+      string,
+      { scheduledSet: Set<string>; scheduledRaids: string[]; allScheduled: boolean }
+    >();
+    const clearedScheduleRaidSetCache = new Map<string, Set<string>>();
+    const selectableFriendOptionsCache = new Map<
+      string,
+      Array<FriendCandidate & { commonRaids: string[] }>
+    >();
+
+    function getRaidSetMapCacheName(map: Map<string, Set<string>>) {
+      return map === scheduledMyRaidSetByChar ? "MY" : "FRIEND";
+    }
+
+    function getScheduleKeysCacheKey(keys: string[]) {
+      return compactScheduleKeys(keys).sort().join("|");
+    }
+
     function getRemainScheduleState(
       charKey: string,
       targetRaids: string[],
       raidSetMap: Map<string, Set<string>>,
       extraKeys: string[] = []
     ) {
+      const compactKeys = compactScheduleKeys([charKey, ...extraKeys]);
+      const targetKey = targetRaids.map((raid) => normalizeScheduleRaidKey(raid)).join("|");
+      const cacheKey = `${getRaidSetMapCacheName(raidSetMap)}::${compactKeys.join("|")}::${targetKey}`;
+      const cached = remainScheduleStateCache.get(cacheKey);
+      if (cached) return cached;
+
       const scheduledSet = new Set<string>();
-      compactScheduleKeys([charKey, ...extraKeys]).forEach((key) => {
+      compactKeys.forEach((key) => {
         const directSet = raidSetMap.get(key);
         if (directSet) directSet.forEach((raid) => scheduledSet.add(raid));
 
@@ -4201,11 +4226,13 @@ export default function TodoTracker() {
       const allScheduled =
         targetRaids.length > 0 && scheduledRaids.length === targetRaids.length;
 
-      return {
+      const result = {
         scheduledSet,
         scheduledRaids,
         allScheduled,
       };
+      remainScheduleStateCache.set(cacheKey, result);
+      return result;
     }
 
     function getUnscheduledRaidsForCandidate(
@@ -4225,6 +4252,10 @@ export default function TodoTracker() {
       keys: string[],
       side: "MY" | "FRIEND"
     ) {
+      const cacheKey = `${schedule?.id ?? "none"}::${side}::${getScheduleKeysCacheKey(keys)}`;
+      const cached = clearedScheduleRaidSetCache.get(cacheKey);
+      if (cached) return cached;
+
       const clearedSet = new Set<string>();
       if (!schedule) return clearedSet;
 
@@ -4254,6 +4285,7 @@ export default function TodoTracker() {
         }
       }
 
+      clearedScheduleRaidSetCache.set(cacheKey, clearedSet);
       return clearedSet;
     }
 
@@ -5089,6 +5121,10 @@ export default function TodoTracker() {
       const currentSelectedKey = getScheduleFriendSelectValue(schedule, item);
       const sourceCandidates = getScheduleAssignableCandidates(schedule);
       const assigningMySide = isScheduleAssigningMySide(schedule);
+      const cacheKey = `${schedule.id}::${item.id}::${assigningMySide ? "MY" : "FRIEND"}::${currentSelectedKey}::${sourceCandidates.length}`;
+      const cached = selectableFriendOptionsCache.get(cacheKey);
+      if (cached) return cached;
+
       const scheduledRaidMap = assigningMySide
         ? scheduledMyRaidSetByChar
         : scheduledFriendRaidSetByChar;
@@ -5153,6 +5189,7 @@ export default function TodoTracker() {
         });
       }
 
+      selectableFriendOptionsCache.set(cacheKey, options);
       return options;
     }
 
