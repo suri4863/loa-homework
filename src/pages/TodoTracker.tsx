@@ -5221,9 +5221,9 @@ export default function TodoTracker() {
           );
           const commonRaids = rawCommonRaids.filter(
             (raid: string) =>
-              availableRaidKeySet.has(normalizeScheduleRaidKey(raid)) &&
+              hasScheduleAvailabilityKey(availableRaidKeySet, raid) &&
               !hasScheduleAvailabilityKey(clearedRaidSet, raid) &&
-              !scheduleState.scheduledSet.has(normalizeRaidName(getScheduleRaidBaseName(raid))) &&
+              !scheduleState.scheduledSet.has(normalizeScheduleRaidKey(raid)) &&
               !isExtremeRaidAlreadyScheduledForAccount(schedule, item, assigningMySide, fr.tableName, raid, fr.key)
           );
 
@@ -5319,9 +5319,9 @@ export default function TodoTracker() {
             );
             const commonRaids = rawCommonRaids.filter(
               (raid) =>
-                availableRaidKeySet.has(normalizeScheduleRaidKey(raid)) &&
+                hasScheduleAvailabilityKey(availableRaidKeySet, raid) &&
                 !hasScheduleAvailabilityKey(clearedRaidSet, raid) &&
-                !scheduleState.scheduledSet.has(normalizeRaidName(getScheduleRaidBaseName(raid))) &&
+                !scheduleState.scheduledSet.has(normalizeScheduleRaidKey(raid)) &&
                 !isExtremeRaidAlreadyScheduledForAccount(schedule, item, assigningMySide, friend.tableName, raid, friend.key)
             );
             if (!commonRaids.length) return item;
