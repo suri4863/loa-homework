@@ -5491,6 +5491,59 @@ export default function TodoTracker() {
 
     const selectableMyScheduleCandidates = remainingMyCandidates;
 
+    const buildSelectableCandidates = (
+      usedMy: Map<string, Set<string>>,
+      usedFriend: Map<string, Set<string>>
+    ) => {
+      const selectableMy = displayMyCandidates
+        .map((me: MyCandidate) => {
+          const used = usedMy.get(me.key) ?? new Set<string>();
+          return {
+            ...me,
+            remainingRaids: (me as MyCandidate & { unscheduledRaids?: string[] }).unscheduledRaids?.filter(
+              (raid: string) => !used.has(normalizeRaidName(raid))
+            ) ?? [],
+          };
+        })
+        .filter((me: MyCandidate & { remainingRaids: string[] }) => me.remainingRaids.length > 0);
+
+      const selectableFriend = displayFriendCandidates
+        .map((fr: FriendCandidate) => {
+          const used = usedFriend.get(fr.key) ?? new Set<string>();
+          return {
+            ...fr,
+            remainingRaids: (fr as FriendCandidate & { unscheduledRaids?: string[] }).unscheduledRaids?.filter(
+              (raid: string) => !used.has(normalizeRaidName(raid))
+            ) ?? [],
+          };
+        })
+        .filter((fr: FriendCandidate & { remainingRaids: string[] }) => fr.remainingRaids.length > 0);
+
+      return { selectableMy, selectableFriend };
+    };
+
+    const manualPairSelectableCandidates = (() => {
+      const usedMy = new Map<string, Set<string>>();
+      const usedFriend = new Map<string, Set<string>>();
+
+      return manualKkanbuPairs.map((_, index) => {
+        const current = buildSelectableCandidates(usedMy, usedFriend);
+        const result = pairResults[index];
+
+        if (result?.my && result?.friend) {
+          if (!usedMy.has(result.my.key)) usedMy.set(result.my.key, new Set<string>());
+          if (!usedFriend.has(result.friend.key)) usedFriend.set(result.friend.key, new Set<string>());
+
+          for (const raid of result.activeSelectedRaids) {
+            usedMy.get(result.my.key)!.add(normalizeRaidName(raid));
+            usedFriend.get(result.friend.key)!.add(normalizeRaidName(raid));
+          }
+        }
+
+        return current;
+      });
+    })();
+
     const updateManualPair = (
       index: number,
       field: "myKey" | "friendKey",
@@ -6365,52 +6418,8 @@ export default function TodoTracker() {
 
           {manualKkanbuPairs.map((pair, index) => {
             const result = pairResults[index];
-
-            const buildRemainingCandidatesUntil = (pairIndex: number) => {
-              const usedMy = new Map<string, Set<string>>();
-              const usedFriend = new Map<string, Set<string>>();
-
-              for (let i = 0; i < pairIndex; i++) {
-                const result = pairResults[i];
-                if (!result?.my || !result?.friend) continue;
-
-                if (!usedMy.has(result.my.key)) usedMy.set(result.my.key, new Set<string>());
-                if (!usedFriend.has(result.friend.key)) usedFriend.set(result.friend.key, new Set<string>());
-
-                for (const raid of result.activeSelectedRaids) {
-                  usedMy.get(result.my.key)!.add(normalizeRaidName(raid));
-                  usedFriend.get(result.friend.key)!.add(normalizeRaidName(raid));
-                }
-              }
-
-              const selectableMy = displayMyCandidates
-                .map((me: MyCandidate) => {
-                  const used = usedMy.get(me.key) ?? new Set<string>();
-                  return {
-                    ...me,
-                    remainingRaids: (me as MyCandidate & { unscheduledRaids?: string[] }).unscheduledRaids?.filter(
-                      (raid: string) => !used.has(normalizeRaidName(raid))
-                    ) ?? [],
-                  };
-                })
-                .filter((me: MyCandidate & { remainingRaids: string[] }) => me.remainingRaids.length > 0);
-
-              const selectableFriend = displayFriendCandidates
-                .map((fr: FriendCandidate) => {
-                  const used = usedFriend.get(fr.key) ?? new Set<string>();
-                  return {
-                    ...fr,
-                    remainingRaids: (fr as FriendCandidate & { unscheduledRaids?: string[] }).unscheduledRaids?.filter(
-                      (raid: string) => !used.has(normalizeRaidName(raid))
-                    ) ?? [],
-                  };
-                })
-                .filter((fr: FriendCandidate & { remainingRaids: string[] }) => fr.remainingRaids.length > 0);
-
-              return { selectableMy, selectableFriend };
-            };
-
-            const { selectableMy, selectableFriend } = buildRemainingCandidatesUntil(index);
+            const { selectableMy, selectableFriend } =
+              manualPairSelectableCandidates[index] ?? buildSelectableCandidates(new Map(), new Map());
 
             return (
               <div key={index} className="manualKkanbuPairCard">
