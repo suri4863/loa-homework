@@ -8915,6 +8915,7 @@ export default function TodoTracker() {
     "카멘",
     "에키드나",
     "베히모스",
+    "서막",
     "1막",
     "2막",
     "3막",
@@ -8930,9 +8931,15 @@ export default function TodoTracker() {
     if ((task.section ?? "").trim() !== "주간 레이드") return false;
 
     const title = (task.title ?? "").trim();
+    const normalizedTitle = normalizeRaidName(title).replace(
+      /(노말|하드|나이트메어|1단계|2단계|3단계)$/,
+      ""
+    );
 
     // 4/24 기본 레이드 숨김은 order가 아니라 title 기준으로 처리
-    return DEFAULT_HIDDEN_WEEKLY_RAID_TITLES.has(title);
+    return Array.from(DEFAULT_HIDDEN_WEEKLY_RAID_TITLES).some(
+      (raidTitle) => normalizeRaidName(raidTitle) === normalizedTitle
+    );
   }
 
   const tasks = useMemo(() => {
@@ -9197,6 +9204,7 @@ export default function TodoTracker() {
         { name: "하드", minIlvl: 1630, gold: getSplitTotal(RAID_REWARD_INFO["카멘"].hard) },
       ],
     },
+    { key: "ECHIDNA", name: "에키드나", diffs: [{ name: "노말", minIlvl: 1620, gold: getSplitTotal(RAID_REWARD_INFO["에키드나"].normal) }, { name: "하드", minIlvl: 1630, gold: getSplitTotal(RAID_REWARD_INFO["에키드나"].hard) }] },
     { key: "ACT0", name: "서막", diffs: [{ name: "노말", minIlvl: 1620, gold: getSplitTotal(RAID_REWARD_INFO["서막"].normal) }, { name: "하드", minIlvl: 1640, gold: getSplitTotal(RAID_REWARD_INFO["서막"].hard) }] },
     { key: "epic", name: "베히모스", diffs: [{ name: "노말", minIlvl: 1640, gold: getSplitTotal(RAID_REWARD_INFO["베히모스"].normal) }] },
     { key: "ACT1", name: "1막", diffs: [{ name: "노말", minIlvl: 1660, gold: getSplitTotal(RAID_REWARD_INFO["1막"].normal) }, { name: "하드", minIlvl: 1680, gold: getSplitTotal(RAID_REWARD_INFO["1막"].hard) }] },
