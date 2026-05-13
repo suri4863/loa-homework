@@ -1724,6 +1724,11 @@ export default function TodoTracker() {
     return keys;
   }
 
+  function addScheduleRaidMatchKey(set: Set<string>, raidName: string) {
+    const matchKey = normalizeScheduleRaidMatchKey(raidName);
+    if (matchKey) set.add(matchKey);
+  }
+
   function getWeeklyPickRaidNamesByKey(pickKey: string | null | undefined) {
     const key = String(pickKey ?? "").trim();
     const pick = key ? weeklyRaidPickByChar[key] : null;
@@ -4142,7 +4147,7 @@ export default function TodoTracker() {
       const key = String(charKey ?? "").trim();
       if (!key) return;
       const prev = map.get(key) ?? new Set<string>();
-      raidNames.forEach((raid) => prev.add(normalizeScheduleRaidKey(raid)));
+      raidNames.forEach((raid) => addScheduleRaidMatchKey(prev, raid));
       map.set(key, prev);
     }
 
@@ -4165,7 +4170,7 @@ export default function TodoTracker() {
 
       for (const item of schedule.items) {
         // 4/26 실제 일정표에 들어간 레이드만 흑백 처리되도록 수정
-        const itemScheduledRaids = getScheduleItemRaidNames(item).map((raid) => normalizeScheduleRaidKey(raid));
+        const itemScheduledRaids = getScheduleItemRaidNames(item);
 
         if (isTargetView) {
           if (item.mode === "OPEN_SLOT" || !item.friendCharKey) {
@@ -4254,7 +4259,7 @@ export default function TodoTracker() {
       extraKeys: string[] = []
     ) {
       const compactKeys = compactScheduleKeys([charKey, ...extraKeys]);
-      const targetKey = targetRaids.map((raid) => normalizeScheduleRaidKey(raid)).join("|");
+      const targetKey = targetRaids.map((raid) => normalizeScheduleRaidMatchKey(raid)).join("|");
       const cacheKey = `${getRaidSetMapCacheName(raidSetMap)}::${compactKeys.join("|")}::${targetKey}`;
       const cached = remainScheduleStateCache.get(cacheKey);
       if (cached) return cached;
@@ -4275,7 +4280,7 @@ export default function TodoTracker() {
       });
 
       const scheduledRaids = targetRaids.filter((raid) =>
-        scheduledSet.has(normalizeScheduleRaidKey(raid))
+        doesScheduleRaidSetMatch(scheduledSet, raid)
       );
 
       const allScheduled =
@@ -4298,7 +4303,7 @@ export default function TodoTracker() {
     ) {
       const scheduleState = getRemainScheduleState(charKey, targetRaids, raidSetMap, extraKeys);
       return targetRaids.filter(
-        (raid) => !scheduleState.scheduledSet.has(normalizeScheduleRaidKey(raid))
+        (raid) => !doesScheduleRaidSetMatch(scheduleState.scheduledSet, raid)
       );
     }
 
@@ -4913,12 +4918,15 @@ export default function TodoTracker() {
     function addScheduleAvailabilityKeys(set: Set<string>, raidName: string) {
       const normalized = normalizeRaidName(raidName);
       const baseKey = normalizeScheduleRaidKey(raidName);
+      const diffKey = normalizeScheduleRaidDiffKey(raidName);
       if (normalized) set.add(normalized);
       if (baseKey) set.add(baseKey);
+      if (diffKey) set.add(diffKey);
     }
 
     function hasScheduleAvailabilityKey(set: Set<string>, raidName: string) {
       return (
+        set.has(normalizeScheduleRaidDiffKey(raidName)) ||
         set.has(normalizeRaidName(raidName)) ||
         set.has(normalizeScheduleRaidKey(raidName))
       );
@@ -4993,7 +5001,7 @@ export default function TodoTracker() {
       const availableSet = new Set<string>();
       for (const raid of sourceRaids) {
         if (hasScheduleAvailabilityKey(clearedSet, raid)) continue;
-        if (scheduleState.scheduledSet.has(normalizeScheduleRaidKey(raid))) continue;
+        if (doesScheduleRaidSetMatch(scheduleState.scheduledSet, raid)) continue;
         addScheduleAvailabilityKeys(availableSet, raid);
       }
 
@@ -5213,17 +5221,10 @@ export default function TodoTracker() {
             scheduledRaidMap,
             assigningMySide ? "MY" : "FRIEND"
           );
-          const scheduleState = getRemainScheduleState(
-            fr.key,
-            rawCommonRaids,
-            scheduledRaidMap,
-            [fr.name, getScheduleSnapshotCandidateKey(fr.tableName, fr.name)]
-          );
           const commonRaids = rawCommonRaids.filter(
             (raid: string) =>
               hasScheduleAvailabilityKey(availableRaidKeySet, raid) &&
               !hasScheduleAvailabilityKey(clearedRaidSet, raid) &&
-              !scheduleState.scheduledSet.has(normalizeScheduleRaidKey(raid)) &&
               !isExtremeRaidAlreadyScheduledForAccount(schedule, item, assigningMySide, fr.tableName, raid, fr.key)
           );
 
@@ -5311,17 +5312,10 @@ export default function TodoTracker() {
               scheduledRaidMap,
               assigningMySide ? "MY" : "FRIEND"
             );
-            const scheduleState = getRemainScheduleState(
-              friend.key,
-              rawCommonRaids,
-              scheduledRaidMap,
-              [friend.name, getScheduleSnapshotCandidateKey(friend.tableName, friend.name)]
-            );
             const commonRaids = rawCommonRaids.filter(
               (raid) =>
                 hasScheduleAvailabilityKey(availableRaidKeySet, raid) &&
                 !hasScheduleAvailabilityKey(clearedRaidSet, raid) &&
-                !scheduleState.scheduledSet.has(normalizeScheduleRaidKey(raid)) &&
                 !isExtremeRaidAlreadyScheduledForAccount(schedule, item, assigningMySide, friend.tableName, raid, friend.key)
             );
             if (!commonRaids.length) return item;
