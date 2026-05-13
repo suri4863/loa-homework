@@ -1727,6 +1727,29 @@ export default function TodoTracker() {
     return Array.isArray(pick?.raids) ? uniqueCanonicalRaidNames(pick.raids) : [];
   }
 
+  function getWeeklyPickRaidKeysByKey(pickKey: string | null | undefined) {
+    const key = String(pickKey ?? "").trim();
+    const pick = key ? weeklyRaidPickByChar[key] : null;
+    if (!pick || !Array.isArray(pick.raids)) return new Set<string>();
+
+    const keys = new Set<string>();
+    for (const raid of uniqueCanonicalRaidNames(pick.raids)) {
+      const baseName = getRaidBaseNameForRemainLabel(raid);
+      const canonical = canonicalRaidName(baseName);
+      const pickedDiff =
+        pick.diffs?.[canonical] ??
+        pick.diffs?.[raid] ??
+        Object.entries(pick.diffs ?? {}).find(
+          ([diffKey]) => normalizeRaidName(getRaidBaseNameForRemainLabel(diffKey)) === normalizeRaidName(canonical)
+        )?.[1];
+      const raidKey = normalizeScheduleRaidKey(canonical);
+      if (!raidKey) continue;
+      keys.add(pickedDiff ? `${raidKey}|${pickedDiff}` : raidKey);
+    }
+
+    return keys;
+  }
+
   function getNextWeekOverrideRaidNamesByKeys(
     friendCodes: string[],
     charKeys: string[]
@@ -1809,7 +1832,8 @@ export default function TodoTracker() {
     ]);
     const useNextWeekOverrides = isFutureWeeklySchedule(schedule);
 
-    const myPickRaids = getWeeklyPickRaidNamesByKey(resolveScheduleWeeklyPickKey(item));
+    const myPickKey = resolveScheduleWeeklyPickKey(item);
+    const myPickRaids = getWeeklyPickRaidNamesByKey(myPickKey);
     const myOverrideRaids = useNextWeekOverrides
       ? getNextWeekOverrideRaidNamesByKeys(
         compactScheduleKeysForItem([
@@ -1824,13 +1848,14 @@ export default function TodoTracker() {
     if (myLiveRaids.length) {
       raidSets.push({
         label: String(item.mySnapshot?.name ?? item.myCharName ?? "").trim(),
-        keys: getRaidKeysFromNames(myLiveRaids),
+        keys: myOverrideRaids.length ? getRaidKeysFromNames(myLiveRaids) : getWeeklyPickRaidKeysByKey(myPickKey),
       });
     }
 
-    const friendPickRaids = isTargetView
-      ? getWeeklyPickRaidNamesByKey(toScheduleWeeklyPickKey(item.friendCharKey ?? item.friendSnapshot?.key))
-      : [];
+    const friendPickKey = isTargetView
+      ? toScheduleWeeklyPickKey(item.friendCharKey ?? item.friendSnapshot?.key)
+      : "";
+    const friendPickRaids = friendPickKey ? getWeeklyPickRaidNamesByKey(friendPickKey) : [];
     const friendOverrideRaids = useNextWeekOverrides
       ? getNextWeekOverrideRaidNamesByKeys(scheduleFriendCodes, friendKeys)
       : [];
@@ -1849,7 +1874,11 @@ export default function TodoTracker() {
           item.myCharName ??
           ""
         ).trim(),
-        keys: getRaidKeysFromNames(friendLiveRaids),
+        keys: friendOverrideRaids.length
+          ? getRaidKeysFromNames(friendLiveRaids)
+          : friendPickRaids.length
+            ? getWeeklyPickRaidKeysByKey(friendPickKey)
+            : getRaidKeysFromNames(friendLiveRaids),
       });
     }
 
