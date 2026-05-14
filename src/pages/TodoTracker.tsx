@@ -5019,15 +5019,25 @@ export default function TodoTracker() {
       return availableSet;
     }
 
+    const sortedScheduleRaidDefs = [...RAID_CATALOG].sort(
+      (a, b) => normalizeRaidFullKey(b.name).length - normalizeRaidFullKey(a.name).length
+    );
+    const scheduleRaidDefByBaseKey = new Map(
+      RAID_CATALOG.map((raid) => [normalizeRaidFullKey(raid.name), raid] as const)
+    );
+    const scheduleRaidBaseNameCache = new Map<string, string>();
+    const scheduleRaidDiffNameCache = new Map<string, DiffName | null>();
+    const candidateScheduleRaidKeySetCache = new Map<string, Set<string>>();
+    const scheduleUsedRaidCache = new Map<string, boolean>();
+
     function getScheduleRaidBaseName(raidName: string) {
-      const raw = String(raidName ?? "").trim();
+      const raw = normalizeRaidAliasLabel(raidName);
       const normalized = normalizeRaidFullKey(raw);
       if (!normalized) return "";
+      const cached = scheduleRaidBaseNameCache.get(normalized);
+      if (cached !== undefined) return cached;
 
-      const defs = [...RAID_CATALOG].sort(
-        (a, b) => normalizeRaidFullKey(b.name).length - normalizeRaidFullKey(a.name).length
-      );
-      const found = defs.find((raid) => {
+      const found = sortedScheduleRaidDefs.find((raid) => {
         const base = normalizeRaidFullKey(raid.name);
         if (normalized === base) return true;
         return raid.diffs.some(
@@ -5035,7 +5045,9 @@ export default function TodoTracker() {
         );
       });
 
-      return found?.name ?? canonicalRaidName(raw);
+      const result = found?.name ?? canonicalRaidName(raw);
+      scheduleRaidBaseNameCache.set(normalized, result);
+      return result;
     }
 
     function getScheduleItemIlvl(item: SharedWeeklyScheduleItem) {
@@ -5056,9 +5068,7 @@ export default function TodoTracker() {
       ilvl: number
     ): DiffName | null {
       const baseName = getScheduleRaidBaseName(raidName);
-      const def = RAID_CATALOG.find(
-        (raid) => normalizeRaidName(raid.name) === normalizeRaidName(baseName)
-      );
+      const def = scheduleRaidDefByBaseKey.get(normalizeRaidFullKey(baseName));
       if (!def) return null;
 
       const available = def.diffs.filter((diff) => ilvl >= diff.minIlvl);
@@ -5077,16 +5087,23 @@ export default function TodoTracker() {
       raidName: string
     ): DiffName | null {
       const baseName = getScheduleRaidBaseName(raidName);
-      const normalized = normalizeRaidFullKey(raidName);
-      const def = RAID_CATALOG.find(
-        (raid) => normalizeRaidFullKey(raid.name) === normalizeRaidFullKey(baseName)
-      );
-      const parsed = def?.diffs.find(
-        (diff) => normalized === `${normalizeRaidFullKey(baseName)}${normalizeRaidFullKey(diff.name)}`
-      );
-      if (parsed) return parsed.name;
-
+      const normalizedRaid = normalizeRaidFullKey(normalizeRaidAliasLabel(raidName));
       const pickKey = resolveScheduleWeeklyPickKey(item);
+      const itemIlvl = getScheduleItemIlvl(item);
+      const cacheKey = `${item.id}::${normalizedRaid}::${pickKey}::${itemIlvl}`;
+      if (scheduleRaidDiffNameCache.has(cacheKey)) {
+        return scheduleRaidDiffNameCache.get(cacheKey) ?? null;
+      }
+
+      const def = scheduleRaidDefByBaseKey.get(normalizeRaidFullKey(baseName));
+      const parsed = def?.diffs.find(
+        (diff) => normalizedRaid === `${normalizeRaidFullKey(baseName)}${normalizeRaidFullKey(diff.name)}`
+      );
+      if (parsed) {
+        scheduleRaidDiffNameCache.set(cacheKey, parsed.name);
+        return parsed.name;
+      }
+
       const pick = pickKey ? weeklyRaidPickByChar[pickKey] : null;
 
       const picked =
@@ -5097,10 +5114,14 @@ export default function TodoTracker() {
             normalizeRaidFullKey(getScheduleRaidBaseName(key)) === normalizeRaidFullKey(baseName)
         )?.[1];
 
-      if (picked) return picked as DiffName;
+      if (picked) {
+        scheduleRaidDiffNameCache.set(cacheKey, picked as DiffName);
+        return picked as DiffName;
+      }
 
-      const itemIlvl = getScheduleItemIlvl(item);
-      return itemIlvl > 0 ? getHighestAvailableRaidDiffName(baseName, itemIlvl) : null;
+      const result = itemIlvl > 0 ? getHighestAvailableRaidDiffName(baseName, itemIlvl) : null;
+      scheduleRaidDiffNameCache.set(cacheKey, result);
+      return result;
     }
 
     function getCandidateScheduleRaidDiffName(
@@ -5118,6 +5139,10 @@ export default function TodoTracker() {
       friend: FriendCandidate,
       candidateRaids: string[]
     ) {
+      const cacheKey = `${friend.key}::${friend.ilvl}::${candidateRaids.join("|")}`;
+      const cached = candidateScheduleRaidKeySetCache.get(cacheKey);
+      if (cached) return cached;
+
       const keys = new Set<string>();
 
       for (const candidateRaid of candidateRaids) {
@@ -5127,6 +5152,7 @@ export default function TodoTracker() {
         keys.add(candidateDiffName ? `${baseKey}|${candidateDiffName}` : baseKey);
       }
 
+      candidateScheduleRaidKeySetCache.set(cacheKey, keys);
       return keys;
     }
 
@@ -5139,8 +5165,8 @@ export default function TodoTracker() {
       if (!baseKey) return false;
 
       const scheduleDiffName = getScheduleRaidDiffName(item, raidName);
-      const scheduleRaidDef = RAID_CATALOG.find(
-        (raid) => normalizeRaidFullKey(raid.name) === normalizeRaidFullKey(getScheduleRaidBaseName(raidName))
+      const scheduleRaidDef = scheduleRaidDefByBaseKey.get(
+        normalizeRaidFullKey(getScheduleRaidBaseName(raidName))
       );
       if (!scheduleDiffName && scheduleRaidDef?.diffs.length) return false;
       return candidateRaidDiffKeySet.has(scheduleDiffName ? `${baseKey}|${scheduleDiffName}` : baseKey);
@@ -5214,13 +5240,25 @@ export default function TodoTracker() {
       candidate: FriendCandidate,
       raidName: string
     ) {
-      const candidateKeys = new Set(compactScheduleKeys([
+      const compactCandidateKeys = compactScheduleKeys([
         candidate.key,
         candidate.name,
         getScheduleSnapshotCandidateKey(candidate.tableName, candidate.name),
-      ]));
+      ]);
+      const normalizedRaidKey = normalizeScheduleRaidMatchKey(raidName);
+      const cacheKey = [
+        schedule.id,
+        item.id,
+        assigningMySide ? "MY" : "FRIEND",
+        compactCandidateKeys.join("|"),
+        normalizedRaidKey,
+      ].join("::");
+      const cached = scheduleUsedRaidCache.get(cacheKey);
+      if (cached !== undefined) return cached;
 
-      return schedule.items.some((scheduledItem) => {
+      const candidateKeys = new Set(compactCandidateKeys);
+
+      const result = schedule.items.some((scheduledItem) => {
         if (scheduledItem.id === item.id) return false;
 
         const scheduledKeys = assigningMySide
@@ -5240,6 +5278,8 @@ export default function TodoTracker() {
         if (!scheduledKeys.some((key) => candidateKeys.has(key))) return false;
         return doesScheduleRaidSetMatch(getRaidKeysFromNames(getScheduleItemRaidNames(scheduledItem)), raidName);
       });
+      scheduleUsedRaidCache.set(cacheKey, result);
+      return result;
     }
 
     function getSelectableFriendOptionsForScheduleItem(
@@ -7756,6 +7796,31 @@ export default function TodoTracker() {
     return name.replace(/\s+/g, "").toLowerCase();
   }
 
+  const RAID_NAME_ALIASES: Record<string, string> = {
+    [normalizeRaidName("에키드나")]: "서막",
+  };
+
+  function normalizeRaidAliasBaseName(name: string) {
+    const normalized = normalizeRaidName(String(name ?? ""));
+    return RAID_NAME_ALIASES[normalized] ?? String(name ?? "").trim();
+  }
+
+  function normalizeRaidAliasLabel(name: string) {
+    const raw = String(name ?? "").replace(/\s+/g, " ").trim();
+    const normalized = normalizeRaidName(raw);
+
+    for (const [aliasKey, targetName] of Object.entries(RAID_NAME_ALIASES)) {
+      if (normalized === aliasKey) return targetName;
+
+      const diffName = ["노말", "하드", "나이트메어", "1단계", "2단계", "3단계"].find(
+        (diff) => normalized === `${aliasKey}${normalizeRaidName(diff)}`
+      );
+      if (diffName) return `${targetName} ${diffName}`;
+    }
+
+    return raw;
+  }
+
   const CORE_DAILY_TASK_ID = "MAIN_DAILY";
 
   function getCoreDailyLabel(ilvl: number) {
@@ -8904,7 +8969,7 @@ export default function TodoTracker() {
   }
 
   function canonicalRaidName(name: string) {
-    const normalized = normalizeRaidName(String(name ?? ""));
+    const normalized = normalizeRaidName(normalizeRaidAliasBaseName(name));
     const found = RAID_CATALOG.find((raid) => normalizeRaidName(raid.name) === normalized);
     return found?.name ?? String(name ?? "").trim();
   }
@@ -8925,7 +8990,8 @@ export default function TodoTracker() {
   }
 
   function getWeeklyRaidMinIlvl(raidName: string) {
-    const def = RAID_CATALOG.find((raid) => normalizeRaidName(raid.name) === normalizeRaidName(raidName));
+    const canonical = canonicalRaidName(raidName);
+    const def = RAID_CATALOG.find((raid) => normalizeRaidName(raid.name) === normalizeRaidName(canonical));
     if (!def || !Array.isArray(def.diffs) || def.diffs.length === 0) {
       return Number.MAX_SAFE_INTEGER;
     }
@@ -9111,6 +9177,7 @@ export default function TodoTracker() {
     "일리아칸": 6,
     "상아탑": 7,
     "카멘": 8,
+    "서막": 9,
     "에키드나": 9,
     "베히모스": 10,
     "1막": 11,
@@ -9345,7 +9412,6 @@ export default function TodoTracker() {
         { name: "하드", minIlvl: 1630, gold: getSplitTotal(RAID_REWARD_INFO["카멘"].hard) },
       ],
     },
-    { key: "ECHIDNA", name: "에키드나", diffs: [{ name: "노말", minIlvl: 1620, gold: getSplitTotal(RAID_REWARD_INFO["에키드나"].normal) }, { name: "하드", minIlvl: 1630, gold: getSplitTotal(RAID_REWARD_INFO["에키드나"].hard) }] },
     { key: "ACT0", name: "서막", diffs: [{ name: "노말", minIlvl: 1620, gold: getSplitTotal(RAID_REWARD_INFO["서막"].normal) }, { name: "하드", minIlvl: 1640, gold: getSplitTotal(RAID_REWARD_INFO["서막"].hard) }] },
     { key: "epic", name: "베히모스", diffs: [{ name: "노말", minIlvl: 1640, gold: getSplitTotal(RAID_REWARD_INFO["베히모스"].normal) }] },
     { key: "ACT1", name: "1막", diffs: [{ name: "노말", minIlvl: 1660, gold: getSplitTotal(RAID_REWARD_INFO["1막"].normal) }, { name: "하드", minIlvl: 1680, gold: getSplitTotal(RAID_REWARD_INFO["1막"].hard) }] },
@@ -9930,7 +9996,8 @@ body.pip-dark .pip-select option{
   }
 
   function availableDiffNames(ilvl: number, raidName: string): DiffName[] {
-    const def = RAID_CATALOG.find((r) => r.name === raidName);
+    const canonical = canonicalRaidName(raidName);
+    const def = RAID_CATALOG.find((r) => r.name === canonical);
     if (!def) return [];
 
     // RAID_CATALOG의 minIlvl 기준으로 가능한 난이도만 노출
@@ -9940,7 +10007,8 @@ body.pip-dark .pip-select option{
   }
 
   function getRaidBaseNameForRemainLabel(raidName: string) {
-    const normalized = normalizeRaidName(raidName);
+    const normalizedLabel = normalizeRaidAliasLabel(raidName);
+    const normalized = normalizeRaidName(normalizedLabel);
     const found = [...RAID_CATALOG]
       .sort((a, b) => normalizeRaidName(b.name).length - normalizeRaidName(a.name).length)
       .find((raid) => {
@@ -9951,7 +10019,7 @@ body.pip-dark .pip-select option{
         );
       });
 
-    return found?.name ?? canonicalRaidName(raidName);
+    return found?.name ?? canonicalRaidName(normalizedLabel);
   }
 
   function getRaidDiffFromLabel(raidName: string): DiffName | null {
@@ -9959,7 +10027,7 @@ body.pip-dark .pip-select option{
     const def = RAID_CATALOG.find((raid) => normalizeRaidName(raid.name) === normalizeRaidName(baseName));
     if (!def) return null;
 
-    const normalized = normalizeRaidName(raidName);
+    const normalized = normalizeRaidName(normalizeRaidAliasLabel(raidName));
     return (
       def.diffs.find(
         (diff) => normalized === `${normalizeRaidName(baseName)} ${normalizeRaidName(diff.name)}` ||
@@ -10025,7 +10093,7 @@ body.pip-dark .pip-select option{
    *   각 레이드 골드는 (선택 난이도 우선) → 없으면 자동 최고난이도
    */
   function getGoldSplitByDiffName(raidName: string, diff: DiffName): GoldSplit {
-    const g = RAID_REWARD_INFO[raidName];
+    const g = RAID_REWARD_INFO[canonicalRaidName(raidName)];
     if (!g) return EMPTY_GOLD_SPLIT;
 
     if (diff === "노말") return g.normal ?? EMPTY_GOLD_SPLIT;

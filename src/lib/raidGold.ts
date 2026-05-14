@@ -93,6 +93,9 @@ export const RAID_REWARD_INFO: Record<string, RaidRewardInfo> = {
 };
 
 const DEFAULT_EXTREME_WEEKLY_RAID_TITLES = new Set(["1막 익스트림", "2막 익스트림"]);
+const RAID_NAME_ALIASES: Record<string, string> = {
+  에키드나: "서막",
+};
 
 export const RAID_CATALOG: RaidDef[] = [
   { key: "VALTAN", name: "발탄", diffs: [{ name: "노말", minIlvl: 1415, gold: getSplitTotal(RAID_REWARD_INFO["발탄"].normal) }, { name: "하드", minIlvl: 1445, gold: getSplitTotal(RAID_REWARD_INFO["발탄"].hard) }] },
@@ -103,7 +106,6 @@ export const RAID_CATALOG: RaidDef[] = [
   { key: "ILLIAKAN", name: "일리아칸", diffs: [{ name: "노말", minIlvl: 1580, gold: getSplitTotal(RAID_REWARD_INFO["일리아칸"].normal) }, { name: "하드", minIlvl: 1600, gold: getSplitTotal(RAID_REWARD_INFO["일리아칸"].hard) }] },
   { key: "IVORY", name: "상아탑", diffs: [{ name: "노말", minIlvl: 1600, gold: getSplitTotal(RAID_REWARD_INFO["상아탑"].normal) }, { name: "하드", minIlvl: 1620, gold: getSplitTotal(RAID_REWARD_INFO["상아탑"].hard) }] },
   { key: "KAMEN", name: "카멘", diffs: [{ name: "노말", minIlvl: 1610, gold: getSplitTotal(RAID_REWARD_INFO["카멘"].normal) }, { name: "하드", minIlvl: 1630, gold: getSplitTotal(RAID_REWARD_INFO["카멘"].hard) }] },
-  { key: "ECHIDNA", name: "에키드나", diffs: [{ name: "노말", minIlvl: 1620, gold: getSplitTotal(RAID_REWARD_INFO["에키드나"].normal) }, { name: "하드", minIlvl: 1630, gold: getSplitTotal(RAID_REWARD_INFO["에키드나"].hard) }] },
   { key: "ACT0", name: "서막", diffs: [{ name: "노말", minIlvl: 1620, gold: getSplitTotal(RAID_REWARD_INFO["서막"].normal) }, { name: "하드", minIlvl: 1640, gold: getSplitTotal(RAID_REWARD_INFO["서막"].hard) }] },
   { key: "EPIC", name: "베히모스", diffs: [{ name: "노말", minIlvl: 1640, gold: getSplitTotal(RAID_REWARD_INFO["베히모스"].normal) }] },
   { key: "ACT1", name: "1막", diffs: [{ name: "노말", minIlvl: 1660, gold: getSplitTotal(RAID_REWARD_INFO["1막"].normal) }, { name: "하드", minIlvl: 1680, gold: getSplitTotal(RAID_REWARD_INFO["1막"].hard) }] },
@@ -121,8 +123,13 @@ export function normalizeRaidName(name: string) {
   return String(name ?? "").trim().replace(/\s+/g, " ");
 }
 
-export function canonicalRaidName(name: string) {
+function normalizeRaidAliasName(name: string) {
   const normalized = normalizeRaidName(name);
+  return RAID_NAME_ALIASES[normalized] ?? normalized;
+}
+
+export function canonicalRaidName(name: string) {
+  const normalized = normalizeRaidAliasName(name);
   const found = RAID_CATALOG.find((raid) => normalizeRaidName(raid.name) === normalized);
   return found?.name ?? normalized;
 }
@@ -154,13 +161,14 @@ function pickBestDiff(ilvl: number, raid: RaidDef, basis: PlannerGoldBasis = "to
 }
 
 export function availableDiffNames(ilvl: number, raidName: string): RaidDiffName[] {
-  const def = RAID_CATALOG.find((raid) => normalizeRaidName(raid.name) === normalizeRaidName(raidName));
+  const canonical = canonicalRaidName(raidName);
+  const def = RAID_CATALOG.find((raid) => normalizeRaidName(raid.name) === normalizeRaidName(canonical));
   if (!def) return [];
   return def.diffs.filter((diff) => ilvl >= diff.minIlvl).map((diff) => diff.name);
 }
 
 function getGoldSplitByDiffName(raidName: string, diff: RaidDiffName): GoldSplit {
-  const reward = RAID_REWARD_INFO[raidName];
+  const reward = RAID_REWARD_INFO[canonicalRaidName(raidName)];
   if (!reward) return EMPTY_GOLD_SPLIT;
   if (diff === "노말") return reward.normal ?? EMPTY_GOLD_SPLIT;
   if (diff === "하드") return reward.hard ?? EMPTY_GOLD_SPLIT;
