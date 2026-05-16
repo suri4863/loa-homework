@@ -3264,6 +3264,53 @@ export default function TodoTracker() {
     return `${scheduleId}:${itemId}:${side}`;
   }
 
+  function shouldSyncScheduleProfileToLocalTable(
+    schedule: SharedWeeklySchedule,
+    side: ScheduleProfileSide
+  ) {
+    const { isOwnerView, isTargetView } = getSchedulePerspectiveForCurrentUser(schedule);
+    return (side === "MY" && isOwnerView) || (side === "FRIEND" && isTargetView);
+  }
+
+  function findUniqueLocalScheduleCharKeyByNameForProfileSync(
+    name?: string | null,
+    tableName?: string | null
+  ) {
+    const normalizedName = String(name ?? "").trim();
+    const normalizedTable = String(tableName ?? "").trim();
+    if (!normalizedName) return "";
+
+    const matches: string[] = [];
+    for (const table of state.tables) {
+      if (normalizedTable && String(table.name ?? "").trim() !== normalizedTable) continue;
+      for (const ch of table.characters) {
+        if (String(ch.name ?? "").trim() === normalizedName) {
+          matches.push(`${table.id}|${ch.id}`);
+        }
+      }
+    }
+
+    return matches.length === 1 ? matches[0] : "";
+  }
+
+  function resolveLocalScheduleCharKeyForProfileSync(
+    charKey: string | null | undefined,
+    snapshot?: SharedScheduleCharacterSnapshot | null,
+    fallbackName?: string | null,
+    fallbackTableName?: string | null
+  ) {
+    const direct = String(charKey ?? "").trim();
+    if (hasLocalScheduleCharKeyForItem(direct)) return direct;
+
+    const snapshotKey = String(snapshot?.key ?? "").trim();
+    if (hasLocalScheduleCharKeyForItem(snapshotKey)) return snapshotKey;
+
+    return findUniqueLocalScheduleCharKeyByNameForProfileSync(
+      snapshot?.name ?? fallbackName,
+      snapshot?.tableName ?? fallbackTableName
+    );
+  }
+
   function syncLocalTableCharacterFromScheduleProfile(
     item: SharedWeeklyScheduleItem,
     side: ScheduleProfileSide,
@@ -3272,8 +3319,8 @@ export default function TodoTracker() {
   ) {
     const localKey =
       side === "MY"
-        ? resolveLocalScheduleCharKeyForItem(item.myCharKey, item.mySnapshot, item.myCharName, item.myTableName)
-        : resolveLocalScheduleCharKeyForItem(item.friendCharKey, item.friendSnapshot, item.friendCharName, item.friendTableName);
+        ? resolveLocalScheduleCharKeyForProfileSync(item.myCharKey, item.mySnapshot, item.myCharName, item.myTableName)
+        : resolveLocalScheduleCharKeyForProfileSync(item.friendCharKey, item.friendSnapshot, item.friendCharName, item.friendTableName);
     const { tableId, charId } = parseScheduleMyCharKey(localKey);
     if (!tableId || !charId) return;
 
@@ -3338,7 +3385,9 @@ export default function TodoTracker() {
         return;
       }
 
-      syncLocalTableCharacterFromScheduleProfile(item, side, importedIlvl, importedPower);
+      if (shouldSyncScheduleProfileToLocalTable(schedule, side)) {
+        syncLocalTableCharacterFromScheduleProfile(item, side, importedIlvl, importedPower);
+      }
 
       setWeeklySchedules((prev) =>
         prev.map((candidateSchedule) => {
