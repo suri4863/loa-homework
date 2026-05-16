@@ -1851,14 +1851,7 @@ export default function TodoTracker() {
     schedule: SharedWeeklySchedule,
     item: SharedWeeklyScheduleItem
   ) {
-    const liveRaidSets = getScheduleLiveRaidSets(schedule, item).filter((set) => set.keys.size > 0);
-    if (!liveRaidSets.length) return { currentRaids: [], mismatchedRaidNames: [] };
-
-    const mismatchedRaidNames = getScheduleItemRaidNames(item).filter(
-      (raid) => liveRaidSets.some((set) => !doesScheduleRaidSetMatch(set.keys, raid))
-    );
-
-    return { currentRaids: [], mismatchedRaidNames };
+    return { currentRaids: [], mismatchedRaidNames: [] };
   }
 
   function isScheduleRaidMismatched(
@@ -1866,11 +1859,7 @@ export default function TodoTracker() {
     item: SharedWeeklyScheduleItem,
     raidName: string
   ) {
-    const mismatch = getScheduleRaidMismatch(schedule, item);
-    const targetKey = normalizeScheduleRaidMatchKey(raidName);
-    return mismatch.mismatchedRaidNames.some(
-      (raid) => normalizeScheduleRaidMatchKey(raid) === targetKey
-    );
+    return false;
   }
 
   function normalizeScheduleRaidKey(raidName: string) {
@@ -6186,13 +6175,13 @@ export default function TodoTracker() {
                             const liveAvgPower = displayedPowers.avgPower;
                             const plannedLevelBadges = getSchedulePlannedLevelBadges(item);
                             const levelHighlighted = isScheduleItemInHighlightedLevelRange(item);
-                            const raidMismatch = getScheduleRaidMismatch(schedule, item);
-                            const hasRaidMismatch = raidMismatch.mismatchedRaidNames.length > 0;
+                            const raidMismatch = { mismatchedRaidNames: [] as string[] };
+                            const hasRaidMismatch = false;
 
                             return (
                               <div
                                 key={item.id}
-                                className={`weeklyScheduleItem ${dragScheduleItem?.itemId === item.id ? "dragging" : ""} ${completion.isPast ? "is-past" : ""} ${completion.isFuture ? "is-future" : ""} ${levelHighlighted ? "is-level-highlighted" : ""} ${hasRaidMismatch ? "has-raid-mismatch" : ""}`}
+                                className={`weeklyScheduleItem ${dragScheduleItem?.itemId === item.id ? "dragging" : ""} ${completion.isPast ? "is-past" : ""} ${completion.isFuture ? "is-future" : ""} ${levelHighlighted ? "is-level-highlighted" : ""}`}
                                 draggable
                                 onClick={() => {
                                   if (!hasRaidMismatch) return;
