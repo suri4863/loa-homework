@@ -1623,12 +1623,8 @@ export default function TodoTracker() {
         );
         if (ch) return `${table.id}|${ch.id}`;
 
-        const placeholderIndex = Number(normalizedName.match(/(\d+)$/)?.[1] ?? 0);
-        if (placeholderIndex > 0 && placeholderIndex <= table.characters.length) {
-          const fallbackChar = table.characters[placeholderIndex - 1];
-          if (fallbackChar) return `${table.id}|${fallbackChar.id}`;
-        }
       }
+      return "";
     }
 
     for (const table of state.tables) {
@@ -1673,8 +1669,8 @@ export default function TodoTracker() {
       localKey,
       charKey,
       snapshot?.key,
-      name,
       getScheduleSnapshotCandidateKeyForItem(table, name),
+      table ? "" : name,
     ]);
   }
 
@@ -4726,12 +4722,8 @@ export default function TodoTracker() {
           );
           if (ch) return `${table.id}|${ch.id}`;
 
-          const placeholderIndex = Number(normalizedName.match(/(\d+)$/)?.[1] ?? 0);
-          if (placeholderIndex > 0 && placeholderIndex <= table.characters.length) {
-            const fallbackChar = table.characters[placeholderIndex - 1];
-            if (fallbackChar) return `${table.id}|${fallbackChar.id}`;
-          }
         }
+        return "";
       }
 
       for (const table of state.tables) {
@@ -4776,8 +4768,8 @@ export default function TodoTracker() {
         localKey,
         charKey,
         snapshot?.key,
-        name,
         getScheduleSnapshotCandidateKey(table, name),
+        table ? "" : name,
       ]);
     }
 
@@ -4848,12 +4840,15 @@ export default function TodoTracker() {
       schedule: SharedWeeklySchedule,
       item: SharedWeeklyScheduleItem
     ) {
-      const resolved = resolveLocalScheduleCharKey(
-        item.friendCharKey,
-        item.friendSnapshot,
-        item.friendCharName,
-        item.friendTableName
-      );
+      const resolved =
+        schedule.targetFriendCode === myFriendCode
+          ? resolveLocalScheduleCharKey(
+              item.friendCharKey,
+              item.friendSnapshot,
+              item.friendCharName,
+              item.friendTableName
+            )
+          : "";
 
       return (
         resolved ||
@@ -5365,6 +5360,26 @@ export default function TodoTracker() {
         .filter((fr: FriendCandidate & { commonRaids: string[] }) => {
           return fr.commonRaids.length > 0;
         });
+
+      const currentCandidate = sourceCandidates.find((fr) =>
+        isSameFriendScheduleCandidate(
+          fr,
+          item.friendCharKey,
+          item.friendTableName,
+          item.friendCharName,
+          item.friendSnapshot
+        )
+      );
+      if (
+        currentCandidate &&
+        !options.some((fr) => fr.key === currentCandidate.key)
+      ) {
+        const rawCommonRaids = getCommonRaidsForScheduleItem(item, currentCandidate);
+        options.unshift({
+          ...currentCandidate,
+          commonRaids: rawCommonRaids.length ? rawCommonRaids : getScheduleItemRaidNames(item),
+        });
+      }
 
       if (
         currentSelectedKey &&
