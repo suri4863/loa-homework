@@ -1857,7 +1857,10 @@ export default function TodoTracker() {
       });
     }
 
-    const friendPickKey = isTargetView
+    const storedFriendRaids = Array.isArray(item.friendSnapshot?.raids)
+      ? uniqueCanonicalRaidNames(item.friendSnapshot.raids)
+      : [];
+    const friendPickKey = isTargetView && !storedFriendRaids.length
       ? toScheduleWeeklyPickKey(item.friendCharKey ?? item.friendSnapshot?.key)
       : "";
     const friendPickRaids = friendPickKey ? getWeeklyPickRaidNamesByKey(friendPickKey) : [];
@@ -1867,6 +1870,7 @@ export default function TodoTracker() {
     const friendPlanRaids = getRaidPlanRowRaidNamesByKeys(scheduleFriendCodes, friendKeys);
     const friendLiveRaids =
       friendOverrideRaids.length ? friendOverrideRaids :
+        storedFriendRaids.length ? storedFriendRaids :
         friendPickRaids.length ? friendPickRaids :
           friendPlanRaids;
 
@@ -3379,10 +3383,6 @@ export default function TodoTracker() {
       if (importedIlvl == null && importedPower == null) {
         alert(`${nickname}의 아이템레벨이나 전투력을 찾지 못했어.`);
         return;
-      }
-
-      if (shouldSyncScheduleProfileToLocalTable(schedule, side)) {
-        syncLocalTableCharacterFromScheduleProfile(item, side, importedIlvl, importedPower);
       }
 
       setWeeklySchedules((prev) =>
