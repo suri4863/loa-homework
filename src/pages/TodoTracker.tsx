@@ -1815,66 +1815,23 @@ export default function TodoTracker() {
     schedule: SharedWeeklySchedule,
     item: SharedWeeklyScheduleItem
   ) {
-    const { isOwnerView, isTargetView } = getSchedulePerspectiveForCurrentUser(schedule);
     const raidSets: Array<{ label: string; keys: Set<string> }> = [];
 
-    const myKeys = getScheduleCandidateKeysForItem(
-      item.myCharKey,
-      item.myTableName,
-      item.myCharName,
-      item.mySnapshot
-    );
-    const friendKeys = getScheduleCandidateKeysForItem(
-      item.friendCharKey,
-      item.friendTableName,
-      item.friendCharName,
-      item.friendSnapshot
-    );
-    const scheduleFriendCodes = compactScheduleKeysForItem([
-      selectedFriendCode,
-      schedule.targetFriendCode,
-      schedule.ownerFriendCode,
-    ]);
-    const useNextWeekOverrides = isFutureWeeklySchedule(schedule);
-
-    const myPickKey = resolveScheduleWeeklyPickKey(item);
-    const myPickRaids = getWeeklyPickRaidNamesByKey(myPickKey);
-    const myOverrideRaids = useNextWeekOverrides
-      ? getNextWeekOverrideRaidNamesByKeys(
-        compactScheduleKeysForItem([
-          `MY:${selectedFriendCode || "local"}`,
-          `MY:${schedule.targetFriendCode || "local"}`,
-          `MY:${schedule.ownerFriendCode || "local"}`,
-        ]),
-        myKeys
-      )
+    const storedMyRaids = Array.isArray(item.mySnapshot?.raids)
+      ? uniqueCanonicalRaidNames(item.mySnapshot.raids)
       : [];
-    const myLiveRaids = myOverrideRaids.length ? myOverrideRaids : myPickRaids;
-    if (myLiveRaids.length) {
+    if (storedMyRaids.length) {
       raidSets.push({
         label: String(item.mySnapshot?.name ?? item.myCharName ?? "").trim(),
-        keys: myOverrideRaids.length ? getRaidKeysFromNames(myLiveRaids) : getWeeklyPickRaidKeysByKey(myPickKey),
+        keys: getRaidKeysFromNames(storedMyRaids),
       });
     }
 
     const storedFriendRaids = Array.isArray(item.friendSnapshot?.raids)
       ? uniqueCanonicalRaidNames(item.friendSnapshot.raids)
       : [];
-    const friendPickKey = isTargetView && !storedFriendRaids.length
-      ? toScheduleWeeklyPickKey(item.friendCharKey ?? item.friendSnapshot?.key)
-      : "";
-    const friendPickRaids = friendPickKey ? getWeeklyPickRaidNamesByKey(friendPickKey) : [];
-    const friendOverrideRaids = useNextWeekOverrides
-      ? getNextWeekOverrideRaidNamesByKeys(scheduleFriendCodes, friendKeys)
-      : [];
-    const friendPlanRaids = getRaidPlanRowRaidNamesByKeys(scheduleFriendCodes, friendKeys);
-    const friendLiveRaids =
-      friendOverrideRaids.length ? friendOverrideRaids :
-        storedFriendRaids.length ? storedFriendRaids :
-        friendPickRaids.length ? friendPickRaids :
-          friendPlanRaids;
 
-    if (friendLiveRaids.length && (item.friendCharKey || item.friendSnapshot?.name || isTargetView)) {
+    if (storedFriendRaids.length && (item.friendCharKey || item.friendSnapshot?.name)) {
       raidSets.push({
         label: String(
           item.friendSnapshot?.name ??
@@ -1883,11 +1840,7 @@ export default function TodoTracker() {
           item.myCharName ??
           ""
         ).trim(),
-        keys: friendOverrideRaids.length
-          ? getRaidKeysFromNames(friendLiveRaids)
-          : friendPickRaids.length
-            ? getWeeklyPickRaidKeysByKey(friendPickKey)
-            : getRaidKeysFromNames(friendLiveRaids),
+        keys: getRaidKeysFromNames(storedFriendRaids),
       });
     }
 
