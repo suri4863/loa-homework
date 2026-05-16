@@ -4187,7 +4187,7 @@ export default function TodoTracker() {
         me.key,
         me.activeRaids,
         scheduledMyRaidSetByChar,
-        [me.name, getScheduleSnapshotCandidateKey(me.tableName, me.name)]
+        getScheduleCandidateIdentityKeys(me)
       );
     }
 
@@ -4558,7 +4558,7 @@ export default function TodoTracker() {
             my.key,
             my.activeRaids,
             scheduledMyRaidSetByChar,
-            [my.name, getScheduleSnapshotCandidateKey(my.tableName, my.name)]
+            getScheduleCandidateIdentityKeys(my)
           )
             .map((raid: string) => normalizeRaidName(raid))
             .filter((raid: string, index: number, arr: string[]) => arr.indexOf(raid) === index)
@@ -4567,7 +4567,7 @@ export default function TodoTracker() {
                 friend.key,
                 friend.activeRaids,
                 scheduledFriendRaidSetByChar,
-                [friend.name, getScheduleSnapshotCandidateKey(friend.tableName, friend.name)]
+                getScheduleCandidateIdentityKeys(friend)
               ).some((fr: string) => normalizeRaidName(fr) === raid)
             )
           : [];
@@ -4683,6 +4683,20 @@ export default function TodoTracker() {
       }
 
       return out;
+    }
+
+    function getScheduleCandidateIdentityKeys(candidate: {
+      key?: string | null;
+      tableName?: string | null;
+      name?: string | null;
+    }) {
+      const tableName = String(candidate.tableName ?? "").trim();
+      const name = String(candidate.name ?? "").trim();
+      return compactScheduleKeys([
+        candidate.key,
+        getScheduleSnapshotCandidateKey(tableName, name),
+        tableName ? "" : name,
+      ]);
     }
 
     function getScheduleSnapshotCandidateKey(
@@ -5014,11 +5028,7 @@ export default function TodoTracker() {
       friend: FriendCandidate,
       side: "MY" | "FRIEND"
     ) {
-      const keys = compactScheduleKeys([
-        friend.key,
-        friend.name,
-        getScheduleSnapshotCandidateKey(friend.tableName, friend.name),
-      ]);
+      const keys = getScheduleCandidateIdentityKeys(friend);
 
       return getClearedScheduleRaidSetForKeys(schedule, keys, side);
     }
@@ -5050,7 +5060,7 @@ export default function TodoTracker() {
         candidate.key,
         sourceRaids,
         scheduledRaidMap,
-        [candidate.name, getScheduleSnapshotCandidateKey(candidate.tableName, candidate.name)]
+        getScheduleCandidateIdentityKeys(candidate)
       );
 
       const availableSet = new Set<string>();
@@ -5284,11 +5294,7 @@ export default function TodoTracker() {
       candidate: FriendCandidate,
       raidName: string
     ) {
-      const compactCandidateKeys = compactScheduleKeys([
-        candidate.key,
-        candidate.name,
-        getScheduleSnapshotCandidateKey(candidate.tableName, candidate.name),
-      ]);
+      const compactCandidateKeys = getScheduleCandidateIdentityKeys(candidate);
       const normalizedRaidKey = normalizeScheduleRaidMatchKey(raidName);
       const cacheKey = [
         schedule.id,
@@ -5508,7 +5514,7 @@ export default function TodoTracker() {
           x.key,
           x.activeRaids,
           scheduledMyRaidSetByChar,
-          [x.name, getScheduleSnapshotCandidateKey(x.tableName, x.name)]
+          getScheduleCandidateIdentityKeys(x)
         ),
       })).filter((x) => x.remainingRaids.length > 0);
 
@@ -5518,7 +5524,7 @@ export default function TodoTracker() {
           x.key,
           x.activeRaids,
           scheduledFriendRaidSetByChar,
-          [x.name, getScheduleSnapshotCandidateKey(x.tableName, x.name)]
+          getScheduleCandidateIdentityKeys(x)
         ),
       })).filter((x) => x.remainingRaids.length > 0);
 
@@ -5632,7 +5638,7 @@ export default function TodoTracker() {
         me.key,
         me.activeRaids,
         scheduledMyRaidSetByChar,
-        [me.name, getScheduleSnapshotCandidateKey(me.tableName, me.name)]
+        getScheduleCandidateIdentityKeys(me)
       );
 
       const unscheduledRaids = scheduleAvailableRaids.filter(
@@ -5651,7 +5657,7 @@ export default function TodoTracker() {
         fr.key,
         fr.activeRaids,
         scheduledFriendRaidSetByChar,
-        [fr.name, getScheduleSnapshotCandidateKey(fr.tableName, fr.name)]
+        getScheduleCandidateIdentityKeys(fr)
       );
 
       const unscheduledRaids = scheduleAvailableRaids.filter(
@@ -6742,7 +6748,7 @@ export default function TodoTracker() {
                       me.key,
                       me.allRaids,
                       scheduledMyRaidSetByChar,
-                      [me.name, getScheduleSnapshotCandidateKey(me.tableName, me.name)]
+                      getScheduleCandidateIdentityKeys(me)
                     );
                     // 4/26 다음 주 초기화 기준은 레이드는 초기화값으로 보되, 일정표에 넣은 레이드는 흑백 처리
                     const allVisibleRaidsMuted =
@@ -6842,11 +6848,7 @@ export default function TodoTracker() {
                         ? []
                         : (fr.clearedRaids ?? []).map((raid: string) => normalizeRaidName(raid))
                     );
-                    const friendKeys = compactScheduleKeys([
-                      fr.key,
-                      fr.name,
-                      getScheduleSnapshotCandidateKey(fr.tableName, fr.name),
-                    ]);
+                    const friendKeys = getScheduleCandidateIdentityKeys(fr);
                     const scheduleClearedRaidSet = getClearedScheduleRaidSetForKeys(
                       schedule,
                       friendKeys,
@@ -6867,7 +6869,7 @@ export default function TodoTracker() {
                       fr.key,
                       scheduleDisplayBaseRaids,
                       scheduledFriendRaidSetByChar,
-                      [fr.name, getScheduleSnapshotCandidateKey(fr.tableName, fr.name)]
+                      getScheduleCandidateIdentityKeys(fr)
                     );
 
                     const currentVisibleFriendRaids = uniqueCanonicalRaidNames([
@@ -6889,7 +6891,7 @@ export default function TodoTracker() {
                       fr.key,
                       visibleFriendRaids,
                       scheduledFriendRaidSetByChar,
-                      [fr.name, getScheduleSnapshotCandidateKey(fr.tableName, fr.name)]
+                      getScheduleCandidateIdentityKeys(fr)
                     );
 
                     // 4/23 현재 화면에 보이는 레이드칩이 전부 회색 조건이면 이름도 같이 회색
