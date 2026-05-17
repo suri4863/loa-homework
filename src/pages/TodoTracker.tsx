@@ -4825,6 +4825,22 @@ export default function TodoTracker() {
       return localKey ? getLivePowerFromMyTables(localKey) : null;
     }
 
+    function getLivePowerFromScheduleCandidates(
+      candidates: FriendCandidate[],
+      charKey: string | null | undefined,
+      snapshot: SharedScheduleCharacterSnapshot | null | undefined,
+      fallbackName?: string | null,
+      fallbackTableName?: string | null
+    ) {
+      const itemKeys = new Set(
+        getScheduleCandidateKeys(charKey, fallbackTableName, fallbackName, snapshot)
+      );
+      const candidate = candidates.find((candidate) =>
+        getScheduleCandidateIdentityKeys(candidate).some((key) => itemKeys.has(key))
+      );
+      return candidate && candidate.power > 0 ? candidate.power : null;
+    }
+
     function getScheduleViewerPerspective(schedule: SharedWeeklySchedule) {
       const isOwnerView = schedule.ownerFriendCode === myFriendCode;
       const isTargetView = schedule.targetFriendCode === myFriendCode;
@@ -4848,7 +4864,15 @@ export default function TodoTracker() {
         const myPower =
           getLiveSchedulePower(item.myCharKey, item.mySnapshot, item.myCharName, item.myTableName) ??
           getScheduleSnapshotPower(item.mySnapshot, item.myCharPower);
-        const friendPower = getScheduleSnapshotPower(item.friendSnapshot, item.friendCharPower);
+        const friendPower =
+          getLivePowerFromScheduleCandidates(
+            friendCandidates,
+            item.friendCharKey,
+            item.friendSnapshot,
+            item.friendCharName,
+            item.friendTableName
+          ) ??
+          getScheduleSnapshotPower(item.friendSnapshot, item.friendCharPower);
 
         return {
           myPower,
@@ -4864,7 +4888,15 @@ export default function TodoTracker() {
       // - friendCharKey가 "내 캐릭"이므로 로컬에서 실시간 조회 가능
       // - myCharPower는 상대(owner) 저장값 사용
       if (isTargetView) {
-        const myPower = getScheduleSnapshotPower(item.mySnapshot, item.myCharPower);
+        const myPower =
+          getLivePowerFromScheduleCandidates(
+            friendCandidates,
+            item.myCharKey,
+            item.mySnapshot,
+            item.myCharName,
+            item.myTableName
+          ) ??
+          getScheduleSnapshotPower(item.mySnapshot, item.myCharPower);
         const friendPower =
           getLiveSchedulePower(item.friendCharKey, item.friendSnapshot, item.friendCharName, item.friendTableName) ??
           getScheduleSnapshotPower(item.friendSnapshot, item.friendCharPower);
@@ -4879,10 +4911,32 @@ export default function TodoTracker() {
         };
       }
 
+      const myPower =
+        getLivePowerFromScheduleCandidates(
+          friendCandidates,
+          item.myCharKey,
+          item.mySnapshot,
+          item.myCharName,
+          item.myTableName
+        ) ??
+        getScheduleSnapshotPower(item.mySnapshot, item.myCharPower);
+      const friendPower =
+        getLivePowerFromScheduleCandidates(
+          friendCandidates,
+          item.friendCharKey,
+          item.friendSnapshot,
+          item.friendCharName,
+          item.friendTableName
+        ) ??
+        getScheduleSnapshotPower(item.friendSnapshot, item.friendCharPower);
+
       return {
-        myPower: getScheduleSnapshotPower(item.mySnapshot, item.myCharPower),
-        friendPower: getScheduleSnapshotPower(item.friendSnapshot, item.friendCharPower),
-        avgPower: item.avgPower ?? null,
+        myPower,
+        friendPower,
+        avgPower:
+          myPower != null && friendPower != null
+            ? Math.round((myPower + friendPower) / 2)
+            : item.avgPower ?? null,
       };
     }
 
