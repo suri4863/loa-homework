@@ -201,9 +201,9 @@ function extractSection(input: string, startLabels: string[], endLabels: string[
   return input.slice(start, end);
 }
 
-function parseNumber(input: string | undefined) {
-  if (!input) return null;
-  const value = Number(input.replace(/,/g, ""));
+function parseNumber(input: unknown) {
+  if (input == null || input === "") return null;
+  const value = Number(String(input).replace(/,/g, ""));
   return Number.isFinite(value) ? value : null;
 }
 
@@ -903,7 +903,7 @@ async function fetchOfficialOpenApiProfile(nickname: string) {
   return {
     source: "official" as const,
     sourceUrl: `${LOSTARK_API_BASE}/armories/characters/${encoded}`,
-    currentItemLevel: parseNumber(profiles?.ItemAvgLevel) ?? null,
+    currentItemLevel: parseNumber(profiles?.ItemAvgLevel ?? profiles?.ItemMaxLevel) ?? null,
     combatPower: parseNumber(profiles?.TotalCombatPower ?? profiles?.CombatPower) ?? null,
     className: String(profiles?.CharacterClassName || "") || null,
     combatDetails: {
@@ -918,9 +918,9 @@ async function fetchOfficialOpenApiProfile(nickname: string) {
     combatSystems: systems,
     pieces,
     debug: {
-      officialLevelFound: Boolean(profiles?.ItemAvgLevel),
+      officialLevelFound: Boolean(profiles?.ItemAvgLevel ?? profiles?.ItemMaxLevel),
       officialPieceCount: pieces.length,
-      officialLevelSnippet: String(profiles?.ItemAvgLevel || ""),
+      officialLevelSnippet: String(profiles?.ItemAvgLevel ?? profiles?.ItemMaxLevel ?? ""),
       officialFirstPieceSnippet: pieces[0]?.itemName ?? "",
     },
   };

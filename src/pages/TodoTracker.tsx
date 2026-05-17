@@ -3327,12 +3327,10 @@ export default function TodoTracker() {
         return;
       }
 
-      setWeeklySchedules((prev) =>
-        prev.map((candidateSchedule) => {
-          if (candidateSchedule.id !== scheduleId) return candidateSchedule;
-
-          const nextItems = candidateSchedule.items.map((candidateItem) => {
-            if (candidateItem.id !== itemId) return candidateItem;
+      const nextSchedule: SharedWeeklySchedule = {
+        ...schedule,
+        items: schedule.items.map((candidateItem) => {
+          if (candidateItem.id !== itemId) return candidateItem;
 
             const snapshot = side === "MY" ? candidateItem.mySnapshot : candidateItem.friendSnapshot;
             const charPower = side === "MY" ? candidateItem.myCharPower : candidateItem.friendCharPower;
@@ -3379,15 +3377,16 @@ export default function TodoTracker() {
               ...nextItem,
               avgPower: recalcScheduleItemAvgPower(nextItem),
             };
-          });
+        }),
+        updatedAt: Date.now(),
+      };
 
-          return {
-            ...candidateSchedule,
-            items: nextItems,
-            updatedAt: Date.now(),
-          };
-        })
+      setWeeklySchedules((prev) =>
+        prev.map((candidateSchedule) =>
+          candidateSchedule.id === scheduleId ? nextSchedule : candidateSchedule
+        )
       );
+      await saveWeeklySchedule(nextSchedule);
     } catch (error: any) {
       alert(error?.message || "전투정보실에서 캐릭터 정보를 불러오지 못했어.");
     } finally {
