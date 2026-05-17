@@ -3319,7 +3319,7 @@ export default function TodoTracker() {
           : null;
       const importedPower =
         typeof data.combatPower === "number" && Number.isFinite(data.combatPower)
-          ? Math.round(data.combatPower)
+          ? data.combatPower
           : null;
 
       if (importedIlvl == null && importedPower == null) {
@@ -3335,10 +3335,7 @@ export default function TodoTracker() {
             const snapshot = side === "MY" ? candidateItem.mySnapshot : candidateItem.friendSnapshot;
             const charPower = side === "MY" ? candidateItem.myCharPower : candidateItem.friendCharPower;
             const currentPower = parseScheduleNumberValue(snapshot?.power) ?? parseScheduleNumberValue(charPower);
-            const nextPower =
-              importedPower != null && (currentPower == null || importedPower > currentPower)
-                ? importedPower
-                : currentPower;
+            const nextPower = importedPower ?? currentPower;
 
             const nextSnapshot: SharedScheduleCharacterSnapshot = {
               ...(snapshot ?? {
