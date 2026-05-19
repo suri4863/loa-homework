@@ -9189,10 +9189,37 @@ export default function TodoTracker() {
     "3막",
   ]);
 
+  const EXTREME_WEEKLY_RAID_WINDOWS = [
+    {
+      name: "1막 익스트림",
+      startsAt: 0,
+      endsAt: Date.parse("2026-05-20T06:00:00+09:00"),
+    },
+    {
+      name: "2막 익스트림",
+      startsAt: Date.parse("2026-05-20T06:00:00+09:00"),
+      endsAt: Date.parse("2026-06-17T06:00:00+09:00"),
+    },
+  ];
+
+  function getExtremeWeeklyRaidWindow(raidName: string) {
+    const normalized = normalizeRaidName(raidName);
+    return EXTREME_WEEKLY_RAID_WINDOWS.find(
+      (window) => normalizeRaidName(window.name) === normalized
+    );
+  }
+
+  function isWeeklyRaidCurrentlyActive(raidName: string) {
+    const window = getExtremeWeeklyRaidWindow(raidName);
+    if (!window) return true;
+    const now = Date.now();
+    return now >= window.startsAt && now < window.endsAt;
+  }
+
   const DEFAULT_EXTREME_WEEKLY_RAID_TITLES = new Set([
     "1막 익스트림",
     "2막 익스트림",
-  ]);
+  ].filter((raidTitle) => isWeeklyRaidCurrentlyActive(raidTitle)));
 
   function isDefaultHiddenWeeklyRaidTask(task: TaskRow) {
     if (task.period !== "WEEKLY") return false;
@@ -9210,8 +9237,15 @@ export default function TodoTracker() {
     );
   }
 
+  function isInactiveExtremeWeeklyRaidTask(task: TaskRow) {
+    if (task.period !== "WEEKLY") return false;
+    return !isWeeklyRaidCurrentlyActive((task.title ?? "").trim());
+  }
+
   const tasks = useMemo(() => {
-    const visibleTasks = state.tasks.filter((t) => !isDefaultHiddenWeeklyRaidTask(t));
+    const visibleTasks = state.tasks.filter(
+      (t) => !isDefaultHiddenWeeklyRaidTask(t) && !isInactiveExtremeWeeklyRaidTask(t)
+    );
 
     if (periodTab === "RAID_LEFT") {
       return visibleTasks.filter(
@@ -9411,7 +9445,7 @@ export default function TodoTracker() {
     diffs: RaidDifficulty[];
   };
 
-  const RAID_CATALOG: RaidDef[] = [
+  const RAID_CATALOG: RaidDef[] = ([
     {
       key: "VALTAN",
       name: "발탄",
@@ -9497,7 +9531,7 @@ export default function TodoTracker() {
         { name: "나이트메어", minIlvl: 1770, gold: getSplitTotal(RAID_REWARD_INFO["2막 익스트림"].nightmare) },
       ]
     },
-  ];
+  ] as RaidDef[]).filter((raid) => isWeeklyRaidCurrentlyActive(raid.name));
 
   // =========================
   // ✅ 쿠르잔 전선 → 큐브 해금 티켓 +1
