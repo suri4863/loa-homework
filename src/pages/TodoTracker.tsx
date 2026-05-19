@@ -300,7 +300,7 @@ export default function TodoTracker() {
   //  수동 깐부 조합 플래너
   const [kkanbuLevelMin, setKkanbuLevelMin] = useState<string>("1700");
   const [kkanbuLevelMax, setKkanbuLevelMax] = useState<string>("1800");
-  const [kkanbuAvgPowerTarget, setKkanbuAvgPowerTarget] = useState<string>("3000");
+  const [kkanbuAvgPowerTarget, setKkanbuAvgPowerTarget] = useState<string>("3500");
 
   type ManualKkanbuPair = {
     myKey: string;
@@ -345,6 +345,10 @@ export default function TodoTracker() {
     scheduleId: string;
     itemId: string;
     fromDay: WeeklyScheduleDay;
+  } | null>(null);
+  const [scheduleRaidEditor, setScheduleRaidEditor] = useState<{
+    scheduleId: string;
+    itemId: string;
   } | null>(null);
   const [selectedMyScheduleCharKey, setSelectedMyScheduleCharKey] = useState<string>("");
   const [selectedMyScheduleRaidNames, setSelectedMyScheduleRaidNames] = useState<string[]>([]);
@@ -576,6 +580,21 @@ export default function TodoTracker() {
       // ignore
     }
   }, [nextWeekLevelOverrides]);
+
+  useEffect(() => {
+    if (!scheduleRaidEditor) return;
+
+    const closeRaidEditor = () => {
+      setScheduleRaidEditor(null);
+    };
+
+    document.addEventListener("click", closeRaidEditor);
+    document.addEventListener("touchstart", closeRaidEditor);
+    return () => {
+      document.removeEventListener("click", closeRaidEditor);
+      document.removeEventListener("touchstart", closeRaidEditor);
+    };
+  }, [scheduleRaidEditor]);
 
   function getNextWeekLevelOverrideKey(friendCode: string, charKey: string) {
     return `${friendCode}|${charKey}`;
@@ -1522,6 +1541,44 @@ export default function TodoTracker() {
     await saveWeeklySchedule(nextSchedule);
   }
 
+  async function updateScheduleItemRaids(
+    scheduleId: string,
+    itemId: string,
+    nextRaidNames: string[]
+  ) {
+    const schedule = weeklySchedules.find((s) => s.id === scheduleId);
+    if (!schedule) return;
+
+    const normalizedNext = uniqueCanonicalRaidNames(nextRaidNames).filter((raid) =>
+      isWeeklyRaidCurrentlyActive(canonicalRaidName(raid))
+    );
+    const nextKeys = new Set(normalizedNext.map((raid) => normalizeScheduleRaidKey(raid)));
+
+    const nextSchedule: SharedWeeklySchedule = {
+      ...schedule,
+      items: schedule.items.map((item) => {
+        if (item.id !== itemId) return item;
+
+        return {
+          ...item,
+          raidNames: normalizedNext,
+          baseRaidNames: normalizedNext,
+          myClearedRaidNames: (item.myClearedRaidNames ?? []).filter((raid) =>
+            nextKeys.has(normalizeScheduleRaidKey(raid))
+          ),
+          friendClearedRaidNames: (item.friendClearedRaidNames ?? []).filter((raid) =>
+            nextKeys.has(normalizeScheduleRaidKey(raid))
+          ),
+        };
+      }),
+    };
+
+    setWeeklySchedules((prev) =>
+      prev.map((item) => (item.id === scheduleId ? nextSchedule : item))
+    );
+    await saveWeeklySchedule(nextSchedule);
+  }
+
   async function clearWeeklyScheduleItems(scheduleId: string) {
     if (!confirm("현재 일정표 일정들을 전부 지울까요?")) return;
 
@@ -1880,11 +1937,111 @@ export default function TodoTracker() {
     return raidSets;
   }
 
+  function getScheduleLiveRaidNames(
+    schedule: SharedWeeklySchedule,
+    item: SharedWeeklyScheduleItem
+  ) {
+    const friendCodes = compactScheduleKeysForItem([
+      schedule.ownerFriendCode,
+      schedule.targetFriendCode,
+      selectedFriendCode,
+      getCurrentFriendCode(),
+    ]);
+    const addNames = (target: string[], source: unknown) => {
+      if (!Array.isArray(source)) return;
+      for (const raid of source) {
+        const canonical = canonicalRaidName(String(raid ?? ""));
+        if (!canonical) continue;
+        if (!isWeeklyRaidCurrentlyActive(canonical)) continue;
+        target.push(canonical);
+      }
+    };
+
+    const result: string[] = [];
+    const myPickKey = getLocalScheduleWeeklyPickKey(schedule, item);
+    addNames(result, getWeeklyPickRaidNamesByKey(myPickKey));
+    addNames(result, item.mySnapshot?.raids);
+    addNames(result, item.friendSnapshot?.raids);
+
+    const myKeys = getScheduleCandidateKeysForItem(
+      item.myCharKey,
+      item.myTableName,
+      item.myCharName,
+      item.mySnapshot
+    );
+    const friendKeys = getScheduleCandidateKeysForItem(
+      item.friendCharKey,
+      item.friendTableName,
+      item.friendCharName,
+      item.friendSnapshot
+    );
+
+    addNames(result, getNextWeekOverrideRaidNamesByKeys(friendCodes, myKeys));
+    addNames(result, getNextWeekOverrideRaidNamesByKeys(friendCodes, friendKeys));
+    addNames(result, getRaidPlanRowRaidNamesByKeys(friendCodes, myKeys));
+    addNames(result, getRaidPlanRowRaidNamesByKeys(friendCodes, friendKeys));
+
+    if (!result.length) {
+      addNames(result, item.baseRaidNames);
+      addNames(result, item.raidNames);
+    }
+
+    return uniqueCanonicalRaidNames(result);
+  }
+
   function getScheduleRaidMismatch(
     schedule: SharedWeeklySchedule,
     item: SharedWeeklyScheduleItem
   ) {
-    return { currentRaids: [], mismatchedRaidNames: [] };
+    const scheduledRaids = getScheduleItemRaidNames(item);
+    const currentRaids = getScheduleLiveRaidNames(schedule, item);
+    if (!scheduledRaids.length || !currentRaids.length) {
+      return { currentRaids, mismatchedRaidNames: [] };
+    }
+
+    const currentKeys = getRaidKeysFromNames(currentRaids);
+    const mismatchedRaidNames = scheduledRaids.filter(
+      (raid) =>
+        !isWeeklyRaidCurrentlyActive(canonicalRaidName(raid)) ||
+        !doesScheduleRaidSetMatch(currentKeys, raid)
+    );
+
+    return { currentRaids, mismatchedRaidNames };
+  }
+
+  function getScheduleItemIdentityKeys(item: SharedWeeklyScheduleItem) {
+    return compactScheduleKeysForItem([
+      ...getScheduleCandidateKeysForItem(
+        item.myCharKey,
+        item.myTableName,
+        item.myCharName,
+        item.mySnapshot
+      ),
+      ...getScheduleCandidateKeysForItem(
+        item.friendCharKey,
+        item.friendTableName,
+        item.friendCharName,
+        item.friendSnapshot
+      ),
+    ]);
+  }
+
+  function isScheduleRaidScheduledForSameCharacterElsewhere(
+    schedule: SharedWeeklySchedule,
+    item: SharedWeeklyScheduleItem,
+    raidName: string
+  ) {
+    const itemKeySet = new Set(getScheduleItemIdentityKeys(item));
+    if (!itemKeySet.size) return false;
+
+    return schedule.items.some((otherItem) => {
+      if (otherItem.id === item.id) return false;
+      if (!doesScheduleRaidSetMatch(getRaidKeysFromNames(getScheduleItemRaidNames(otherItem)), raidName)) {
+        return false;
+      }
+
+      return getScheduleItemIdentityKeys(otherItem).some((key) => itemKeySet.has(key));
+    });
   }
 
   function isScheduleRaidMismatched(
@@ -1892,7 +2049,9 @@ export default function TodoTracker() {
     item: SharedWeeklyScheduleItem,
     raidName: string
   ) {
-    return false;
+    return getScheduleRaidMismatch(schedule, item).mismatchedRaidNames.some(
+      (raid) => normalizeScheduleRaidMatchKey(raid) === normalizeScheduleRaidMatchKey(raidName)
+    );
   }
 
   function normalizeScheduleRaidKey(raidName: string) {
@@ -4096,7 +4255,7 @@ export default function TodoTracker() {
 
             const remainingRaids: string[] = allRaids.filter((raidName: string) => {
               const taskId = weeklyRaidTitleToId.get(normalizeRaidName(raidName));
-              if (!taskId) return false;
+              if (!taskId) return true;
 
               const cell = getCellByTableId(state, tbl.id, taskId, ch.id);
               const checked = cell?.type === "CHECK" ? cell.checked : false;
@@ -6273,13 +6432,35 @@ export default function TodoTracker() {
                             const liveAvgPower = displayedPowers.avgPower;
                             const plannedLevelBadges = getSchedulePlannedLevelBadges(item);
                             const levelHighlighted = isScheduleItemInHighlightedLevelRange(item);
-                            const raidMismatch = { mismatchedRaidNames: [] as string[] };
-                            const hasRaidMismatch = false;
+                            const raidMismatch = getScheduleRaidMismatch(schedule, item);
+                            const hasRaidMismatch = raidMismatch.mismatchedRaidNames.length > 0;
+                            const raidEditOpen =
+                              scheduleRaidEditor?.scheduleId === schedule.id &&
+                              scheduleRaidEditor?.itemId === item.id;
+                            const currentRaidNames = getScheduleItemRaidNames(item);
+                            const currentRaidKeySet = new Set(
+                              currentRaidNames.map((raid) => normalizeScheduleRaidKey(raid))
+                            );
+                            const plannedRaidOptions = raidMismatch.currentRaids.filter((raid) =>
+                              isWeeklyRaidCurrentlyActive(canonicalRaidName(raid))
+                            );
+                            const raidEditOptions = uniqueCanonicalRaidNames([
+                              ...plannedRaidOptions,
+                            ]).filter((raid) => {
+                              const key = normalizeScheduleRaidKey(raid);
+                              const isCurrent = currentRaidKeySet.has(key);
+                              return Boolean(
+                                key &&
+                                !isScheduleRaidCleared(schedule, item, raid) &&
+                                (isCurrent ||
+                                  !isScheduleRaidScheduledForSameCharacterElsewhere(schedule, item, raid))
+                              );
+                            });
 
                             return (
                               <div
                                 key={item.id}
-                                className={`weeklyScheduleItem ${dragScheduleItem?.itemId === item.id ? "dragging" : ""} ${completion.isPast ? "is-past" : ""} ${completion.isFuture ? "is-future" : ""} ${levelHighlighted ? "is-level-highlighted" : ""}`}
+                                className={`weeklyScheduleItem ${dragScheduleItem?.itemId === item.id ? "dragging" : ""} ${completion.isPast ? "is-past" : ""} ${completion.isFuture ? "is-future" : ""} ${levelHighlighted ? "is-level-highlighted" : ""} ${hasRaidMismatch ? "has-raid-mismatch" : ""} ${raidEditOpen ? "is-raid-editor-open" : ""}`}
                                 draggable
                                 onClick={() => {
                                   if (!hasRaidMismatch) return;
@@ -6458,6 +6639,66 @@ export default function TodoTracker() {
                                     "공통 레이드 없음"
                                   )}
                                 </div>
+                                <div className="weeklyScheduleRaidEditArea">
+                                  <button
+                                    type="button"
+                                    className="weeklyScheduleRaidEditButton"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setScheduleRaidEditor((prev) =>
+                                        prev?.scheduleId === schedule.id && prev.itemId === item.id
+                                          ? null
+                                          : { scheduleId: schedule.id, itemId: item.id }
+                                      );
+                                    }}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                    title="이 카드의 레이드 목록 변경"
+                                  >
+                                    레이드 변경
+                                  </button>
+                                  {raidEditOpen ? (
+                                    <div
+                                      className="weeklyScheduleRaidEditor"
+                                      onClick={(e) => e.stopPropagation()}
+                                      onMouseDown={(e) => e.stopPropagation()}
+                                    >
+                                      <div className="weeklyScheduleRaidEditorTitle">선택 레이드</div>
+                                      {raidEditOptions.length ? (
+                                        raidEditOptions.map((raid) => {
+                                          const checked = currentRaidKeySet.has(normalizeScheduleRaidKey(raid));
+                                          const cleared = isScheduleRaidCleared(schedule, item, raid);
+                                          return (
+                                            <label
+                                              key={`${item.id}-raid-edit-${raid}`}
+                                              className={`weeklyScheduleRaidEditorOption ${cleared ? "is-cleared" : ""}`}
+                                            >
+                                              <input
+                                                type="checkbox"
+                                                checked={checked}
+                                                onChange={(e) => {
+                                                  const next = e.target.checked
+                                                    ? [...currentRaidNames, raid]
+                                                    : currentRaidNames.filter(
+                                                      (name) => normalizeScheduleRaidKey(name) !== normalizeScheduleRaidKey(raid)
+                                                    );
+                                                  updateScheduleItemRaids(schedule.id, item.id, next).catch((error) => {
+                                                    alert(`레이드 변경 실패: ${String(error)}`);
+                                                  });
+                                                }}
+                                              />
+                                              <span>{formatScheduleRaidNameWithDifficulty(item, raid)}</span>
+                                            </label>
+                                          );
+                                        })
+                                      ) : (
+                                        <div className="weeklyScheduleRaidEditorEmpty">
+                                          선택 가능한 남은 레이드가 없어.
+                                        </div>
+                                      )}
+                                    </div>
+                                  ) : null}
+                                </div>
                               </div>
                             );
                           })}
@@ -6565,7 +6806,7 @@ export default function TodoTracker() {
               inputMode="numeric"
               value={kkanbuAvgPowerTarget}
               onChange={(e) => setKkanbuAvgPowerTarget(e.target.value.replace(/[^0-9]/g, ""))}
-              placeholder="예: 3000"
+              placeholder="예: 3500"
             />
           </div>
 
@@ -10731,6 +10972,72 @@ body.pip-dark .pip-select option{
     const pct = total > 0 ? Math.round((done / total) * 100) : 0;
     return { total, done, pct };
   }, [state, weeklyRaidTaskIdByTitle, weeklyRaidPickByChar, includeBoundGold]);
+
+  useEffect(() => {
+    const existing = new Set(
+      state.tasks
+        .filter(
+          (t) =>
+            t.period === "WEEKLY" &&
+            (t.section ?? "").trim() === "주간 레이드" &&
+            t.cellType === "CHECK"
+        )
+        .map((t) => normalizeRaidName(t.title ?? ""))
+    );
+
+    const missing: string[] = [];
+    for (const tbl of state.tables) {
+      for (const ch of tbl.characters as any[]) {
+        const ilvl = getCharIlvl(ch);
+        if (!Number.isFinite(ilvl) || ilvl <= 0) continue;
+
+        const charKey = weeklyCharKey(tbl.id, ch.id);
+        const pick = weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(ilvl);
+        const pickedResult = calcWeeklySelectedGold(ilvl, pick);
+
+        for (const row of pickedResult.rows) {
+          if (!row.checked) continue;
+          const canonical = canonicalRaidName(row.raid);
+          const normalized = normalizeRaidName(canonical);
+          if (!normalized || existing.has(normalized)) continue;
+          existing.add(normalized);
+          missing.push(canonical);
+        }
+      }
+    }
+
+    if (!missing.length) return;
+
+    setState((prev) => {
+      const prevExisting = new Set(
+        prev.tasks
+          .filter(
+            (t) =>
+              t.period === "WEEKLY" &&
+              (t.section ?? "").trim() === "주간 레이드" &&
+              t.cellType === "CHECK"
+          )
+          .map((t) => normalizeRaidName(t.title ?? ""))
+      );
+      const tasksToAdd = missing
+        .filter((raid) => {
+          const normalized = normalizeRaidName(raid);
+          if (!normalized || prevExisting.has(normalized)) return false;
+          prevExisting.add(normalized);
+          return true;
+        })
+        .map((raid) =>
+          createTask({
+            title: raid,
+            period: "WEEKLY",
+            cellType: "CHECK",
+            section: "주간 레이드",
+          } as any)
+        );
+
+      return tasksToAdd.length ? { ...prev, tasks: [...prev.tasks, ...tasksToAdd] } : prev;
+    });
+  }, [state.tables, state.tasks, weeklyRaidPickByChar, includeBoundGold]);
 
 
   // =========================
