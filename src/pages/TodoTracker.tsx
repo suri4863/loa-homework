@@ -2336,19 +2336,29 @@ export default function TodoTracker() {
   }
 
   function getScheduleItemLevels(item: SharedWeeklyScheduleItem) {
-    const levels = [
-      parseScheduleNumberValue(item.mySnapshot?.plannedIlvl),
-      parseScheduleNumberValue(item.mySnapshot?.ilvl),
-      parseScheduleNumberValue(item.mySnapshot?.itemLevel),
-      parseScheduleNumberValue(item.friendSnapshot?.plannedIlvl),
-      parseScheduleNumberValue(item.friendSnapshot?.ilvl),
-      parseScheduleNumberValue(item.friendSnapshot?.itemLevel),
-    ].filter((level): level is number => level != null && Number.isFinite(level));
+    const levels: number[] = [];
 
-    const addLevel = (level: unknown) => {
-      const parsed = parseScheduleNumberValue(level);
-      if (parsed != null && Number.isFinite(parsed)) levels.push(parsed);
+    const addEffectiveLevel = (...candidates: unknown[]) => {
+      for (const candidate of candidates) {
+        const parsed = parseScheduleNumberValue(candidate);
+        if (parsed != null && Number.isFinite(parsed)) {
+          levels.push(parsed);
+          return true;
+        }
+      }
+      return false;
     };
+
+    const hasMySnapshotLevel = addEffectiveLevel(
+      item.mySnapshot?.plannedIlvl,
+      item.mySnapshot?.ilvl,
+      item.mySnapshot?.itemLevel
+    );
+    const hasFriendSnapshotLevel = addEffectiveLevel(
+      item.friendSnapshot?.plannedIlvl,
+      item.friendSnapshot?.ilvl,
+      item.friendSnapshot?.itemLevel
+    );
 
     const addLocalCharacterLevel = (charKey: string | null | undefined) => {
       const [tableId, charId] = String(charKey ?? "").split("|");
@@ -2356,11 +2366,11 @@ export default function TodoTracker() {
 
       const table = state.tables.find((tbl) => tbl.id === tableId);
       const char = table?.characters.find((ch) => ch.id === charId);
-      if (char) addLevel(getCharIlvl(char));
+      if (char) addEffectiveLevel(getCharIlvl(char));
     };
 
-    addLocalCharacterLevel(item.myCharKey);
-    addLocalCharacterLevel(item.friendCharKey);
+    if (!hasMySnapshotLevel) addLocalCharacterLevel(item.myCharKey);
+    if (!hasFriendSnapshotLevel) addLocalCharacterLevel(item.friendCharKey);
 
     const addRowsByKeys = (keys: string[], rows: any[]) => {
       const keySet = new Set(keys);
@@ -2381,10 +2391,12 @@ export default function TodoTracker() {
         );
         if (!rowKeys.some((key) => keySet.has(key))) continue;
 
-        addLevel(row?.plannedIlvl);
-        addLevel(row?.currentIlvl);
-        addLevel(row?.ilvl);
-        addLevel(row?.charItemLevel);
+        addEffectiveLevel(
+          row?.plannedIlvl,
+          row?.currentIlvl,
+          row?.ilvl,
+          row?.charItemLevel
+        );
       }
     };
 
