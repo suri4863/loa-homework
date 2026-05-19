@@ -1771,10 +1771,20 @@ export default function TodoTracker() {
     return parseScheduleNumberValue(snapshot?.power ?? fallback);
   }
 
+  function filterActiveWeeklyRaidNames(raidNames: string[]) {
+    return uniqueCanonicalRaidNames(
+      (Array.isArray(raidNames) ? raidNames : [])
+        .map((raidName) => normalizeRaidName(raidName))
+        .filter(Boolean)
+        .filter((raidName) => isWeeklyRaidCurrentlyActive(raidName))
+    );
+  }
+
   function getScheduleItemRaidNames(item: SharedWeeklyScheduleItem) {
-    return Array.isArray(item.raidNames) && item.raidNames.length > 0
+    const raidNames = Array.isArray(item.raidNames) && item.raidNames.length > 0
       ? item.raidNames
       : item.baseRaidNames ?? [];
+    return filterActiveWeeklyRaidNames(raidNames);
   }
 
   function toScheduleWeeklyPickKey(rawKey: string | null | undefined) {
@@ -3783,12 +3793,12 @@ export default function TodoTracker() {
         .filter(([, minIlvl]) => Number.isFinite(ilvl) && ilvl >= minIlvl)
         .map(([raidName]) => normalizeRaidName(raidName));
 
-      return fullEligibleRaids;
+      return filterActiveWeeklyRaidNames(fullEligibleRaids);
     }
 
     function getDefaultNextWeekPlanRaids(ilvl: number, fallbackRaids: string[]) {
-      const normalizedFallback = uniqueCanonicalRaidNames(
-        Array.isArray(fallbackRaids) ? fallbackRaids.map((raid) => normalizeRaidName(raid)).filter(Boolean) : []
+      const normalizedFallback = filterActiveWeeklyRaidNames(
+        Array.isArray(fallbackRaids) ? fallbackRaids : []
       );
       const fallbackExtremeRaids = normalizedFallback.filter((raidName) =>
         DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(canonicalRaidName(raidName))
@@ -3806,8 +3816,8 @@ export default function TodoTracker() {
     }
 
     function narrowFriendPlanRaids(ilvl: number, raidNames: string[]) {
-      const normalized = uniqueCanonicalRaidNames(
-        Array.isArray(raidNames) ? raidNames.map((raid) => normalizeRaidName(raid)).filter(Boolean) : []
+      const normalized = filterActiveWeeklyRaidNames(
+        Array.isArray(raidNames) ? raidNames : []
       );
       const extremeRaids = normalized.filter((raidName) =>
         DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(canonicalRaidName(raidName))
@@ -3837,6 +3847,7 @@ export default function TodoTracker() {
       return RAID_CATALOG
         .filter((raid) => availableDiffNames(ilvl, raid.name).length > 0)
         .filter((raid) => !LEGACY_POPUP_RAID_NAMES.has(raid.name))
+        .filter((raid) => isWeeklyRaidCurrentlyActive(raid.name))
         .flatMap((raid) => availableDiffNames(ilvl, raid.name).map((diff) => `${raid.name} ${diff}`));
     }
 
@@ -5208,11 +5219,11 @@ export default function TodoTracker() {
       const seen = new Set<string>();
       const raids: string[] = [];
 
-      for (const raid of [
+      for (const raid of filterActiveWeeklyRaidNames([
         ...friend.activeRaids,
         ...friend.remainingRaids,
         ...friend.allRaids,
-      ]) {
+      ])) {
         const normalized = normalizeRaidName(raid);
         if (!normalized || seen.has(normalized) || hasScheduleAvailabilityKey(clearedSet, raid)) continue;
         seen.add(normalized);
@@ -5249,7 +5260,7 @@ export default function TodoTracker() {
         addScheduleAvailabilityKeys(clearedSet, raid)
       );
 
-      const sourceRaids = uniqueCanonicalRaidNames([
+      const sourceRaids = filterActiveWeeklyRaidNames([
         ...candidate.activeRaids,
         ...candidate.remainingRaids,
         ...candidate.allRaids,
@@ -5429,11 +5440,11 @@ export default function TodoTracker() {
       item: SharedWeeklyScheduleItem,
       friend: FriendCandidate
     ): string[] {
-      const baseRaids = [
+      const baseRaids = filterActiveWeeklyRaidNames([
         ...getScheduleItemRaidNames(item),
         ...(Array.isArray(item.raidNames) ? item.raidNames : []),
         ...(Array.isArray(item.baseRaidNames) ? item.baseRaidNames : []),
-      ];
+      ]);
       const candidateRaids = getSchedulableRaidsForFriendCandidate(friend);
       const candidateRaidDiffKeySet = buildCandidateScheduleRaidDiffKeySet(friend, candidateRaids);
       const seen = new Set<string>();
@@ -5541,6 +5552,14 @@ export default function TodoTracker() {
       const cacheKey = `${schedule.id}::${item.id}::${assigningMySide ? "MY" : "FRIEND"}::${currentSelectedKey}::${sourceCandidates.length}`;
       const cached = selectableFriendOptionsCache.get(cacheKey);
       if (cached) return cached;
+      const isCurrentItemCandidate = (fr: FriendCandidate) =>
+        isSameFriendScheduleCandidate(
+          fr,
+          item.friendCharKey,
+          item.friendTableName,
+          item.friendCharName,
+          item.friendSnapshot
+        );
 
       const options = sourceCandidates
         .map((fr: FriendCandidate) => {
@@ -5566,18 +5585,22 @@ export default function TodoTracker() {
           return fr.commonRaids.length > 0;
         });
 
-      const currentCandidate = sourceCandidates.find((fr) =>
-        isSameFriendScheduleCandidate(
-          fr,
-          item.friendCharKey,
-          item.friendTableName,
-          item.friendCharName,
-          item.friendSnapshot
-        )
-      );
+      const currentCandidate = sourceCandidates.find((fr) => isCurrentItemCandidate(fr));
+      const currentCandidateIndex = options.findIndex((fr) => isCurrentItemCandidate(fr));
+      if (
+        currentSelectedKey &&
+        currentCandidateIndex >= 0 &&
+        options[currentCandidateIndex].key !== currentSelectedKey
+      ) {
+        options[currentCandidateIndex] = {
+          ...options[currentCandidateIndex],
+          key: currentSelectedKey,
+        };
+      }
+
       if (
         currentCandidate &&
-        !options.some((fr) => fr.key === currentCandidate.key)
+        !options.some((fr) => fr.key === currentCandidate.key || isCurrentItemCandidate(fr))
       ) {
         const rawCommonRaids = getCommonRaidsForScheduleItem(item, currentCandidate);
         options.unshift({
@@ -5588,12 +5611,12 @@ export default function TodoTracker() {
 
       if (
         currentSelectedKey &&
-        !options.some((fr) => fr.key === currentSelectedKey) &&
+        !options.some((fr) => fr.key === currentSelectedKey || isCurrentItemCandidate(fr)) &&
         (item.friendSnapshot?.name || item.friendCharName)
       ) {
-        const snapshotRaids = Array.isArray(item.friendSnapshot?.raids)
+        const snapshotRaids = filterActiveWeeklyRaidNames(Array.isArray(item.friendSnapshot?.raids)
           ? item.friendSnapshot?.raids?.map((raid) => normalizeRaidName(raid)) ?? []
-          : getScheduleItemRaidNames(item);
+          : getScheduleItemRaidNames(item));
 
         options.unshift({
           key: currentSelectedKey,
@@ -5609,8 +5632,33 @@ export default function TodoTracker() {
         });
       }
 
-      selectableFriendOptionsCache.set(cacheKey, options);
-      return options;
+      const dedupedOptions: Array<FriendCandidate & { commonRaids: string[] }> = [];
+      for (const option of options) {
+        if (
+          dedupedOptions.some((existing) =>
+            isSameFriendScheduleCandidate(
+              existing,
+              option.key,
+              option.tableName,
+              option.name,
+              {
+                key: option.key,
+                tableName: option.tableName,
+                name: option.name,
+                ilvl: option.ilvl,
+                power: option.power,
+                raids: option.allRaids,
+              }
+            )
+          )
+        ) {
+          continue;
+        }
+        dedupedOptions.push(option);
+      }
+
+      selectableFriendOptionsCache.set(cacheKey, dedupedOptions);
+      return dedupedOptions;
     }
 
     function assignFriendToScheduleItem(
@@ -5642,7 +5690,16 @@ export default function TodoTracker() {
             }
 
             const candidatePool = getScheduleAssignableCandidates(schedule);
-            const friend = candidatePool.find((fr) => fr.key === friendKey);
+            const friend = candidatePool.find((fr) => fr.key === friendKey) ??
+              candidatePool.find((fr) =>
+                isSameFriendScheduleCandidate(
+                  fr,
+                  friendKey,
+                  item.friendTableName,
+                  item.friendCharName,
+                  item.friendSnapshot
+                )
+              );
             if (!friend) return item;
             const assigningMySide = isScheduleAssigningMySide(schedule);
 
@@ -9454,13 +9511,13 @@ export default function TodoTracker() {
     const hasExplicitRaids = Array.isArray(source?.raids);
     const hasExplicitGoldRaids = Array.isArray(source?.goldRaids);
 
-    const raids = uniqueCanonicalRaidNames(hasExplicitRaids ? source!.raids! : autoRaids)
+    const raids = filterActiveWeeklyRaidNames(hasExplicitRaids ? source!.raids! : autoRaids)
       .filter((raidName) => availableDiffNames(ilvl, raidName).length > 0);
 
     // 4/24 사용자가 전부 해제한 상태([])는 유지
     const finalRaids = hasExplicitRaids ? raids : (raids.length > 0 ? raids : autoRaids);
 
-    const rawGoldRaids = uniqueCanonicalRaidNames(hasExplicitGoldRaids ? source!.goldRaids! : autoRaids)
+    const rawGoldRaids = filterActiveWeeklyRaidNames(hasExplicitGoldRaids ? source!.goldRaids! : autoRaids)
       .filter((raidName) => finalRaids.some((name) => normalizeRaidName(name) === normalizeRaidName(raidName)))
       .filter((raidName) => availableDiffNames(ilvl, raidName).length > 0);
 
@@ -10708,6 +10765,7 @@ body.pip-dark .pip-select option{
 
   function calcWeeklyTop3Gold(ilvl: number) {
     const candidates = RAID_CATALOG
+      .filter((raid) => isWeeklyRaidCurrentlyActive(raid.name))
       .filter((raid) => !DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(raid.name)) // 4/24 익스트림은 Top3 자동 계산 제외
       .map((raid) => {
         const best = pickBestDiff(ilvl, raid);
@@ -10723,6 +10781,7 @@ body.pip-dark .pip-select option{
 
   function availableDiffNames(ilvl: number, raidName: string): DiffName[] {
     const canonical = canonicalRaidName(raidName);
+    if (!isWeeklyRaidCurrentlyActive(canonical)) return [];
     const def = RAID_CATALOG.find((r) => r.name === canonical);
     if (!def) return [];
 
