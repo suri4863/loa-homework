@@ -4046,7 +4046,7 @@ export default function TodoTracker() {
             const baseAllRaids: string[] = getMyAllWeeklyRaids(tbl.id, ch.id, ilvl);
             const allRaids: string[] =
               schedulePlanningMode === "NEXT_RESET" && nextWeekOverride?.raidNames?.length
-                ? nextWeekOverride.raidNames.map((raid) => normalizeRaidName(raid)).filter(Boolean)
+                ? nextWeekOverride.raidNames.map((raid) => normalizeFriendRaidLabel(raid)).filter(Boolean)
                 : baseAllRaids;
 
             const remainingRaids: string[] = allRaids.filter((raidName: string) => {
