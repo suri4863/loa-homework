@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 type PartyPreset = 4 | 8 | 16 | "custom";
+const BID_POPOVER_POS_KEY = "loa-bid-popover-pos:v2";
 
 function clampInt(v: number, min: number, max: number) {
   return Math.max(min, Math.min(max, v));
@@ -13,6 +14,21 @@ function formatGold(n: number) {
 export default function BidPopover() {
   const [open, setOpen] = useState(false);
   const [itemPrice, setItemPrice] = useState<number | "">("");
+  const [dragPos, setDragPos] = useState<{ top: number; left: number } | null>(() => {
+    try {
+      const raw = localStorage.getItem(BID_POPOVER_POS_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      const top = Number(parsed?.top);
+      const left = Number(parsed?.left);
+      if (!Number.isFinite(top) || !Number.isFinite(left)) return null;
+      return { top, left };
+    } catch {
+      return null;
+    }
+  });
+  const [dockHover, setDockHover] = useState(false);
+  const draggingRef = useRef(false);
   const price = typeof itemPrice === "number" ? itemPrice : 0;
 
   //  판매 수수료 = 아이템 가격의 5% (소수점 버림)
@@ -23,6 +39,7 @@ export default function BidPopover() {
   const [customParty, setCustomParty] = useState<number>(40);
   const [copied, setCopied] = useState(false);
 
+  const wrapRef = useRef<HTMLDivElement | null>(null);
   const btnRef = useRef<HTMLButtonElement | null>(null);
   const popRef = useRef<HTMLDivElement | null>(null);
 
@@ -46,19 +63,122 @@ export default function BidPopover() {
 
   // 팝오버 위치: 버튼 아래
   const popPos = useMemo(() => {
+    if (dragPos) return { top: dragPos.top + 46, left: dragPos.left };
     const el = btnRef.current;
-    if (!el) return { top: 0, left: 0 };
-    const r = el.getBoundingClientRect();
+    if (!el) return { top: 88, left: 28 };
     const width = 340;
     const margin = 8;
 
-    let left = r.left + window.scrollX;
-    left = Math.min(left, window.scrollX + window.innerWidth - width - margin);
-    left = Math.max(left, window.scrollX + margin);
+    const r = el.getBoundingClientRect();
+    let left = r.left;
+    left = Math.min(left, window.innerWidth - width - margin);
+    left = Math.max(left, margin);
 
-    const top = r.bottom + window.scrollY + margin;
+    const top = r.bottom + margin;
     return { top, left };
-  }, [open]);
+  }, [open, dragPos]);
+
+  useEffect(() => {
+    if (!dragPos) {
+      localStorage.removeItem(BID_POPOVER_POS_KEY);
+      return;
+    }
+    localStorage.setItem(BID_POPOVER_POS_KEY, JSON.stringify(dragPos));
+  }, [dragPos]);
+
+  function isInsideTopbar(event: PointerEvent) {
+    const topbar = document.querySelector(".todo-topbar") as HTMLElement | null;
+    const rect = topbar?.getBoundingClientRect();
+    return Boolean(
+      rect &&
+        event.clientX >= rect.left &&
+        event.clientX <= rect.right &&
+        event.clientY >= rect.top &&
+        event.clientY <= rect.bottom
+    );
+  }
+
+  function handleButtonDragStart(e: React.PointerEvent<HTMLButtonElement>) {
+    if (e.button !== 0) return;
+    const rect = btnRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const offsetX = e.clientX - rect.left;
+    const offsetY = e.clientY - rect.top;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    e.currentTarget.setPointerCapture(e.pointerId);
+
+    const move = (event: PointerEvent) => {
+      if (Math.hypot(event.clientX - startX, event.clientY - startY) > 4) {
+        draggingRef.current = true;
+      }
+      const width = btnRef.current?.offsetWidth ?? 70;
+      const height = btnRef.current?.offsetHeight ?? 38;
+      setDockHover(isInsideTopbar(event));
+      setDragPos({
+        left: Math.min(Math.max(8, event.clientX - offsetX), Math.max(8, window.innerWidth - width - 8)),
+        top: Math.min(Math.max(8, event.clientY - offsetY), Math.max(8, window.innerHeight - height - 8)),
+      });
+    };
+
+    const up = (event: PointerEvent) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      if (isInsideTopbar(event)) {
+        setDragPos(null);
+      }
+      setDockHover(false);
+      window.setTimeout(() => {
+        draggingRef.current = false;
+      }, 0);
+    };
+
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  }
+
+  function handleDragStart(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.button !== 0) return;
+    const rect = popRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const offsetX = e.clientX - rect.left;
+    const offsetY = e.clientY - rect.top;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    e.currentTarget.setPointerCapture(e.pointerId);
+
+    const move = (event: PointerEvent) => {
+      if (Math.hypot(event.clientX - startX, event.clientY - startY) > 4) {
+        draggingRef.current = true;
+      }
+      const width = popRef.current?.offsetWidth ?? 340;
+      const height = popRef.current?.offsetHeight ?? 420;
+      setDockHover(isInsideTopbar(event));
+      setDragPos({
+        left: Math.min(Math.max(8, event.clientX - offsetX), Math.max(8, window.innerWidth - width - 8)),
+        top: Math.min(Math.max(8, event.clientY - offsetY - 46), Math.max(8, window.innerHeight - height - 54)),
+      });
+    };
+
+    const up = (event: PointerEvent) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      if (isInsideTopbar(event)) {
+        setDragPos(null);
+      }
+      setDockHover(false);
+      window.setTimeout(() => {
+        draggingRef.current = false;
+      }, 0);
+    };
+
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  }
 
   // 바깥 클릭/ESC 닫기
   useEffect(() => {
@@ -90,11 +210,21 @@ export default function BidPopover() {
   };
 
   return (
-    <div className="bid-popover-wrap">
+    <div className={`bid-dock-slot ${dragPos ? "is-empty" : ""} ${dockHover ? "is-hover" : ""}`}>
+      {dragPos ? <div className="bid-dock-placeholder">계산기</div> : null}
+      <div
+      ref={wrapRef}
+      className={`bid-popover-wrap ${dragPos ? "is-floating" : "is-docked"}`}
+      style={dragPos ? { left: dragPos.left, top: dragPos.top } : undefined}
+    >
       <button
         ref={btnRef}
         className="btn"
-        onClick={() => setOpen((v) => !v)}
+        onPointerDown={handleButtonDragStart}
+        onClick={() => {
+          if (draggingRef.current) return;
+          setOpen((v) => !v);
+        }}
         type="button"
         title="입찰 계산기"
       >
@@ -103,9 +233,14 @@ export default function BidPopover() {
 
       {open && (
         <div ref={popRef} className="bid-popover" style={{ top: popPos.top, left: popPos.left }}>
-          <div className="bid-popover-head">
+          <div className="bid-popover-head" onPointerDown={handleDragStart}>
             <div className="bid-popover-title">입찰 계산기</div>
-            <button className="bid-popover-close" onClick={() => setOpen(false)} type="button">
+            <button
+              className="bid-popover-close"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => setOpen(false)}
+              type="button"
+            >
               닫기
             </button>
           </div>
@@ -201,6 +336,7 @@ export default function BidPopover() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

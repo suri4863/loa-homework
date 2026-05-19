@@ -1026,6 +1026,46 @@ html[data-theme="dark"] .rest-input {
   display: inline-block;
 }
 
+.bid-dock-slot {
+  display: inline-flex;
+  align-items: center;
+}
+
+.bid-dock-slot.is-empty {
+  min-width: 61px;
+  min-height: 38px;
+}
+
+.bid-dock-placeholder {
+  width: 61px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  color: var(--muted);
+  background: var(--soft);
+  font-size: 13px;
+}
+
+.bid-dock-slot.is-hover .bid-dock-placeholder {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.14);
+}
+
+.bid-popover-wrap.is-floating {
+  position: fixed;
+  z-index: 99998;
+}
+
+.bid-popover-wrap.is-floating > .btn {
+  box-shadow: var(--shadow);
+  cursor: move;
+}
+
 
 .bid-popover-head {
   display: flex;
@@ -1114,6 +1154,11 @@ html[data-theme="dark"] .rest-input {
 .bid-popover-title {
   font-size: 14px;
   font-weight: 700;
+}
+
+.bid-popover-head {
+  cursor: move;
+  user-select: none;
 }
 
 .bid-popover-close {
@@ -2096,6 +2141,10 @@ body,
 
 /* ✅ friendBox를 상단 우측으로 띄우기 (주간 골드 오른쪽 위 느낌) */
 .todo-topbar {
+  position: relative;
+}
+
+.todo-page {
   position: relative;
 }
 
@@ -4401,4 +4450,374 @@ html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
   gap: 7px;
   color: var(--text);
   font-size: 12px;
+}
+
+.raidRewardDock {
+  position: absolute;
+  left: calc(50% + 350px);
+  top: 20px;
+  z-index: 120;
+  width: min(360px, calc(100vw - 36px));
+  max-width: calc(100vw - 36px);
+  max-height: calc(100vh - 80px);
+  min-width: 360px;
+  color: var(--text);
+}
+
+.raidRewardDock.is-floating {
+  position: fixed;
+  left: 18px;
+  top: 168px;
+  width: min(420px, calc(100vw - 36px));
+}
+
+.raidRewardDock.is-docked {
+  resize: none;
+  overflow: visible;
+}
+
+.raidRewardDock.is-open {
+  min-height: 300px;
+  resize: both;
+  overflow: auto;
+}
+
+.raidRewardDock.is-docked.is-open {
+  width: 360px !important;
+  height: 520px !important;
+}
+
+.raidRewardDockToggle {
+  width: 100%;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  padding: 0 14px;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+}
+
+.raidRewardDockToggle:hover {
+  border-color: var(--primary);
+  background: var(--soft-2);
+}
+
+.raidRewardDockPanel {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.26);
+  overflow: auto;
+  min-height: 0;
+  height: calc(100% - 50px);
+}
+
+.raidRewardDockHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--soft-2);
+}
+
+.raidRewardDockHead strong {
+  font-size: 14px;
+}
+
+.raidRewardDockHead span,
+.raidRewardDockFoot {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.raidRewardMarketButton {
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--text);
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.raidRewardMarketButton:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.raidRewardMarketButton:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.raidRewardMarketError {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  color: #ef4444;
+  font-size: 12px;
+}
+
+.raidRewardLineTabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 10px 10px 2px;
+}
+
+.raidRewardLineTabs button {
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.raidRewardLineTabs button.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.raidRewardDockList {
+  overflow: auto;
+  padding: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.raidRewardItem {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--soft-2);
+  overflow: hidden;
+}
+
+.raidRewardItem + .raidRewardItem {
+  margin-top: 0;
+}
+
+.raidRewardItem[open] {
+  grid-column: 1 / -1;
+  overflow: auto;
+}
+
+.raidRewardItem:not([open]) .raidRewardPager {
+  display: none;
+}
+
+.raidRewardItem summary {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 12px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.raidRewardRows {
+  padding: 0 8px 8px;
+}
+
+.raidRewardItemBody {
+  display: block;
+  min-width: 0;
+}
+
+.raidRewardRow {
+  border-top: 1px solid var(--border);
+  padding: 8px 4px;
+}
+
+.raidRewardDiff {
+  margin-bottom: 5px;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.raidRewardNumbers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 8px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.raidRewardNumbers .muted {
+  color: var(--muted);
+}
+
+.raidRewardDockFoot {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--soft-2);
+}
+
+.raidExchangeBox {
+  margin: 0 8px 8px 0;
+  border-left: 1px solid var(--border);
+  border-top: 0;
+  padding: 0 0 0 8px;
+}
+
+.raidRewardPager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.raidRewardPager button {
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--text);
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.raidRewardPager button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.raidExchangeBox summary {
+  min-height: 30px;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.raidExchangeList {
+  display: grid;
+  gap: 8px;
+  padding-bottom: 2px;
+}
+
+.raidExchangeItem {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  padding: 8px;
+}
+
+.raidExchangeTitle {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.raidExchangeTitle span,
+.raidExchangeLimit {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.raidExchangeLimit {
+  margin-top: 3px;
+}
+
+.raidExchangeRewards {
+  display: grid;
+  gap: 4px;
+  margin-top: 7px;
+}
+
+.raidExchangeReward {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.raidExchangeReward .muted {
+  color: var(--muted);
+}
+
+.raidExchangeTotal {
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px dashed var(--border);
+  text-align: right;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+@media (max-width: 1500px) {
+  .raidRewardDock.is-floating {
+    position: sticky;
+    top: 8px;
+    left: auto;
+    width: min(100%, 760px);
+    max-width: 100%;
+    margin: 0 0 10px 0;
+  }
+}
+
+.raidRewardDock.is-docked {
+  position: absolute;
+  top: 20px;
+  left: max(400px, min(48vw, calc(100% - 740px)));
+  width: 360px;
+  max-width: 360px;
+  margin: 0;
+}
+
+@media (max-width: 900px) {
+  .raidRewardDock.is-docked {
+    left: 16px;
+    width: min(360px, calc(100vw - 32px));
+    max-width: calc(100vw - 32px);
+  }
+}
+
+@media (max-width: 560px) {
+  .raidRewardDock {
+    min-width: 0;
+  }
+
+  .raidRewardDockList {
+    grid-template-columns: 1fr;
+  }
+
+  .raidRewardItemBody {
+    display: block;
+    min-width: 0;
+  }
+
+  .raidExchangeBox {
+    margin: 0 8px 8px;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    padding: 6px 0 0;
+  }
 }

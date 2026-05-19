@@ -127,6 +127,39 @@ function getAzenaRemainingMs(expiresAt?: string | null) {
 }
 
 const AZENA_WARNING_MS = 72 * 60 * 60 * 1000; // 3일
+const RAID_REWARD_DOCK_POS_KEY = "loa-raid-reward-dock-pos:v2";
+const RAID_REWARD_DOCK_SIZE_KEY = "loa-raid-reward-dock-size:v1";
+
+function readRaidRewardDockPosition() {
+  try {
+    const raw = localStorage.getItem(RAID_REWARD_DOCK_POS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const left = Number(parsed?.left);
+    const top = Number(parsed?.top);
+    if (!Number.isFinite(left) || !Number.isFinite(top)) return null;
+    return { left, top };
+  } catch {
+    return null;
+  }
+}
+
+function readRaidRewardDockSize() {
+  try {
+    const raw = localStorage.getItem(RAID_REWARD_DOCK_SIZE_KEY);
+    if (!raw) return { width: 760, height: 620 };
+    const parsed = JSON.parse(raw);
+    const width = Number(parsed?.width);
+    const height = Number(parsed?.height);
+    if (!Number.isFinite(width) || !Number.isFinite(height)) return { width: 760, height: 620 };
+    return {
+      width: clamp(width, 360, Math.max(360, window.innerWidth - 36)),
+      height: clamp(height, 300, Math.max(300, window.innerHeight - 80)),
+    };
+  } catch {
+    return { width: 760, height: 620 };
+  }
+}
 
 function isAzenaEndingSoon(expiresAt?: string | null) {
   const remain = getAzenaRemainingMs(expiresAt);
@@ -8992,6 +9025,17 @@ export default function TodoTracker() {
   };
 
   const [raidGoldPopup, setRaidGoldPopup] = useState<RaidPopup>(null);
+  const [raidRewardDockOpen, setRaidRewardDockOpen] = useState(false);
+  const [raidRewardDockPosition, setRaidRewardDockPosition] = useState(() => readRaidRewardDockPosition());
+  const [raidRewardDockSize, setRaidRewardDockSize] = useState(() => readRaidRewardDockSize());
+  const [raidRewardPageByRaid, setRaidRewardPageByRaid] = useState<Record<string, "rewards" | "exchange">>({});
+  const [raidRewardLineTab, setRaidRewardLineTab] = useState<"current" | "legacy">("current");
+  const [raidRewardMarket, setRaidRewardMarket] = useState<Record<string, number>>({});
+  const [raidRewardMarketLoading, setRaidRewardMarketLoading] = useState(false);
+  const [raidRewardMarketError, setRaidRewardMarketError] = useState("");
+  const raidRewardDockRef = useRef<HTMLElement | null>(null);
+  const raidRewardDockDraggingRef = useRef(false);
+  const raidRewardDockResizeObserverRef = useRef<ResizeObserver | null>(null);
 
   // =========================
   // ✅ Top3 골드: 난이도 선택(캐릭터별 저장) + 팝업
@@ -9012,6 +9056,92 @@ export default function TodoTracker() {
       setWeeklyPopupRaidTab("current");
     }
   }, [weeklyTop3Popup]);
+
+  function handleRaidRewardDockPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
+    if (e.button !== 0) return;
+    const dock = e.currentTarget.closest(".raidRewardDock") as HTMLElement | null;
+    const rect = dock?.getBoundingClientRect();
+    const startLeft = raidRewardDockPosition?.left ?? rect?.left ?? 18;
+    const startTop = raidRewardDockPosition?.top ?? rect?.top ?? 168;
+    const offsetX = e.clientX - startLeft;
+    const offsetY = e.clientY - startTop;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const pointerId = e.pointerId;
+    e.currentTarget.setPointerCapture(pointerId);
+
+    const move = (event: PointerEvent) => {
+      if (Math.hypot(event.clientX - startX, event.clientY - startY) > 4) {
+        raidRewardDockDraggingRef.current = true;
+      }
+      const width = dock?.offsetWidth ?? 360;
+      const height = Math.min(dock?.offsetHeight ?? 42, window.innerHeight - 24);
+      const maxLeft = Math.max(8, window.innerWidth - width - 8);
+      const maxTop = Math.max(8, window.innerHeight - height - 8);
+      setRaidRewardDockPosition({
+        left: Math.min(Math.max(8, event.clientX - offsetX), maxLeft),
+        top: Math.min(Math.max(8, event.clientY - offsetY), maxTop),
+      });
+    };
+
+    const up = (event?: PointerEvent) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      const topbar = document.querySelector(".todo-topbar") as HTMLElement | null;
+      const rect = topbar?.getBoundingClientRect();
+      if (
+        event &&
+        rect &&
+        event.clientX >= rect.left &&
+        event.clientX <= rect.right &&
+        event.clientY >= rect.top &&
+        event.clientY <= rect.bottom
+      ) {
+        setRaidRewardDockPosition(null);
+      }
+      window.setTimeout(() => {
+        raidRewardDockDraggingRef.current = false;
+      }, 0);
+    };
+
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  }
+
+  useEffect(() => {
+    if (!raidRewardDockPosition) {
+      localStorage.removeItem(RAID_REWARD_DOCK_POS_KEY);
+      return;
+    }
+    localStorage.setItem(RAID_REWARD_DOCK_POS_KEY, JSON.stringify(raidRewardDockPosition));
+  }, [raidRewardDockPosition]);
+
+  useEffect(() => {
+    const node = raidRewardDockRef.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    raidRewardDockResizeObserverRef.current?.disconnect();
+    const observer = new ResizeObserver(([entry]) => {
+      const width = Math.round(entry.contentRect.width);
+      const height = Math.round(entry.contentRect.height);
+      if (width < 300 || height < 40) return;
+      const next = { width, height };
+      setRaidRewardDockSize((prev) => {
+        if (prev.width === next.width && prev.height === next.height) return prev;
+        localStorage.setItem(RAID_REWARD_DOCK_SIZE_KEY, JSON.stringify(next));
+        return next;
+      });
+    });
+    observer.observe(node);
+    raidRewardDockResizeObserverRef.current = observer;
+    return () => {
+      observer.disconnect();
+      if (raidRewardDockResizeObserverRef.current === observer) {
+        raidRewardDockResizeObserverRef.current = null;
+      }
+    };
+  }, [raidRewardDockOpen]);
 
   const POPUP_WEEKLY_CHECK_MAX_ILVL = 1700;
   const LEGACY_POPUP_RAID_NAMES = new Set([
@@ -9532,6 +9662,254 @@ export default function TodoTracker() {
       ]
     },
   ] as RaidDef[]).filter((raid) => isWeeklyRaidCurrentlyActive(raid.name));
+
+  const RAID_REWARD_DIFFS = [
+    { key: "normal", label: "노말" },
+    { key: "hard", label: "하드" },
+    { key: "nightmare", label: "나이트메어" },
+    { key: "stage1", label: "1단계" },
+    { key: "stage2", label: "2단계" },
+    { key: "stage3", label: "3단계" },
+  ] as const;
+
+  type RaidRewardDiffKey = (typeof RAID_REWARD_DIFFS)[number]["key"];
+  type RaidExchangeItem = {
+    name: string;
+    currency: string;
+    cost: number;
+    goldCost?: number;
+    limit: string;
+    rewards: string[];
+    expectedValue?: string;
+    efficiency?: string;
+    priceParts?: Array<{ marketKey: string; quantity: number; probability?: number; bundleSize?: number }>;
+  };
+
+  function getRaidRewardMarketPrice(marketKey?: string) {
+    if (!marketKey) return 0;
+    const value = Number(raidRewardMarket[marketKey] ?? 0);
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  function getRaidExchangeItemValue(item: RaidExchangeItem) {
+    if (!item.priceParts?.length) return 0;
+    const gross = item.priceParts.reduce((sum, part) => {
+      const price = getRaidRewardMarketPrice(part.marketKey);
+      if (price <= 0) return sum;
+      const bundleSize = part.bundleSize && part.bundleSize > 0 ? part.bundleSize : 1;
+      const probability = part.probability ?? 1;
+      return sum + (price * part.quantity * probability) / bundleSize;
+    }, 0);
+    return Math.max(0, gross - (item.goldCost ?? 0));
+  }
+
+  function getRaidExchangeItemEfficiency(item: RaidExchangeItem) {
+    const value = getRaidExchangeItemValue(item);
+    if (value <= 0 || item.cost <= 0) return 0;
+    return value / item.cost;
+  }
+
+  async function fetchRaidRewardMarketPrices() {
+    setRaidRewardMarketLoading(true);
+    setRaidRewardMarketError("");
+    try {
+      const res = await fetch("/api/growth/market-prices", { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const market = data?.market;
+      if (!market || typeof market !== "object") throw new Error("시세 응답 형식이 올바르지 않음");
+      setRaidRewardMarket(market);
+    } catch (error) {
+      console.error(error);
+      setRaidRewardMarketError("시세를 불러오지 못했어.");
+    } finally {
+      setRaidRewardMarketLoading(false);
+    }
+  }
+
+  function getRaidExchangeCurrency(raidName: string, diffLabel: string) {
+    if (raidName === "세르카") {
+      if (diffLabel === "하드" || diffLabel === "나이트메어") return { name: "고통의 가시", amount: 25 };
+      if (diffLabel === "노말") return { name: "고통의 가시", amount: 0 };
+    }
+    if (raidName === "지평의 성당") {
+      if (diffLabel === "1단계") return { name: "은총의 파편", amount: 10 };
+      if (diffLabel === "2단계") return { name: "은총의 파편", amount: 30 };
+      if (diffLabel === "3단계") return { name: "은총의 파편", amount: 60 };
+    }
+    return null;
+  }
+
+  function getRaidRewardRows(raidName: string) {
+    const info = RAID_REWARD_INFO[raidName];
+    if (!info) return [];
+    return RAID_REWARD_DIFFS.flatMap(({ key, label }) => {
+      const split = info[key as RaidRewardDiffKey];
+      if (!split) return [];
+      return [
+        {
+          key,
+          label,
+          tradable: split.tradable,
+          bound: split.bound,
+          total: getSplitTotal(split),
+          medal: info.medal,
+          currency: getRaidExchangeCurrency(raidName, label),
+        },
+      ];
+    });
+  }
+
+  function getRaidExchangeItems(raidName: string): RaidExchangeItem[] {
+    if (raidName === "세르카") {
+      return [
+        {
+          name: "야금술 : 업화 [19-20]",
+          currency: "고통의 가시",
+          cost: 20,
+          goldCost: 3000,
+          limit: "거래 가능",
+          rewards: ["야금술 : 업화 [19-20] 90%", "강화 야금술 : 업화 [19-20] 10%"],
+          expectedValue: "시세 기준 계산",
+          efficiency: "시세 필요",
+          priceParts: [
+            { marketKey: "upheavalMetallurgyBook19Price", quantity: 1, probability: 0.9 },
+            { marketKey: "enhancedMetallurgyBookPrice", quantity: 1, probability: 0.1 },
+          ],
+        },
+        {
+          name: "재봉술 : 업화 [19-20]",
+          currency: "고통의 가시",
+          cost: 10,
+          goldCost: 1500,
+          limit: "거래 가능",
+          rewards: ["재봉술 : 업화 [19-20] 90%", "강화 재봉술 : 업화 [19-20] 10%"],
+          expectedValue: "시세 기준 계산",
+          efficiency: "시세 필요",
+          priceParts: [
+            { marketKey: "upheavalTailoringBook19Price", quantity: 1, probability: 0.9 },
+            { marketKey: "enhancedTailoringBookPrice", quantity: 1, probability: 0.1 },
+          ],
+        },
+        {
+          name: "야금술 : 업화 [19-20] 상자",
+          currency: "고통의 가시",
+          cost: 20,
+          limit: "원정대 귀속",
+          rewards: ["야금술 : 업화 [19-20] x 1"],
+          expectedValue: "야금술 시세 기준",
+          efficiency: "시세 필요",
+          priceParts: [{ marketKey: "upheavalMetallurgyBook19Price", quantity: 1 }],
+        },
+        {
+          name: "재봉술 : 업화 [19-20] 상자",
+          currency: "고통의 가시",
+          cost: 10,
+          limit: "원정대 귀속",
+          rewards: ["재봉술 : 업화 [19-20] x 1"],
+          expectedValue: "재봉술 시세 기준",
+          efficiency: "시세 필요",
+          priceParts: [{ marketKey: "upheavalTailoringBook19Price", quantity: 1 }],
+        },
+        {
+          name: "고통의 재련 재료 상자",
+          currency: "고통의 가시",
+          cost: 5,
+          limit: "캐릭터 귀속",
+          rewards: ["운명의 파편 주머니(대) x 2", "위대한 운명의 돌파석 x 3", "운명의 파괴석 결정 x 100", "운명의 수호석 결정 x 300"],
+          expectedValue: "약 472 G",
+          efficiency: "약 94 G/개",
+          priceParts: [
+            { marketKey: "shardLargePouchPrice", quantity: 2, probability: 0.25 },
+            { marketKey: "successorLeapstonePrice", quantity: 3, probability: 0.25 },
+            { marketKey: "successorDestructionStonePricePer10", quantity: 100, probability: 0.25, bundleSize: 10 },
+            { marketKey: "successorProtectionStonePricePer10", quantity: 300, probability: 0.25, bundleSize: 10 },
+          ],
+        },
+        {
+          name: "고통의 재련 보조 재료 주머니",
+          currency: "고통의 가시",
+          cost: 5,
+          limit: "캐릭터 귀속",
+          rewards: ["용암의 숨결 x 4 50%", "빙하의 숨결 x 12 50%"],
+          expectedValue: "약 1,580 G",
+          efficiency: "약 316 G/개",
+          priceParts: [
+            { marketKey: "lavaBreathPrice", quantity: 4, probability: 0.5 },
+            { marketKey: "iceBreathPrice", quantity: 12, probability: 0.5 },
+          ],
+        },
+      ];
+    }
+    if (raidName === "지평의 성당") {
+      return [
+        {
+          name: "지평의 재련 재료 상자",
+          currency: "은총의 파편",
+          cost: 60,
+          limit: "캐릭터 귀속",
+          rewards: ["운명의 파괴석 결정 x 2,000", "운명의 수호석 결정 x 4,000", "운명의 파편 주머니(대) x 6", "위대한 운명의 돌파석 x 60"],
+          expectedValue: "보상표 기준",
+          efficiency: "은총 1개 가치 참고",
+          priceParts: [
+            { marketKey: "successorDestructionStonePricePer10", quantity: 2000, bundleSize: 10 },
+            { marketKey: "successorProtectionStonePricePer10", quantity: 4000, bundleSize: 10 },
+            { marketKey: "shardLargePouchPrice", quantity: 6 },
+            { marketKey: "successorLeapstonePrice", quantity: 60 },
+          ],
+        },
+        {
+          name: "지평의 야금술 선택 상자",
+          currency: "은총의 파편",
+          cost: 10,
+          limit: "캐릭터 귀속",
+          rewards: ["야금술 : 업화 [19-20] x 1", "장인의 야금술 : 3단계 x 1", "장인의 야금술 : 4단계 x 1"],
+          expectedValue: "선택 보상",
+          efficiency: "시세 필요",
+          priceParts: [
+            { marketKey: "upheavalMetallurgyBook19Price", quantity: 1 },
+            { marketKey: "artisanMetallurgyBook3Price", quantity: 1 },
+            { marketKey: "artisanMetallurgyBook4Price", quantity: 1 },
+          ],
+        },
+        {
+          name: "지평의 재봉술 선택 상자 x 3",
+          currency: "은총의 파편",
+          cost: 10,
+          limit: "캐릭터 귀속",
+          rewards: ["재봉술 : 업화 [19-20] x 3", "장인의 재봉술 : 3단계 x 3", "장인의 재봉술 : 4단계 x 3"],
+          expectedValue: "선택 보상",
+          efficiency: "시세 필요",
+          priceParts: [
+            { marketKey: "upheavalTailoringBook19Price", quantity: 3 },
+            { marketKey: "artisanTailoringBook3Price", quantity: 3 },
+            { marketKey: "artisanTailoringBook4Price", quantity: 3 },
+          ],
+        },
+        {
+          name: "젬 랜덤 상자",
+          currency: "은총의 파편",
+          cost: 10,
+          limit: "캐릭터 귀속",
+          rewards: ["랜덤 젬 x 1"],
+          expectedValue: "랜덤 보상",
+          efficiency: "시세 없음",
+        },
+      ];
+    }
+    return [];
+  }
+
+  const raidRewardInfoItems = RAID_CATALOG.map((raid) => ({
+    name: raid.name,
+    rows: getRaidRewardRows(raid.name),
+    exchangeItems: getRaidExchangeItems(raid.name),
+  }));
+  const visibleRaidRewardInfoItems = raidRewardInfoItems.filter((raid) =>
+    raidRewardLineTab === "legacy"
+      ? LEGACY_POPUP_RAID_NAMES.has(raid.name)
+      : !LEGACY_POPUP_RAID_NAMES.has(raid.name)
+  );
 
   // =========================
   // ✅ 쿠르잔 전선 → 큐브 해금 티켓 +1
@@ -11366,6 +11744,172 @@ body.pip-dark .pip-select option{
       )}
 
       <div className="todo-page">
+        <aside
+          ref={raidRewardDockRef}
+          className={`raidRewardDock ${raidRewardDockOpen ? "is-open" : ""} ${raidRewardDockPosition ? "is-floating" : "is-docked"}`}
+          style={{
+            ...(raidRewardDockPosition
+              ? { left: raidRewardDockPosition.left, top: raidRewardDockPosition.top }
+              : null),
+            ...(raidRewardDockPosition ? { width: raidRewardDockSize.width } : null),
+            ...(raidRewardDockPosition && raidRewardDockOpen ? { height: raidRewardDockSize.height } : null),
+          }}
+        >
+          <button
+            type="button"
+            className="raidRewardDockToggle"
+            onPointerDown={handleRaidRewardDockPointerDown}
+            onClick={() => {
+              if (raidRewardDockDraggingRef.current) return;
+              setRaidRewardDockOpen((open) => !open);
+            }}
+          >
+            <span>레이드 정보</span>
+            <span>{raidRewardDockOpen ? "접기" : "열기"}</span>
+          </button>
+
+          {raidRewardDockOpen && (
+            <div className="raidRewardDockPanel">
+              <div className="raidRewardDockHead">
+                <strong>레이드 보상</strong>
+                <button
+                  type="button"
+                  className="raidRewardMarketButton"
+                  onClick={fetchRaidRewardMarketPrices}
+                  disabled={raidRewardMarketLoading}
+                >
+                  {raidRewardMarketLoading ? "시세 확인 중" : "시세 갱신"}
+                </button>
+              </div>
+              {raidRewardMarketError ? (
+                <div className="raidRewardMarketError">{raidRewardMarketError}</div>
+              ) : null}
+
+              <div className="raidRewardLineTabs">
+                <button
+                  type="button"
+                  className={raidRewardLineTab === "current" ? "active" : ""}
+                  onClick={() => setRaidRewardLineTab("current")}
+                >
+                  현재 라인
+                </button>
+                <button
+                  type="button"
+                  className={raidRewardLineTab === "legacy" ? "active" : ""}
+                  onClick={() => setRaidRewardLineTab("legacy")}
+                >
+                  이전 라인
+                </button>
+              </div>
+
+              <div className="raidRewardDockList">
+                {visibleRaidRewardInfoItems.map((raid) => {
+                  const page = raidRewardPageByRaid[raid.name] ?? "rewards";
+                  const hasExchange = raid.exchangeItems.length > 0;
+                  return (
+                    <details key={raid.name} className="raidRewardItem">
+                      <summary>
+                        <span>{raid.name}</span>
+                        {hasExchange ? (
+                          <div className="raidRewardPager" onClick={(e) => e.preventDefault()}>
+                            {page === "rewards" ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  setRaidRewardPageByRaid((prev) => ({
+                                    ...prev,
+                                    [raid.name]: "exchange",
+                                  }));
+                                }}
+                              >
+                                교환목록 ›
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  setRaidRewardPageByRaid((prev) => ({
+                                    ...prev,
+                                    [raid.name]: "rewards",
+                                  }));
+                                }}
+                              >
+                                ‹ 보상
+                              </button>
+                            )}
+                          </div>
+                        ) : null}
+                      </summary>
+                      <div className="raidRewardItemBody">
+                        {page === "rewards" ? (
+                          <div className="raidRewardRows">
+                            {raid.rows.map((row) => (
+                              <div key={`${raid.name}-${String(row.key)}`} className="raidRewardRow">
+                                <div className="raidRewardDiff">{row.label}</div>
+                                <div className="raidRewardNumbers">
+                                  <span>유통 {row.tradable.toLocaleString()}</span>
+                                  <span>귀속 {row.bound.toLocaleString()}</span>
+                                  <span>합계 {row.total.toLocaleString()} G</span>
+                                  {row.currency ? (
+                                    <span>
+                                      {row.currency.name} {row.currency.amount.toLocaleString()}개
+                                    </span>
+                                  ) : null}
+                                  {row.medal != null ? (
+                                    <span>클리어메달 {row.medal.toLocaleString()}</span>
+                                  ) : (
+                                    <span className="muted">클리어메달 없음</span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="raidExchangeList">
+                            {raid.exchangeItems.map((item) => {
+                              const value = getRaidExchangeItemValue(item);
+                              const efficiency = getRaidExchangeItemEfficiency(item);
+                              return (
+                                <div key={`${raid.name}-${item.name}`} className="raidExchangeItem">
+                                  <div className="raidExchangeTitle">
+                                    <strong>{item.name}</strong>
+                                    <span>
+                                      {item.currency} {item.cost.toLocaleString()}개
+                                      {item.goldCost ? ` + ${item.goldCost.toLocaleString()}G` : ""}
+                                    </span>
+                                  </div>
+                                  <div className="raidExchangeLimit">{item.limit}</div>
+                                  <div className="raidExchangeRewards">
+                                    {item.rewards.map((reward) => (
+                                      <div key={`${item.name}-${reward}`} className="raidExchangeReward">
+                                        <span>{reward}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <div className="raidExchangeTotal">
+                                    기대 가치 {value > 0 ? `${Math.round(value).toLocaleString()} G` : item.expectedValue ?? "시세 필요"}
+                                    {value > 0 ? ` · 효율 ${Math.round(efficiency).toLocaleString()} G/개` : item.efficiency ? ` · 효율 ${item.efficiency}` : ""}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </details>
+                  );
+                })}
+              </div>
+
+              <div className="raidRewardDockFoot">
+                클리어메달은 현재 입력된 보상표 기준으로 표시돼.
+              </div>
+            </div>
+          )}
+        </aside>
+
         <div className="todo-topbar">
           <div className="topbar-left">
             <div className="todo-title">
