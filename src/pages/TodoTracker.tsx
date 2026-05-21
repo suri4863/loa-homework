@@ -8047,6 +8047,8 @@ export default function TodoTracker() {
     "종막": 1710,
     "세르카": 1710,
     "지평의 성당": 1700,
+    "1막 익스트림": 1720,
+    "2막 익스트림": 1720,
     "1해금": 1640,
     "2해금": 1680,
     "3해금": 1700,
@@ -8611,7 +8613,16 @@ export default function TodoTracker() {
     typeof window !== "undefined" && ("ontouchstart" in window || (navigator as any).maxTouchPoints > 0);
 
   const [periodTab, setPeriodTab] = useState<Tab>("ALL");
+  const [collapsedTaskSections, setCollapsedTaskSections] = useState<Record<string, boolean>>({});
   const tableWrapRef = useRef<HTMLDivElement | null>(null);
+
+  function isTaskSectionCollapsed(section: string) {
+    return !!collapsedTaskSections[section];
+  }
+
+  function toggleTaskSection(section: string) {
+    setCollapsedTaskSections((prev) => ({ ...prev, [section]: !prev[section] }));
+  }
 
   // =========================
   // 아제나 모달 (표ID 포함)
@@ -9429,6 +9440,65 @@ export default function TodoTracker() {
   }, [raidRewardDockPosition]);
 
   useEffect(() => {
+    if (raidRewardDockPosition) return;
+    const dock = raidRewardDockRef.current;
+    if (!dock) return;
+
+    const placeDockBetweenTopbarCards = () => {
+      const page = document.querySelector(".todo-page") as HTMLElement | null;
+      const gold = document.querySelector(".weeklyGoldSummary") as HTMLElement | null;
+      const friend = document.querySelector(".friendBoxTop") as HTMLElement | null;
+      const topbar = document.querySelector(".todo-topbar") as HTMLElement | null;
+      if (!page || !gold || !friend || !topbar) return;
+
+      const offsetWithinPage = (node: HTMLElement) => {
+        let left = 0;
+        let top = 0;
+        let current: HTMLElement | null = node;
+        while (current && current !== page) {
+          left += current.offsetLeft;
+          top += current.offsetTop;
+          current = current.offsetParent as HTMLElement | null;
+        }
+        return { left, top };
+      };
+
+      const goldOffset = offsetWithinPage(gold);
+      const friendOffset = offsetWithinPage(friend);
+      const topbarOffset = offsetWithinPage(topbar);
+      const goldRight = goldOffset.left + gold.offsetWidth;
+      const gap = friendOffset.left - goldRight;
+      const preferredWidth = 360;
+      const minWidth = 300;
+      const width = gap >= minWidth + 24
+        ? Math.min(preferredWidth, Math.max(minWidth, gap - 24))
+        : Math.min(preferredWidth, Math.max(minWidth, topbar.offsetWidth - 28));
+      const left = gap >= minWidth + 24
+        ? goldRight + Math.max(12, (gap - width) / 2)
+        : goldOffset.left;
+      const top = gap >= minWidth + 24
+        ? goldOffset.top + Math.max(0, (gold.offsetHeight - 42) / 2)
+        : goldOffset.top + gold.offsetHeight + 8;
+
+      dock.style.setProperty("--raid-dock-left", `${Math.max(0, left)}px`);
+      dock.style.setProperty("--raid-dock-top", `${Math.max(0, top)}px`);
+      dock.style.setProperty("--raid-dock-width", `${Math.round(width)}px`);
+    };
+
+    placeDockBetweenTopbarCards();
+    window.addEventListener("resize", placeDockBetweenTopbarCards);
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(placeDockBetweenTopbarCards) : null;
+    observer?.observe(dock);
+    const topbar = document.querySelector(".todo-topbar") as HTMLElement | null;
+    if (topbar) observer?.observe(topbar);
+
+    return () => {
+      window.removeEventListener("resize", placeDockBetweenTopbarCards);
+      observer?.disconnect();
+    };
+  }, [raidRewardDockPosition, raidRewardDockOpen, includeBoundGold]);
+
+  useEffect(() => {
     const node = raidRewardDockRef.current;
     if (!node || typeof ResizeObserver === "undefined") return;
     raidRewardDockResizeObserverRef.current?.disconnect();
@@ -10038,6 +10108,10 @@ export default function TodoTracker() {
   }
 
   function getRaidExchangeCurrency(raidName: string, diffLabel: string) {
+    if (raidName === "2막 익스트림") {
+      if (diffLabel === "노말") return { name: "불과 얼음의 주화", amount: 150 };
+      if (diffLabel === "하드" || diffLabel === "나이트메어") return { name: "불과 얼음의 주화", amount: 200 };
+    }
     if (raidName === "세르카") {
       if (diffLabel === "하드" || diffLabel === "나이트메어") return { name: "고통의 가시", amount: 25 };
       if (diffLabel === "노말") return { name: "고통의 가시", amount: 0 };
@@ -11329,15 +11403,25 @@ body.pip-dark .pip-select option{
             </thead>
 
             <tbody>
-              {groupedTasks.map(([section, rows]) => (
+              {groupedTasks.map(([section, rows]) => {
+                const sectionCollapsed = isTaskSectionCollapsed(section);
+                return (
                 <React.Fragment key={section}>
                   <tr className="section-row section-strong">
                     <td className="todo-sticky-left section-left" colSpan={1 + visibleCols.length}>
-                      {section}
+                      <button
+                        type="button"
+                        className="section-toggle-btn"
+                        onClick={() => toggleTaskSection(section)}
+                        aria-expanded={!sectionCollapsed}
+                      >
+                        <span className="section-toggle-icon">{sectionCollapsed ? "▸" : "▾"}</span>
+                        <span>{section}</span>
+                      </button>
                     </td>
                   </tr>
 
-                  {rows.map((task) => (
+                  {!sectionCollapsed && rows.map((task) => (
                     <tr key={task.id} className="task-row">
                       <td className="todo-sticky-left task-left">
                         <div className="task-left-inner">
@@ -11400,7 +11484,7 @@ body.pip-dark .pip-select option{
                   ))}
 
                   {/* ✅ 주간 레이드 골드합(Top3) 줄도 유지하고 싶으면 그대로 합쳐서 출력 */}
-                  {section === "주간 레이드" && (
+                  {!sectionCollapsed && section === "주간 레이드" && (
                     <tr className="task-row gold-sum-row">
                       <td className="todo-sticky-left task-left">
                         <div className="task-left-inner">
@@ -11458,7 +11542,8 @@ body.pip-dark .pip-select option{
                     </tr>
                   )}
                 </React.Fragment>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -11688,6 +11773,7 @@ body.pip-dark .pip-select option{
                         return oa - ob || a.localeCompare(b, "ko");
                       })
                       .map(([section, rows]) => {
+                        const sectionCollapsed = isTaskSectionCollapsed(section);
                         return (
                           <React.Fragment key={section}>
                             <tr
@@ -11695,11 +11781,19 @@ body.pip-dark .pip-select option{
                                 }`}
                             >
                               <td className="todo-sticky-left section-left" colSpan={1 + visibleCharacters.length}>
-                                {section}
+                                <button
+                                  type="button"
+                                  className="section-toggle-btn"
+                                  onClick={() => toggleTaskSection(section)}
+                                  aria-expanded={!sectionCollapsed}
+                                >
+                                  <span className="section-toggle-icon">{sectionCollapsed ? "▸" : "▾"}</span>
+                                  <span>{section}</span>
+                                </button>
                               </td>
                             </tr>
 
-                            {section === "주간 레이드" && (
+                            {!sectionCollapsed && section === "주간 레이드" && (
                               <tr className="task-row gold-sum-row">
                                 <td className="todo-sticky-left task-left">
                                   <div className="task-left-inner">
@@ -11759,7 +11853,7 @@ body.pip-dark .pip-select option{
                               </tr>
                             )}
 
-                            {rows.map((task) => {
+                            {!sectionCollapsed && rows.map((task) => {
                               if (task.title === "큐브") return null;
 
                               const min = TASK_MIN_ILVL[task.title];
