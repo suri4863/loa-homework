@@ -4265,6 +4265,13 @@ export default function TodoTracker() {
       );
     }
 
+    function isMyWeeklyRaidChecked(tableId: string, charId: string, raidName: string) {
+      const taskId = getWeeklyRaidTaskIdForRaidName(raidName);
+      if (!taskId) return false;
+      const cell = getCellByTableId(state, tableId, taskId, charId);
+      return cell?.type === "CHECK" ? Boolean(cell.checked) : false;
+    }
+
     function parsePowerValue(power?: string): number {
       if (!power) return 0;
 
@@ -4312,12 +4319,7 @@ export default function TodoTracker() {
                 : baseAllRaids;
 
             const remainingRaids: string[] = allRaids.filter((raidName: string) => {
-              const taskId = getWeeklyRaidTaskIdForRaidName(raidName);
-              if (!taskId) return true;
-
-              const cell = getCellByTableId(state, tbl.id, taskId, ch.id);
-              const checked = cell?.type === "CHECK" ? cell.checked : false;
-              return !checked;
+              return !isMyWeeklyRaidChecked(tbl.id, ch.id, raidName);
             });
 
             const activeRaids =
@@ -4387,13 +4389,16 @@ export default function TodoTracker() {
       if (!schedule) return [];
 
       const directScheduledSet = getScheduledRaidSetForCandidateInSchedule(schedule, me);
+      const sourceRaids = me.allRaids.filter(
+        (raid) => schedulePlanningMode === "NEXT_RESET" || !isMyWeeklyRaidChecked(me.tableId, me.charId, raid)
+      );
       if (directScheduledSet.size > 0) {
-        return me.activeRaids.filter(
+        return sourceRaids.filter(
           (raid) => !doesScheduleRaidSetMatchBaseInclusive(directScheduledSet, raid)
         );
       }
 
-      return [...me.activeRaids];
+      return [...sourceRaids];
     }
 
     function getScheduledRaidSetForCandidateInSchedule(
@@ -6078,13 +6083,16 @@ export default function TodoTracker() {
       const directScheduledSet = selectedWeeklySchedule
         ? getScheduledRaidSetForCandidateInSchedule(selectedWeeklySchedule, me)
         : new Set<string>();
+      const sourceRaids = me.allRaids.filter(
+        (raid) => schedulePlanningMode === "NEXT_RESET" || !isMyWeeklyRaidChecked(me.tableId, me.charId, raid)
+      );
       const scheduleAvailableRaids = selectedWeeklySchedule
-        ? me.activeRaids.filter(
+        ? sourceRaids.filter(
             (raid) => !doesScheduleRaidSetMatchBaseInclusive(directScheduledSet, raid)
           )
         : getUnscheduledRaidsForCandidateAnySide(
             me.key,
-            me.activeRaids,
+            sourceRaids,
             getScheduleCandidateIdentityKeys(me)
           );
 
@@ -7276,12 +7284,11 @@ export default function TodoTracker() {
                     const allVisibleRaidsMuted =
                       me.allRaids.length > 0 &&
                       me.allRaids.every((raid) => {
-                        const remainingRaidSet = getRaidKeysFromNames(me.remainingRaids);
                         const isScheduled = doesScheduleRaidSetMatchBaseInclusive(scheduleState.scheduledSet, raid);
                         // 4/26 다음 주 초기화 기준일 때는 모든 표시 레이드를 남은 레이드로 처리
                         const isRemaining =
                           schedulePlanningMode === "NEXT_RESET" ||
-                          doesScheduleRaidSetMatchBaseInclusive(remainingRaidSet, raid);
+                          !isMyWeeklyRaidChecked(me.tableId, me.charId, raid);
 
                         return !isRemaining || isScheduled;
                       });
@@ -7326,13 +7333,12 @@ export default function TodoTracker() {
 
                         <div className="manualRemainRaids">
                           {me.allRaids.map((raid) => {
-                            const remainingRaidSet = getRaidKeysFromNames(me.remainingRaids);
                             const isScheduled = doesScheduleRaidSetMatchBaseInclusive(scheduleState.scheduledSet, raid);
 
                             // 4/26 다음 주 초기화 기준일 때는 기존 클리어 체크를 무시하고 전부 남은 레이드로 처리
                             const isRemaining =
                               schedulePlanningMode === "NEXT_RESET" ||
-                              doesScheduleRaidSetMatchBaseInclusive(remainingRaidSet, raid);
+                              !isMyWeeklyRaidChecked(me.tableId, me.charId, raid);
 
                             return (
                               <span
