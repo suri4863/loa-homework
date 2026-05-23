@@ -2215,7 +2215,7 @@ export default function TodoTracker() {
       ) as DiffName | undefined) ??
       (itemIlvl > 0 ? getHighestAvailableDiffNameForRaid(itemIlvl, canonical) : null);
 
-    return diff ? `${canonical} ${diff}` : canonical;
+    return diff ? `${canonical} ${formatDiffDisplayName(diff)}` : canonical;
   }
 
   function getScheduleRaidCompletion(
@@ -4657,9 +4657,10 @@ export default function TodoTracker() {
           nextWeekOverride?.raidNames?.length
             ? nextWeekOverride.raidNames.map((raid) => normalizeFriendRaidLabel(raid)).filter(Boolean)
             : computedNextResetRaids;
-        const currentPlanRaids = narrowFriendPlanRaids(
-          currentIlvl,
-          normalizedRemainingRaids.length > 0 ? normalizedRemainingRaids : normalizedAllRaids
+        const currentPlanRaids = uniqueRaidLabelsByBase(
+          filterActiveWeeklyRaidNames(
+            normalizedRemainingRaids.length > 0 ? normalizedRemainingRaids : normalizedAllRaids
+          )
         );
 
         const allRaids =
