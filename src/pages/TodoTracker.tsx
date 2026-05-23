@@ -2112,6 +2112,14 @@ export default function TodoTracker() {
     return Array.from(keys).some((key) => key.startsWith(`${baseKey}|`));
   }
 
+  function doesScheduleRaidSetMatchForRemainCandidate(keys: Set<string>, raidName: string) {
+    const baseName = canonicalRaidName(getRaidBaseNameForRemainLabel(raidName));
+    if (DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(baseName)) {
+      return doesScheduleRaidSetMatch(keys, raidName);
+    }
+    return doesScheduleRaidSetMatchBaseInclusive(keys, raidName);
+  }
+
   function hydrateScheduleWithLocalCompletion(schedule: SharedWeeklySchedule) {
     const normalizedSchedule = clearStaleScheduleCompletion(schedule);
     const { isOwnerView, isTargetView } = getSchedulePerspectiveForCurrentUser(normalizedSchedule);
@@ -4263,8 +4271,24 @@ export default function TodoTracker() {
 
     function getWeeklyRaidTaskIdForRaidName(raidName: string) {
       const label = normalizeRaidAliasLabel(raidName);
+      const normalizedLabel = normalizeRaidName(label);
+      const exactTaskId = weeklyRaidTitleToId.get(normalizedLabel);
+      if (exactTaskId) return exactTaskId;
+
+      const extremeToken = normalizeRaidName("익스트림");
+      if (normalizedLabel.includes(extremeToken)) {
+        const baseKey = normalizeScheduleRaidKey(label);
+        const extremeTask = weeklyRaidTasks.find((task) => {
+          const titleKey = normalizeRaidName(task.title);
+          return (
+            titleKey.includes(extremeToken) &&
+            (normalizedLabel.startsWith(titleKey) || baseKey === titleKey)
+          );
+        });
+        return extremeTask?.id ?? null;
+      }
+
       return (
-        weeklyRaidTitleToId.get(normalizeRaidName(label)) ??
         weeklyRaidTitleToId.get(normalizeScheduleRaidKey(label)) ??
         weeklyRaidTitleToId.get(normalizeRaidName(getRaidBaseNameForRemainLabel(label))) ??
         null
@@ -4400,7 +4424,7 @@ export default function TodoTracker() {
         return sourceRaids.filter(
           (raid) =>
             !(
-              doesScheduleRaidSetMatchBaseInclusive(directScheduledSet, raid) ||
+              doesScheduleRaidSetMatchForRemainCandidate(directScheduledSet, raid) ||
               isMyWeeklyRaidChecked(me.tableId, me.charId, raid)
             )
         );
@@ -6096,7 +6120,7 @@ export default function TodoTracker() {
         ? sourceRaids.filter(
             (raid) =>
               !(
-                doesScheduleRaidSetMatchBaseInclusive(directScheduledSet, raid) ||
+                doesScheduleRaidSetMatchForRemainCandidate(directScheduledSet, raid) ||
                 isMyWeeklyRaidChecked(me.tableId, me.charId, raid)
               )
           )
@@ -7294,7 +7318,7 @@ export default function TodoTracker() {
                     const allVisibleRaidsMuted =
                       me.allRaids.length > 0 &&
                       me.allRaids.every((raid) => {
-                        const isScheduled = doesScheduleRaidSetMatchBaseInclusive(scheduleState.scheduledSet, raid);
+                        const isScheduled = doesScheduleRaidSetMatchForRemainCandidate(scheduleState.scheduledSet, raid);
                         const isChecked = isMyWeeklyRaidChecked(me.tableId, me.charId, raid);
                         // 4/26 다음 주 초기화 기준일 때는 모든 표시 레이드를 남은 레이드로 처리
                         return isScheduled || isChecked;
@@ -7340,7 +7364,7 @@ export default function TodoTracker() {
 
                         <div className="manualRemainRaids">
                           {me.allRaids.map((raid) => {
-                            const isScheduled = doesScheduleRaidSetMatchBaseInclusive(scheduleState.scheduledSet, raid);
+                            const isScheduled = doesScheduleRaidSetMatchForRemainCandidate(scheduleState.scheduledSet, raid);
                             const isChecked = isMyWeeklyRaidChecked(me.tableId, me.charId, raid);
 
                             // 4/26 다음 주 초기화 기준일 때는 기존 클리어 체크를 무시하고 전부 남은 레이드로 처리
