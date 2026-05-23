@@ -4574,8 +4574,7 @@ export default function TodoTracker() {
       const extremeOwnerByTableRaid = new Map<string, string>();
       const getExtremeGroupKey = (candidate: T, raidKey: string) => {
         const tableName = String(candidate.tableName ?? "").trim();
-        const keyHead = String(candidate.key ?? "").split(/[|:]/)[0]?.trim();
-        const tableKey = tableName || keyHead || candidate.key;
+        const tableKey = tableName || candidate.key;
         return `${tableKey}::${raidKey}`;
       };
 
@@ -10963,7 +10962,11 @@ body.pip-dark .pip-select option{
     pickKey?: string | null
   ) {
     const { baseName, diffName } = getRemainRaidLabelParts(raidName, ilvl, pickKey);
-    return diffName ? `${baseName} ${diffName}` : baseName;
+    return diffName ? `${baseName} ${formatDiffDisplayName(diffName)}` : baseName;
+  }
+
+  function formatDiffDisplayName(diffName: DiffName) {
+    return diffName === "나이트메어" ? "나메" : diffName;
   }
 
   function renderRemainRaidWithDiff(
@@ -10976,7 +10979,7 @@ body.pip-dark .pip-select option{
     return (
       <>
         <span>{baseName}</span>
-        {diffName ? <span className="manualRaidDiffBadge">{diffName}</span> : null}
+        {diffName ? <span className="manualRaidDiffBadge">{formatDiffDisplayName(diffName)}</span> : null}
       </>
     );
   }
