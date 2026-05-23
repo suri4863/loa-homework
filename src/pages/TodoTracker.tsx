@@ -1549,7 +1549,7 @@ export default function TodoTracker() {
     const schedule = weeklySchedules.find((s) => s.id === scheduleId);
     if (!schedule) return;
 
-    const normalizedNext = uniqueCanonicalRaidNames(nextRaidNames).filter((raid) =>
+    const normalizedNext = uniqueRaidLabelsByBase(nextRaidNames).filter((raid) =>
       isWeeklyRaidCurrentlyActive(canonicalRaidName(raid))
     );
     const nextKeys = new Set(normalizedNext.map((raid) => normalizeScheduleRaidKey(raid)));
@@ -5273,6 +5273,60 @@ export default function TodoTracker() {
       return getClearedScheduleRaidSetForKeys(schedule, keys, side);
     }
 
+    function findScheduleCandidateByItemKeys(
+      keys: string[],
+      candidates: FriendCandidate[]
+    ) {
+      const keySet = new Set(compactScheduleKeys(keys));
+      if (!keySet.size) return null;
+
+      return candidates.find((candidate) =>
+        getScheduleCandidateIdentityKeys(candidate).some((key) => keySet.has(key))
+      ) ?? null;
+    }
+
+    function getScheduleItemSideCandidates(
+      item: SharedWeeklyScheduleItem
+    ) {
+      const candidates = [...myScheduleCandidates, ...friendCandidates];
+      const myKeys = getScheduleCandidateKeys(
+        item.myCharKey,
+        item.myTableName,
+        item.myCharName,
+        item.mySnapshot
+      );
+      const friendKeys = getScheduleCandidateKeys(
+        item.friendCharKey,
+        item.friendTableName,
+        item.friendCharName,
+        item.friendSnapshot
+      );
+
+      return {
+        my: findScheduleCandidateByItemKeys(myKeys, candidates),
+        friend: findScheduleCandidateByItemKeys(friendKeys, candidates),
+      };
+    }
+
+    function getScheduleEditableRaidOptions(
+      schedule: SharedWeeklySchedule,
+      item: SharedWeeklyScheduleItem
+    ) {
+      const { my, friend } = getScheduleItemSideCandidates(item);
+      const owner = friend ?? my;
+      if (!owner) return getScheduleItemRaidNames(item);
+
+      const sourceRaids = uniqueRaidLabelsByBase(owner.activeRaids).filter((raid) =>
+        isWeeklyRaidCurrentlyActive(canonicalRaidName(raid))
+      );
+
+      return sourceRaids.filter((raid) => {
+        if (isScheduleRaidCleared(schedule, item, raid)) return false;
+        if (isScheduleRaidScheduledForSameCharacterElsewhere(schedule, item, raid)) return false;
+        return true;
+      });
+    }
+
     function getAvailableRaidKeySetForScheduleCandidate(
       schedule: SharedWeeklySchedule,
       candidate: FriendCandidate,
@@ -6527,24 +6581,8 @@ export default function TodoTracker() {
                               scheduleRaidEditor?.scheduleId === schedule.id &&
                               scheduleRaidEditor?.itemId === item.id;
                             const currentRaidNames = getScheduleItemRaidNames(item);
-                            const currentRaidKeySet = new Set(
-                              currentRaidNames.map((raid) => normalizeScheduleRaidKey(raid))
-                            );
-                            const plannedRaidOptions = raidMismatch.currentRaids.filter((raid) =>
-                              isWeeklyRaidCurrentlyActive(canonicalRaidName(raid))
-                            );
-                            const raidEditOptions = uniqueCanonicalRaidNames([
-                              ...plannedRaidOptions,
-                            ]).filter((raid) => {
-                              const key = normalizeScheduleRaidKey(raid);
-                              const isCurrent = currentRaidKeySet.has(key);
-                              return Boolean(
-                                key &&
-                                !isScheduleRaidCleared(schedule, item, raid) &&
-                                (isCurrent ||
-                                  !isScheduleRaidScheduledForSameCharacterElsewhere(schedule, item, raid))
-                              );
-                            });
+                            const currentRaidKeySet = getRaidKeysFromNames(currentRaidNames);
+                            const raidEditOptions = getScheduleEditableRaidOptions(schedule, item);
 
                             return (
                               <div
@@ -6755,7 +6793,7 @@ export default function TodoTracker() {
                                       <div className="weeklyScheduleRaidEditorTitle">선택 레이드</div>
                                       {raidEditOptions.length ? (
                                         raidEditOptions.map((raid) => {
-                                          const checked = currentRaidKeySet.has(normalizeScheduleRaidKey(raid));
+                                          const checked = doesScheduleRaidSetMatch(currentRaidKeySet, raid);
                                           const cleared = isScheduleRaidCleared(schedule, item, raid);
                                           return (
                                             <label
@@ -6769,7 +6807,7 @@ export default function TodoTracker() {
                                                   const next = e.target.checked
                                                     ? [...currentRaidNames, raid]
                                                     : currentRaidNames.filter(
-                                                      (name) => normalizeScheduleRaidKey(name) !== normalizeScheduleRaidKey(raid)
+                                                      (name) => !doesScheduleRaidSetMatch(getRaidKeysFromNames([name]), raid)
                                                     );
                                                   updateScheduleItemRaids(schedule.id, item.id, next).catch((error) => {
                                                     alert(`레이드 변경 실패: ${String(error)}`);
