@@ -4395,12 +4395,14 @@ export default function TodoTracker() {
       if (!schedule) return [];
 
       const directScheduledSet = getScheduledRaidSetForCandidateInSchedule(schedule, me);
-      const sourceRaids = me.allRaids.filter(
-        (raid) => schedulePlanningMode === "NEXT_RESET" || !isMyWeeklyRaidChecked(me.tableId, me.charId, raid)
-      );
+      const sourceRaids = [...me.allRaids];
       if (directScheduledSet.size > 0) {
         return sourceRaids.filter(
-          (raid) => !doesScheduleRaidSetMatchBaseInclusive(directScheduledSet, raid)
+          (raid) =>
+            !(
+              doesScheduleRaidSetMatchBaseInclusive(directScheduledSet, raid) ||
+              isMyWeeklyRaidChecked(me.tableId, me.charId, raid)
+            )
         );
       }
 
@@ -6089,12 +6091,14 @@ export default function TodoTracker() {
       const directScheduledSet = selectedWeeklySchedule
         ? getScheduledRaidSetForCandidateInSchedule(selectedWeeklySchedule, me)
         : new Set<string>();
-      const sourceRaids = me.allRaids.filter(
-        (raid) => schedulePlanningMode === "NEXT_RESET" || !isMyWeeklyRaidChecked(me.tableId, me.charId, raid)
-      );
+      const sourceRaids = [...me.allRaids];
       const scheduleAvailableRaids = selectedWeeklySchedule
         ? sourceRaids.filter(
-            (raid) => !doesScheduleRaidSetMatchBaseInclusive(directScheduledSet, raid)
+            (raid) =>
+              !(
+                doesScheduleRaidSetMatchBaseInclusive(directScheduledSet, raid) ||
+                isMyWeeklyRaidChecked(me.tableId, me.charId, raid)
+              )
           )
         : getUnscheduledRaidsForCandidateAnySide(
             me.key,
@@ -7291,12 +7295,9 @@ export default function TodoTracker() {
                       me.allRaids.length > 0 &&
                       me.allRaids.every((raid) => {
                         const isScheduled = doesScheduleRaidSetMatchBaseInclusive(scheduleState.scheduledSet, raid);
+                        const isChecked = isMyWeeklyRaidChecked(me.tableId, me.charId, raid);
                         // 4/26 다음 주 초기화 기준일 때는 모든 표시 레이드를 남은 레이드로 처리
-                        const isRemaining =
-                          schedulePlanningMode === "NEXT_RESET" ||
-                          !isMyWeeklyRaidChecked(me.tableId, me.charId, raid);
-
-                        return !isRemaining || isScheduled;
+                        return isScheduled || isChecked;
                       });
 
                     return (
@@ -7340,16 +7341,13 @@ export default function TodoTracker() {
                         <div className="manualRemainRaids">
                           {me.allRaids.map((raid) => {
                             const isScheduled = doesScheduleRaidSetMatchBaseInclusive(scheduleState.scheduledSet, raid);
+                            const isChecked = isMyWeeklyRaidChecked(me.tableId, me.charId, raid);
 
                             // 4/26 다음 주 초기화 기준일 때는 기존 클리어 체크를 무시하고 전부 남은 레이드로 처리
-                            const isRemaining =
-                              schedulePlanningMode === "NEXT_RESET" ||
-                              !isMyWeeklyRaidChecked(me.tableId, me.charId, raid);
-
                             return (
                               <span
                                 key={raid}
-                                className={`manualRaidChip ${!isRemaining || isScheduled ? "is-scheduled" : ""
+                                className={`manualRaidChip ${isScheduled || isChecked ? "is-scheduled" : ""
                                   } ${allVisibleRaidsMuted ? "is-schedule-full" : ""}`}
                                 style={me.hasNextWeekPlan ? { borderColor: "#facc15", color: "#facc15" } : undefined}
                               >
