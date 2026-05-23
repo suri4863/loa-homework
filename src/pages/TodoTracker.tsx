@@ -1760,7 +1760,21 @@ export default function TodoTracker() {
       charKey,
       snapshot?.key,
       getScheduleSnapshotCandidateKeyForItem(table, name),
-      table ? "" : name,
+      name,
+    ]);
+  }
+
+  function getScheduleCandidateIdentityKeysForItem(candidate: {
+    key?: string | null;
+    tableName?: string | null;
+    name?: string | null;
+  }) {
+    const tableName = String(candidate.tableName ?? "").trim();
+    const name = String(candidate.name ?? "").trim();
+    return compactScheduleKeysForItem([
+      candidate.key,
+      getScheduleSnapshotCandidateKeyForItem(tableName, name),
+      name,
     ]);
   }
 
@@ -2906,7 +2920,8 @@ export default function TodoTracker() {
             item.mySnapshot
           );
 
-          if (!myItemKeys.includes(me.key)) continue;
+          const meKeys = new Set(getScheduleCandidateIdentityKeysForItem(me));
+          if (!myItemKeys.some((key) => meKeys.has(key))) continue;
 
           for (const raid of getScheduleItemRaidNames(item)) {
             scheduledRaidSet.add(normalizeScheduleRaidKey(raid));
@@ -2991,7 +3006,8 @@ export default function TodoTracker() {
         item.mySnapshot
       );
 
-      if (!myItemKeys.includes(me.key)) continue;
+      const meKeys = new Set(getScheduleCandidateIdentityKeysForItem(me));
+      if (!myItemKeys.some((key) => meKeys.has(key))) continue;
 
       for (const raid of getScheduleItemRaidNames(item)) {
         scheduledRaidSet.add(normalizeScheduleRaidKey(raid));
@@ -4865,7 +4881,7 @@ export default function TodoTracker() {
       return compactScheduleKeys([
         candidate.key,
         getScheduleSnapshotCandidateKey(tableName, name),
-        tableName ? "" : name,
+        name,
       ]);
     }
 
@@ -4953,7 +4969,7 @@ export default function TodoTracker() {
         charKey,
         snapshot?.key,
         getScheduleSnapshotCandidateKey(table, name),
-        table ? "" : name,
+        name,
       ]);
     }
 
@@ -7109,7 +7125,7 @@ export default function TodoTracker() {
                       me.allRaids.length > 0 &&
                       me.allRaids.every((raid) => {
                         const normalized = normalizeRaidName(raid);
-                        const isScheduled = scheduleState.scheduledSet.has(normalizeScheduleRaidKey(raid));
+                        const isScheduled = doesScheduleRaidSetMatch(scheduleState.scheduledSet, raid);
                         // 4/26 다음 주 초기화 기준일 때는 모든 표시 레이드를 남은 레이드로 처리
                         const isRemaining =
                           schedulePlanningMode === "NEXT_RESET" ||
@@ -7159,7 +7175,7 @@ export default function TodoTracker() {
                         <div className="manualRemainRaids">
                           {me.allRaids.map((raid) => {
                             const normalized = normalizeRaidName(raid);
-                            const isScheduled = scheduleState.scheduledSet.has(normalizeScheduleRaidKey(raid));
+                            const isScheduled = doesScheduleRaidSetMatch(scheduleState.scheduledSet, raid);
 
                             // 4/26 다음 주 초기화 기준일 때는 기존 클리어 체크를 무시하고 전부 남은 레이드로 처리
                             const isRemaining =
@@ -7254,7 +7270,7 @@ export default function TodoTracker() {
                       visibleFriendRaids.length > 0 &&
                       visibleFriendRaids.every((raid: string) => {
                         const normalized = normalizeRaidName(raid);
-                        const isScheduled = scheduleState.scheduledSet.has(normalizeScheduleRaidKey(raid));
+                        const isScheduled = doesScheduleRaidSetMatch(scheduleState.scheduledSet, raid);
                         const isCleared = clearedRaidSet.has(normalized);
 
                         return isScheduled || isCleared;
@@ -7301,7 +7317,7 @@ export default function TodoTracker() {
                         <div className="manualRemainRaids">
                           {visibleFriendRaids.map((raid: string) => {
                             const normalized = normalizeRaidName(raid);
-                            const isScheduled = scheduleState.scheduledSet.has(normalizeScheduleRaidKey(raid));
+                            const isScheduled = doesScheduleRaidSetMatch(scheduleState.scheduledSet, raid);
                             const isCleared = clearedRaidSet.has(normalized);
 
                             return (
