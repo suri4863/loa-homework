@@ -2215,7 +2215,19 @@ export default function TodoTracker() {
       ) as DiffName | undefined) ??
       (itemIlvl > 0 ? getHighestAvailableDiffNameForRaid(itemIlvl, canonical) : null);
 
-    return diff ? `${canonical} ${formatDiffDisplayName(diff)}` : canonical;
+    return diff ? formatSharedScheduleRaidName(canonical, diff) : canonical;
+  }
+
+  function formatSharedScheduleRaidName(raidName: string, diff: DiffName) {
+    const canonical = canonicalRaidName(raidName);
+    if (canonical === "4막") return diff === "하드" ? "4하" : "4노";
+    if (canonical === "종막") return diff === "하드" ? "종하" : "종노";
+    if (canonical === "세르카") {
+      if (diff === "나이트메어") return "세르카 나메";
+      return diff === "하드" ? "세하" : "세노";
+    }
+    if (canonical === "지평의 성당") return `성당 ${diff}`;
+    return `${canonical} ${formatDiffDisplayName(diff)}`;
   }
 
   function getScheduleRaidCompletion(
@@ -7214,9 +7226,12 @@ export default function TodoTracker() {
                       getScheduleCandidateIdentityKeys(fr)
                     );
 
-                    const currentVisibleFriendRaids = uniqueRaidLabelsByBase(
-                      fr.activeRaids.length > 0 ? fr.activeRaids : fr.remainingRaids
-                    );
+                    const currentVisibleFriendRaids = uniqueRaidLabelsByBase([
+                      ...fr.allRaids,
+                      ...fr.activeRaids,
+                      ...fr.remainingRaids,
+                      ...(fr.clearedRaids ?? []),
+                    ]);
 
                     const visibleFriendRaids =
                       schedulePlanningMode === "NEXT_RESET"
