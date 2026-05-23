@@ -4283,12 +4283,11 @@ export default function TodoTracker() {
 
       const extremeToken = normalizeRaidName("익스트림");
       if (normalizedLabel.includes(extremeToken)) {
-        const baseKey = normalizeScheduleRaidKey(label);
         const extremeTask = weeklyRaidTasks.find((task) => {
           const titleKey = normalizeRaidName(task.title);
           return (
             titleKey.includes(extremeToken) &&
-            (normalizedLabel.startsWith(titleKey) || baseKey === titleKey)
+            normalizedLabel.startsWith(titleKey)
           );
         });
         return extremeTask?.id ?? null;
