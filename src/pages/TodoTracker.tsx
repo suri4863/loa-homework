@@ -1801,6 +1801,12 @@ export default function TodoTracker() {
     return filterActiveWeeklyRaidNames(raidNames);
   }
 
+  function getScheduleItemExplicitRaidNames(item: SharedWeeklyScheduleItem) {
+    return filterActiveWeeklyRaidNames(
+      Array.isArray(item.raidNames) ? item.raidNames : []
+    );
+  }
+
   function toScheduleWeeklyPickKey(rawKey: string | null | undefined) {
     const key = String(rawKey ?? "").trim();
     if (!key) return "";
@@ -4404,7 +4410,7 @@ export default function TodoTracker() {
 
         if (!itemKeys.includes(me.key) && !friendItemKeys.includes(me.key)) continue;
 
-        for (const raid of getScheduleItemRaidNames(item)) {
+        for (const raid of getScheduleItemExplicitRaidNames(item)) {
           scheduledRaidSet.add(normalizeRaidName(raid));
         }
       }
@@ -4457,7 +4463,7 @@ export default function TodoTracker() {
         ];
 
         if (!itemKeys.some((key) => candidateKeys.has(key))) continue;
-        getScheduleItemRaidNames(item).forEach((raid) => addScheduleRaidMatchKey(scheduledSet, raid));
+        getScheduleItemExplicitRaidNames(item).forEach((raid) => addScheduleRaidMatchKey(scheduledSet, raid));
       }
 
       return scheduledSet;
@@ -4498,7 +4504,7 @@ export default function TodoTracker() {
 
       for (const item of schedule.items) {
         // 4/26 실제 일정표에 들어간 레이드만 흑백 처리되도록 수정
-        const itemScheduledRaids = getScheduleItemRaidNames(item);
+        const itemScheduledRaids = getScheduleItemExplicitRaidNames(item);
 
         if (isTargetView) {
           if (item.mode === "OPEN_SLOT" || !item.friendCharKey) {
