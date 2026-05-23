@@ -6117,7 +6117,6 @@ export default function TodoTracker() {
     // 4/23 현재 주 기준에서도 아래 목록은 전체 후보를 보여주고,
     // 일정표에 이미 전부 들어간 캐릭터는 흐리게만 표시되도록 분리
     const displayMyCandidates = myCandidates.map((me) => {
-      const used = usedRaidsByMyKey.get(me.key) ?? new Set<string>();
       const directScheduledSet = selectedWeeklySchedule
         ? getScheduledRaidSetForCandidateInSchedule(selectedWeeklySchedule, me)
         : new Set<string>();
@@ -6136,13 +6135,9 @@ export default function TodoTracker() {
             getScheduleCandidateIdentityKeys(me)
           );
 
-      const unscheduledRaids = scheduleAvailableRaids.filter(
-        (raid: string) => !used.has(normalizeRaidName(raid))
-      );
-
       return {
         ...me,
-        unscheduledRaids,
+        unscheduledRaids: scheduleAvailableRaids,
       };
     });
 
@@ -7321,13 +7316,15 @@ export default function TodoTracker() {
                         : new Set<string>(),
                     };
                     // 4/26 다음 주 초기화 기준은 레이드는 초기화값으로 보되, 일정표에 넣은 레이드는 흑백 처리
+                    const availableRaids = (me as MyCandidate & { unscheduledRaids?: string[] }).unscheduledRaids ?? [];
                     const allVisibleRaidsMuted =
                       me.allRaids.length > 0 &&
                       me.allRaids.every((raid) => {
-                        const isScheduled = doesScheduleRaidSetMatchForRemainCandidate(scheduleState.scheduledSet, raid);
-                        const isChecked = isMyWeeklyRaidChecked(me.tableId, me.charId, raid);
+                        const isAvailable = availableRaids.some((availableRaid) =>
+                          doesScheduleRaidSetMatchForRemainCandidate(getRaidKeysFromNames([availableRaid]), raid)
+                        );
                         // 4/26 다음 주 초기화 기준일 때는 모든 표시 레이드를 남은 레이드로 처리
-                        return isScheduled || isChecked;
+                        return !isAvailable;
                       });
 
                     return (
@@ -7370,14 +7367,15 @@ export default function TodoTracker() {
 
                         <div className="manualRemainRaids">
                           {me.allRaids.map((raid) => {
-                            const isScheduled = doesScheduleRaidSetMatchForRemainCandidate(scheduleState.scheduledSet, raid);
-                            const isChecked = isMyWeeklyRaidChecked(me.tableId, me.charId, raid);
+                            const isAvailable = availableRaids.some((availableRaid) =>
+                              doesScheduleRaidSetMatchForRemainCandidate(getRaidKeysFromNames([availableRaid]), raid)
+                            );
 
                             // 4/26 다음 주 초기화 기준일 때는 기존 클리어 체크를 무시하고 전부 남은 레이드로 처리
                             return (
                               <span
                                 key={raid}
-                                className={`manualRaidChip ${isScheduled || isChecked ? "is-scheduled" : ""
+                                className={`manualRaidChip ${!isAvailable ? "is-scheduled" : ""
                                   } ${allVisibleRaidsMuted ? "is-schedule-full" : ""}`}
                                 style={me.hasNextWeekPlan ? { borderColor: "#facc15", color: "#facc15" } : undefined}
                               >
