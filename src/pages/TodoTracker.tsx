@@ -4255,6 +4255,16 @@ export default function TodoTracker() {
       weeklyRaidTasks.map((task) => [normalizeRaidName(task.title), task.id] as const)
     );
 
+    function getWeeklyRaidTaskIdForRaidName(raidName: string) {
+      const label = normalizeRaidAliasLabel(raidName);
+      return (
+        weeklyRaidTitleToId.get(normalizeRaidName(label)) ??
+        weeklyRaidTitleToId.get(normalizeScheduleRaidKey(label)) ??
+        weeklyRaidTitleToId.get(normalizeRaidName(getRaidBaseNameForRemainLabel(label))) ??
+        null
+      );
+    }
+
     function parsePowerValue(power?: string): number {
       if (!power) return 0;
 
@@ -4302,7 +4312,7 @@ export default function TodoTracker() {
                 : baseAllRaids;
 
             const remainingRaids: string[] = allRaids.filter((raidName: string) => {
-              const taskId = weeklyRaidTitleToId.get(normalizeRaidName(raidName));
+              const taskId = getWeeklyRaidTaskIdForRaidName(raidName);
               if (!taskId) return true;
 
               const cell = getCellByTableId(state, tbl.id, taskId, ch.id);
@@ -5399,13 +5409,18 @@ export default function TodoTracker() {
     ) {
       const { my, friend } = getScheduleItemSideCandidates(item);
       const owner = friend ?? my;
-      if (!owner) return getScheduleItemRaidNames(item);
+      const currentRaids = getScheduleItemRaidNames(item);
+      if (!owner) return currentRaids;
 
       const sourceRaids = uniqueRaidLabelsByBase(owner.activeRaids).filter((raid) =>
         isWeeklyRaidCurrentlyActive(canonicalRaidName(raid))
       );
 
-      return sourceRaids.filter((raid) => {
+      return uniqueRaidLabelsByBase([...currentRaids, ...sourceRaids]).filter((raid) => {
+        const isCurrentRaid = currentRaids.some((currentRaid) =>
+          doesScheduleRaidSetMatch(getRaidKeysFromNames([currentRaid]), raid)
+        );
+        if (isCurrentRaid) return true;
         if (isScheduleRaidCleared(schedule, item, raid)) return false;
         if (isScheduleRaidScheduledForSameCharacterElsewhere(schedule, item, raid)) return false;
         return true;
@@ -7261,12 +7276,12 @@ export default function TodoTracker() {
                     const allVisibleRaidsMuted =
                       me.allRaids.length > 0 &&
                       me.allRaids.every((raid) => {
-                        const normalized = normalizeRaidName(raid);
-                        const isScheduled = doesScheduleRaidSetMatch(scheduleState.scheduledSet, raid);
+                        const remainingRaidSet = getRaidKeysFromNames(me.remainingRaids);
+                        const isScheduled = doesScheduleRaidSetMatchBaseInclusive(scheduleState.scheduledSet, raid);
                         // 4/26 다음 주 초기화 기준일 때는 모든 표시 레이드를 남은 레이드로 처리
                         const isRemaining =
                           schedulePlanningMode === "NEXT_RESET" ||
-                          me.remainingRaids.some((x) => normalizeRaidName(x) === normalized);
+                          doesScheduleRaidSetMatchBaseInclusive(remainingRaidSet, raid);
 
                         return !isRemaining || isScheduled;
                       });
@@ -7311,13 +7326,13 @@ export default function TodoTracker() {
 
                         <div className="manualRemainRaids">
                           {me.allRaids.map((raid) => {
-                            const normalized = normalizeRaidName(raid);
-                            const isScheduled = doesScheduleRaidSetMatch(scheduleState.scheduledSet, raid);
+                            const remainingRaidSet = getRaidKeysFromNames(me.remainingRaids);
+                            const isScheduled = doesScheduleRaidSetMatchBaseInclusive(scheduleState.scheduledSet, raid);
 
                             // 4/26 다음 주 초기화 기준일 때는 기존 클리어 체크를 무시하고 전부 남은 레이드로 처리
                             const isRemaining =
                               schedulePlanningMode === "NEXT_RESET" ||
-                              me.remainingRaids.some((x) => normalizeRaidName(x) === normalized);
+                              doesScheduleRaidSetMatchBaseInclusive(remainingRaidSet, raid);
 
                             return (
                               <span
@@ -7393,7 +7408,7 @@ export default function TodoTracker() {
                       visibleFriendRaids.length > 0 &&
                       visibleFriendRaids.every((raid: string) => {
                         const normalized = normalizeRaidName(raid);
-                        const isScheduled = doesScheduleRaidSetMatch(scheduleState.scheduledSet, raid);
+                        const isScheduled = doesScheduleRaidSetMatchBaseInclusive(scheduleState.scheduledSet, raid);
                         const isCleared = clearedRaidSet.has(normalized);
 
                         return isScheduled || isCleared;
@@ -7440,7 +7455,7 @@ export default function TodoTracker() {
                         <div className="manualRemainRaids">
                           {visibleFriendRaids.map((raid: string) => {
                             const normalized = normalizeRaidName(raid);
-                            const isScheduled = doesScheduleRaidSetMatch(scheduleState.scheduledSet, raid);
+                            const isScheduled = doesScheduleRaidSetMatchBaseInclusive(scheduleState.scheduledSet, raid);
                             const isCleared = clearedRaidSet.has(normalized);
 
                             return (
