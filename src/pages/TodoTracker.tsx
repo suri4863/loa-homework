@@ -4535,6 +4535,40 @@ export default function TodoTracker() {
       return result;
     }
 
+    function mergeRemainScheduleStates(
+      states: Array<{ scheduledSet: Set<string>; scheduledRaids: string[]; allScheduled: boolean }>,
+      targetRaids: string[]
+    ) {
+      const scheduledSet = new Set<string>();
+      states.forEach((state) => {
+        state.scheduledSet.forEach((raid) => scheduledSet.add(raid));
+      });
+
+      const scheduledRaids = targetRaids.filter((raid) =>
+        doesScheduleRaidSetMatch(scheduledSet, raid)
+      );
+
+      return {
+        scheduledSet,
+        scheduledRaids,
+        allScheduled: targetRaids.length > 0 && scheduledRaids.length === targetRaids.length,
+      };
+    }
+
+    function getAnySideRemainScheduleState(
+      charKey: string,
+      targetRaids: string[],
+      extraKeys: string[] = []
+    ) {
+      return mergeRemainScheduleStates(
+        [
+          getRemainScheduleState(charKey, targetRaids, scheduledMyRaidSetByChar, extraKeys),
+          getRemainScheduleState(charKey, targetRaids, scheduledFriendRaidSetByChar, extraKeys),
+        ],
+        targetRaids
+      );
+    }
+
     function getUnscheduledRaidsForCandidate(
       charKey: string,
       targetRaids: string[],
@@ -4542,6 +4576,17 @@ export default function TodoTracker() {
       extraKeys: string[] = []
     ) {
       const scheduleState = getRemainScheduleState(charKey, targetRaids, raidSetMap, extraKeys);
+      return targetRaids.filter(
+        (raid) => !doesScheduleRaidSetMatch(scheduleState.scheduledSet, raid)
+      );
+    }
+
+    function getUnscheduledRaidsForCandidateAnySide(
+      charKey: string,
+      targetRaids: string[],
+      extraKeys: string[] = []
+    ) {
+      const scheduleState = getAnySideRemainScheduleState(charKey, targetRaids, extraKeys);
       return targetRaids.filter(
         (raid) => !doesScheduleRaidSetMatch(scheduleState.scheduledSet, raid)
       );
@@ -4749,10 +4794,9 @@ export default function TodoTracker() {
             .map((raid: string) => normalizeRaidName(raid))
             .filter((raid: string, index: number, arr: string[]) => arr.indexOf(raid) === index)
             .filter((raid: string) =>
-              getUnscheduledRaidsForCandidate(
+              getUnscheduledRaidsForCandidateAnySide(
                 friend.key,
                 friend.activeRaids,
-                scheduledFriendRaidSetByChar,
                 getScheduleCandidateIdentityKeys(friend)
               ).some((fr: string) => normalizeRaidName(fr) === raid)
             )
@@ -5862,10 +5906,9 @@ export default function TodoTracker() {
 
       const friendPool: FriendCandidate[] = friendCandidates.map((x) => ({
         ...x,
-        remainingRaids: getUnscheduledRaidsForCandidate(
+        remainingRaids: getUnscheduledRaidsForCandidateAnySide(
           x.key,
           x.activeRaids,
-          scheduledFriendRaidSetByChar,
           getScheduleCandidateIdentityKeys(x)
         ),
       })).filter((x) => x.remainingRaids.length > 0);
@@ -5995,10 +6038,9 @@ export default function TodoTracker() {
 
     const displayFriendCandidates = friendCandidates.map((fr) => {
       const used = usedRaidsByFriendKey.get(fr.key) ?? new Set<string>();
-      const scheduleAvailableRaids = getUnscheduledRaidsForCandidate(
+      const scheduleAvailableRaids = getUnscheduledRaidsForCandidateAnySide(
         fr.key,
         fr.activeRaids,
-        scheduledFriendRaidSetByChar,
         getScheduleCandidateIdentityKeys(fr)
       );
 
@@ -7262,6 +7304,9 @@ export default function TodoTracker() {
                       friendKeys,
                       "FRIEND"
                     );
+                    getClearedScheduleRaidSetForKeys(schedule, friendKeys, "MY").forEach((raid) =>
+                      scheduleClearedRaidSet.add(raid)
+                    );
                     scheduleClearedRaidSet.forEach((raid) => clearedRaidSet.add(raid));
 
                     const scheduleDisplayBaseRaids =
@@ -7273,10 +7318,9 @@ export default function TodoTracker() {
                           ...(fr.clearedRaids ?? []),
                         ];
 
-                    const scheduleDisplayState = getRemainScheduleState(
+                    const scheduleDisplayState = getAnySideRemainScheduleState(
                       fr.key,
                       scheduleDisplayBaseRaids,
-                      scheduledFriendRaidSetByChar,
                       getScheduleCandidateIdentityKeys(fr)
                     );
 
@@ -7296,10 +7340,9 @@ export default function TodoTracker() {
                             : fr.remainingRaids
                         : currentVisibleFriendRaids;
 
-                    const scheduleState = getRemainScheduleState(
+                    const scheduleState = getAnySideRemainScheduleState(
                       fr.key,
                       visibleFriendRaids,
-                      scheduledFriendRaidSetByChar,
                       getScheduleCandidateIdentityKeys(fr)
                     );
 
