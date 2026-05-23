@@ -4252,7 +4252,13 @@ export default function TodoTracker() {
     );
 
     const weeklyRaidTitleToId = new Map(
-      weeklyRaidTasks.map((task) => [normalizeRaidName(task.title), task.id] as const)
+      weeklyRaidTasks.reduce<[string, string][]>((acc, task) => {
+        const key = normalizeRaidName(task.title);
+        if (key && !acc.some(([existingKey]) => existingKey === key)) {
+          acc.push([key, task.id]);
+        }
+        return acc;
+      }, [])
     );
 
     function getWeeklyRaidTaskIdForRaidName(raidName: string) {
@@ -11294,7 +11300,8 @@ body.pip-dark .pip-select option{
       if (t.period !== "WEEKLY") continue;
       if ((t.section ?? "").trim() !== "주간 레이드") continue;
       if (t.cellType !== "CHECK") continue;
-      map.set(normalizeRaidName(t.title ?? ""), t.id);
+      const key = normalizeRaidName(t.title ?? "");
+      if (key && !map.has(key)) map.set(key, t.id);
     }
     return map;
   }, [state.tasks]);
