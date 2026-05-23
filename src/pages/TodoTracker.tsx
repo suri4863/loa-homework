@@ -3827,7 +3827,7 @@ export default function TodoTracker() {
       );
 
       if (normalRaids.length <= 3) {
-        return uniqueCanonicalRaidNames([
+        return uniqueRaidLabelsByBase([
           ...normalRaids,
           ...extremeRaids,
         ]);
@@ -3840,7 +3840,7 @@ export default function TodoTracker() {
       const fallbackNormals = fallback.filter(
         (raidName) => !DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(canonicalRaidName(raidName))
       );
-      return uniqueCanonicalRaidNames(fallbackNormals.slice(0, 3));
+      return uniqueRaidLabelsByBase(fallbackNormals.slice(0, 3));
     }
 
     function getSelectableNextWeekRaidNames(ilvl: number) {
@@ -4574,7 +4574,9 @@ export default function TodoTracker() {
       const extremeOwnerByTableRaid = new Map<string, string>();
       const getExtremeGroupKey = (candidate: T, raidKey: string) => {
         const tableName = String(candidate.tableName ?? "").trim();
-        return `${tableName || "__default__"}::${raidKey}`;
+        const keyHead = String(candidate.key ?? "").split(/[|:]/)[0]?.trim();
+        const tableKey = tableName || keyHead || candidate.key;
+        return `${tableKey}::${raidKey}`;
       };
 
       for (const raid of Array.from(DEFAULT_EXTREME_WEEKLY_RAID_TITLES)) {
@@ -5363,7 +5365,7 @@ export default function TodoTracker() {
       const parsed = def?.diffs.find(
         (diff) => normalizedRaid === `${normalizeRaidFullKey(baseName)}${normalizeRaidFullKey(diff.name)}`
       );
-      if (parsed) {
+      if (parsed && itemIlvl >= parsed.minIlvl) {
         scheduleRaidDiffNameCache.set(cacheKey, parsed.name);
         return parsed.name;
       }
@@ -5378,9 +5380,10 @@ export default function TodoTracker() {
             normalizeRaidFullKey(getScheduleRaidBaseName(key)) === normalizeRaidFullKey(baseName)
         )?.[1];
 
-      if (picked) {
-        scheduleRaidDiffNameCache.set(cacheKey, picked as DiffName);
-        return picked as DiffName;
+      const availablePicked = getAvailableDiffNameForRaid(itemIlvl, baseName, picked as DiffName | null);
+      if (availablePicked) {
+        scheduleRaidDiffNameCache.set(cacheKey, availablePicked);
+        return availablePicked;
       }
 
       const result = itemIlvl > 0 ? getHighestAvailableRaidDiffName(baseName, itemIlvl) : null;
@@ -5393,7 +5396,8 @@ export default function TodoTracker() {
       raidName: string
     ): DiffName | null {
       const parsed = getRaidDiffFromLabel(raidName);
-      if (parsed) return parsed;
+      const availableParsed = getAvailableDiffNameForRaid(friend.ilvl, raidName, parsed);
+      if (availableParsed) return availableParsed;
 
       const baseName = getScheduleRaidBaseName(raidName);
       return friend.ilvl > 0 ? getHighestAvailableRaidDiffName(baseName, friend.ilvl) : null;
@@ -7210,11 +7214,9 @@ export default function TodoTracker() {
                       getScheduleCandidateIdentityKeys(fr)
                     );
 
-                    const currentVisibleFriendRaids = uniqueCanonicalRaidNames([
-                      ...(fr.activeRaids.length > 0 ? fr.activeRaids : fr.remainingRaids),
-                      ...scheduleDisplayState.scheduledRaids,
-                      ...Array.from(clearedRaidSet),
-                    ]);
+                    const currentVisibleFriendRaids = uniqueRaidLabelsByBase(
+                      fr.activeRaids.length > 0 ? fr.activeRaids : fr.remainingRaids
+                    );
 
                     const visibleFriendRaids =
                       schedulePlanningMode === "NEXT_RESET"
@@ -9560,6 +9562,24 @@ export default function TodoTracker() {
     return result;
   }
 
+  function uniqueRaidLabelsByBase(names: string[]): string[] {
+    const seen = new Set<string>();
+    const result: string[] = [];
+
+    for (const name of names) {
+      const baseName = getRaidBaseNameForRemainLabel(name);
+      const diffName = getRaidDiffFromLabel(name);
+      const label = diffName ? `${baseName} ${diffName}` : canonicalRaidName(baseName);
+      const base = canonicalRaidName(baseName);
+      const normalized = normalizeRaidName(base);
+      if (!label || !normalized || seen.has(normalized)) continue;
+      seen.add(normalized);
+      result.push(label);
+    }
+
+    return result;
+  }
+
   function getWeeklyRaidMinIlvl(raidName: string) {
     const canonical = canonicalRaidName(raidName);
     const def = RAID_CATALOG.find((raid) => normalizeRaidName(raid.name) === normalizeRaidName(canonical));
@@ -10024,7 +10044,7 @@ export default function TodoTracker() {
     { key: "ACT3", name: "3막", diffs: [{ name: "노말", minIlvl: 1680, gold: getSplitTotal(RAID_REWARD_INFO["3막"].normal) }, { name: "하드", minIlvl: 1700, gold: getSplitTotal(RAID_REWARD_INFO["3막"].hard) }] },
     { key: "ACT4", name: "4막", diffs: [{ name: "노말", minIlvl: 1700, gold: getSplitTotal(RAID_REWARD_INFO["4막"].normal) }, { name: "하드", minIlvl: 1720, gold: getSplitTotal(RAID_REWARD_INFO["4막"].hard) }] },
     { key: "FINAL", name: "종막", diffs: [{ name: "노말", minIlvl: 1710, gold: getSplitTotal(RAID_REWARD_INFO["종막"].normal) }, { name: "하드", minIlvl: 1730, gold: getSplitTotal(RAID_REWARD_INFO["종막"].hard) }] },
-    { key: "SERKA", name: "세르카", diffs: [{ name: "노말", minIlvl: 1710, gold: getSplitTotal(RAID_REWARD_INFO["세르카"].normal) }, { name: "하드", minIlvl: 1730, gold: getSplitTotal(RAID_REWARD_INFO["세르카"].hard) }, { name: "나이트메어", minIlvl: 1750, gold: getSplitTotal(RAID_REWARD_INFO["세르카"].nightmare) }] },
+    { key: "SERKA", name: "세르카", diffs: [{ name: "노말", minIlvl: 1710, gold: getSplitTotal(RAID_REWARD_INFO["세르카"].normal) }, { name: "하드", minIlvl: 1730, gold: getSplitTotal(RAID_REWARD_INFO["세르카"].hard) }, { name: "나이트메어", minIlvl: 1740, gold: getSplitTotal(RAID_REWARD_INFO["세르카"].nightmare) }] },
     { key: "ABYSS1", name: "지평의 성당", diffs: [{ name: "1단계", minIlvl: 1700, gold: getSplitTotal(RAID_REWARD_INFO["지평의 성당"].stage1) }, { name: "2단계", minIlvl: 1720, gold: getSplitTotal(RAID_REWARD_INFO["지평의 성당"].stage2) }, { name: "3단계", minIlvl: 1750, gold: getSplitTotal(RAID_REWARD_INFO["지평의 성당"].stage3) }] },
 
     {
@@ -10901,12 +10921,26 @@ body.pip-dark .pip-select option{
     return available.length ? available[available.length - 1] : null;
   }
 
+  function getAvailableDiffNameForRaid(
+    ilvl: number,
+    raidName: string,
+    diffName: DiffName | null | undefined
+  ): DiffName | null {
+    if (!diffName) return null;
+    const baseName = getRaidBaseNameForRemainLabel(raidName);
+    const def = RAID_CATALOG.find((raid) => normalizeRaidName(raid.name) === normalizeRaidName(baseName));
+    const diff = def?.diffs.find((item) => item.name === diffName);
+    if (!diff) return null;
+    return ilvl >= diff.minIlvl ? diff.name : null;
+  }
+
   function getRemainRaidLabelParts(
     raidName: string,
     ilvl: number,
     pickKey?: string | null
   ) {
     const baseName = getRaidBaseNameForRemainLabel(raidName);
+    const parsedDiff = getRaidDiffFromLabel(raidName);
     const pickedDiff =
       pickKey
         ? weeklyRaidPickByChar[pickKey]?.diffs?.[baseName] ??
@@ -10916,8 +10950,8 @@ body.pip-dark .pip-select option{
           )?.[1]
         : null;
     const diffName =
-      pickedDiff ??
-      getRaidDiffFromLabel(raidName) ??
+      getAvailableDiffNameForRaid(ilvl, baseName, pickedDiff as DiffName | null) ??
+      getAvailableDiffNameForRaid(ilvl, baseName, parsedDiff) ??
       getHighestAvailableDiffNameForRaid(ilvl, baseName);
 
     return { baseName, diffName };

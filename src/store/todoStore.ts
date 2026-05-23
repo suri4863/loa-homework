@@ -354,13 +354,45 @@ function getSelectedWeeklyRaidTitles(
     .slice(0, 3);
 }
 
-function withDiff(raid: string, ilvl: number): string {
+function getRaidDiffMinIlvl(raid: string, diff: string): number | null {
+  const name = normalizeWeeklyRaidTitle(raid);
+  const d = String(diff ?? "").trim();
+  const table: Record<string, Record<string, number>> = {
+    "발탄": { "노말": 1415, "하드": 1445 },
+    "비아키스": { "노말": 1430, "하드": 1460 },
+    "쿠크세이튼": { "노말": 1475 },
+    "아브렐슈드": { "노말": 1490, "하드": 1540 },
+    "카양겔": { "노말": 1540, "하드": 1580 },
+    "일리아칸": { "노말": 1580, "하드": 1600 },
+    "상아탑": { "노말": 1600, "하드": 1620 },
+    "카멘": { "노말": 1610, "하드": 1630 },
+    "에키드나": { "노말": 1620, "하드": 1630 },
+    "베히모스": { "노말": 1640 },
+    "1막": { "노말": 1660, "하드": 1680 },
+    "2막": { "노말": 1670, "하드": 1690 },
+    "3막": { "노말": 1680, "하드": 1700 },
+    "4막": { "노말": 1700, "하드": 1720 },
+    "종막": { "노말": 1710, "하드": 1730 },
+    "세르카": { "노말": 1710, "하드": 1730, "나이트메어": 1740 },
+    "지평의 성당": { "1단계": 1700, "2단계": 1720, "3단계": 1750 },
+    "1막 익스트림": { "노말": 1720, "하드": 1750, "나이트메어": 1770 },
+    "2막 익스트림": { "노말": 1720, "하드": 1750, "나이트메어": 1770 },
+  };
+  return table[name]?.[d] ?? null;
+}
+
+function withDiff(raid: string, ilvl: number, selectedDiff?: string): string {
   const name = String(raid ?? "").trim();
 
   if (!name) return "";
 
   if (/(노말|하드|나이트메어|1단계|2단계|3단계)$/.test(name)) {
     return name;
+  }
+
+  const forcedMinIlvl = selectedDiff ? getRaidDiffMinIlvl(name, selectedDiff) : null;
+  if (forcedMinIlvl != null && ilvl >= forcedMinIlvl) {
+    return `${name} ${selectedDiff}`;
   }
 
   if (name === "발탄") {
@@ -454,9 +486,9 @@ function withDiff(raid: string, ilvl: number): string {
   }
 
   if (name === "세르카") {
-    if (ilvl >= 1640) return "세르카 나이트메어";
-    if (ilvl >= 1630) return "세르카 하드";
-    if (ilvl >= 1610) return "세르카 노말";
+    if (ilvl >= 1740) return "세르카 나이트메어";
+    if (ilvl >= 1730) return "세르카 하드";
+    if (ilvl >= 1710) return "세르카 노말";
     return "세르카";
   }
 
@@ -543,6 +575,9 @@ export function exportFriendRaidPlan(
 
       if (!selectedRaidTitles.length) continue;
 
+      const charKey = `${table.id}:${ch.id}`;
+      const pick = weeklyRaidPickByChar?.[charKey];
+
       rows.push({
         charKey: `${table.id}|${ch.id}`,
         charName: ch.name,
@@ -551,7 +586,11 @@ export function exportFriendRaidPlan(
         charRole: ch.role || "DEALER",
         tableName: table.name,
         ilvl,
-        allRaids: selectedRaidTitles.map((raid) => withDiff(raid, ilvl)),
+        allRaids: selectedRaidTitles.map((raid) => {
+          const base = normalizeWeeklyRaidTitle(raid);
+          const selectedDiff = pick?.diffs?.[base] ?? pick?.diffs?.[raid];
+          return withDiff(base, ilvl, selectedDiff);
+        }),
       });
     }
   }
@@ -1107,13 +1146,18 @@ export function exportRaidLeftSnapshot(
 
       if (!selectedRaidTitles.length) continue;
 
+      const charKey = `${table.id}:${ch.id}`;
+      const pick = weeklyRaidPickByChar?.[charKey];
+
       const activeRaids: string[] = [];
       const remaining: string[] = [];
       const clearedRaids: string[] = [];
       let clearedCount = 0;
 
       for (const raidTitle of selectedRaidTitles) {
-        const raidLabel = withDiff(raidTitle, ilvl);
+        const base = normalizeWeeklyRaidTitle(raidTitle);
+        const selectedDiff = pick?.diffs?.[base] ?? pick?.diffs?.[raidTitle];
+        const raidLabel = withDiff(base, ilvl, selectedDiff);
         activeRaids.push(raidLabel);
 
         const taskId = weeklyRaidTitleToId.get(normalizeWeeklyRaidTitle(raidTitle));
