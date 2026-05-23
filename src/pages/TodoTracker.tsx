@@ -4376,11 +4376,44 @@ export default function TodoTracker() {
     ) {
       if (!schedule) return [];
 
-      return getUnscheduledRaidsForCandidateAnySide(
-        me.key,
-        me.activeRaids,
-        getScheduleCandidateIdentityKeys(me)
-      );
+      const directScheduledSet = getScheduledRaidSetForCandidateInSchedule(schedule, me);
+      if (directScheduledSet.size > 0) {
+        return me.activeRaids.filter(
+          (raid) => !doesScheduleRaidSetMatchBaseInclusive(directScheduledSet, raid)
+        );
+      }
+
+      return [...me.activeRaids];
+    }
+
+    function getScheduledRaidSetForCandidateInSchedule(
+      schedule: SharedWeeklySchedule,
+      candidate: { key?: string | null; tableName?: string | null; name?: string | null }
+    ) {
+      const candidateKeys = new Set(getScheduleCandidateIdentityKeys(candidate));
+      const scheduledSet = new Set<string>();
+
+      for (const item of schedule.items) {
+        const itemKeys = [
+          ...getScheduleCandidateKeys(
+            item.myCharKey,
+            item.myTableName,
+            item.myCharName,
+            item.mySnapshot
+          ),
+          ...getScheduleCandidateKeys(
+            item.friendCharKey,
+            item.friendTableName,
+            item.friendCharName,
+            item.friendSnapshot
+          ),
+        ];
+
+        if (!itemKeys.some((key) => candidateKeys.has(key))) continue;
+        getScheduleItemRaidNames(item).forEach((raid) => addScheduleRaidMatchKey(scheduledSet, raid));
+      }
+
+      return scheduledSet;
     }
 
     // 공유 일정표에 이미 들어간 레이드 표시용
@@ -6027,11 +6060,18 @@ export default function TodoTracker() {
     // 일정표에 이미 전부 들어간 캐릭터는 흐리게만 표시되도록 분리
     const displayMyCandidates = myCandidates.map((me) => {
       const used = usedRaidsByMyKey.get(me.key) ?? new Set<string>();
-      const scheduleAvailableRaids = getUnscheduledRaidsForCandidateAnySide(
-        me.key,
-        me.activeRaids,
-        getScheduleCandidateIdentityKeys(me)
-      );
+      const directScheduledSet = selectedWeeklySchedule
+        ? getScheduledRaidSetForCandidateInSchedule(selectedWeeklySchedule, me)
+        : new Set<string>();
+      const scheduleAvailableRaids = selectedWeeklySchedule
+        ? me.activeRaids.filter(
+            (raid) => !doesScheduleRaidSetMatchBaseInclusive(directScheduledSet, raid)
+          )
+        : getUnscheduledRaidsForCandidateAnySide(
+            me.key,
+            me.activeRaids,
+            getScheduleCandidateIdentityKeys(me)
+          );
 
       const unscheduledRaids = scheduleAvailableRaids.filter(
         (raid: string) => !used.has(normalizeRaidName(raid))
@@ -6045,11 +6085,18 @@ export default function TodoTracker() {
 
     const displayFriendCandidates = friendCandidates.map((fr) => {
       const used = usedRaidsByFriendKey.get(fr.key) ?? new Set<string>();
-      const scheduleAvailableRaids = getUnscheduledRaidsForCandidateAnySide(
-        fr.key,
-        fr.activeRaids,
-        getScheduleCandidateIdentityKeys(fr)
-      );
+      const directScheduledSet = selectedWeeklySchedule
+        ? getScheduledRaidSetForCandidateInSchedule(selectedWeeklySchedule, fr)
+        : new Set<string>();
+      const scheduleAvailableRaids = selectedWeeklySchedule
+        ? fr.activeRaids.filter(
+            (raid) => !doesScheduleRaidSetMatchBaseInclusive(directScheduledSet, raid)
+          )
+        : getUnscheduledRaidsForCandidateAnySide(
+            fr.key,
+            fr.activeRaids,
+            getScheduleCandidateIdentityKeys(fr)
+          );
 
       const unscheduledRaids = scheduleAvailableRaids.filter(
         (raid: string) => !used.has(normalizeRaidName(raid))
@@ -6070,7 +6117,11 @@ export default function TodoTracker() {
       (fr) => fr.unscheduledRaids.length > 0
     );
 
-    const selectableMyScheduleCandidates = remainingMyCandidates;
+    const selectableMyScheduleCandidates = selectedWeeklySchedule
+      ? remainingMyCandidates.filter(
+          (me) => getAvailableRaidsForMyScheduleCandidate(selectedWeeklySchedule, me).length > 0
+        )
+      : remainingMyCandidates;
 
     const buildSelectableCandidates = (
       usedMy: Map<string, Set<string>>,
@@ -7201,12 +7252,11 @@ export default function TodoTracker() {
                 <div className="manualRemainList">
                   {displayMyCandidates.map((me) => {
                     // 4/26 다음 주 초기화 기준도 새 일정표에 넣은 레이드는 흑백 처리되도록 수정
-                    const scheduleState = getRemainScheduleState(
-                      me.key,
-                      me.allRaids,
-                      scheduledMyRaidSetByChar,
-                      getScheduleCandidateIdentityKeys(me)
-                    );
+                    const scheduleState = {
+                      scheduledSet: selectedWeeklySchedule
+                        ? getScheduledRaidSetForCandidateInSchedule(selectedWeeklySchedule, me)
+                        : new Set<string>(),
+                    };
                     // 4/26 다음 주 초기화 기준은 레이드는 초기화값으로 보되, 일정표에 넣은 레이드는 흑백 처리
                     const allVisibleRaidsMuted =
                       me.allRaids.length > 0 &&
@@ -7316,21 +7366,6 @@ export default function TodoTracker() {
                     );
                     scheduleClearedRaidSet.forEach((raid) => clearedRaidSet.add(raid));
 
-                    const scheduleDisplayBaseRaids =
-                      fr.allRaids.length > 0
-                        ? fr.allRaids
-                        : [
-                          ...fr.activeRaids,
-                          ...fr.remainingRaids,
-                          ...(fr.clearedRaids ?? []),
-                        ];
-
-                    const scheduleDisplayState = getAnySideRemainScheduleState(
-                      fr.key,
-                      scheduleDisplayBaseRaids,
-                      getScheduleCandidateIdentityKeys(fr)
-                    );
-
                     const currentVisibleFriendRaids = uniqueRaidLabelsByBase([
                       ...fr.allRaids,
                       ...fr.activeRaids,
@@ -7347,11 +7382,11 @@ export default function TodoTracker() {
                             : fr.remainingRaids
                         : currentVisibleFriendRaids;
 
-                    const scheduleState = getAnySideRemainScheduleState(
-                      fr.key,
-                      visibleFriendRaids,
-                      getScheduleCandidateIdentityKeys(fr)
-                    );
+                    const scheduleState = {
+                      scheduledSet: selectedWeeklySchedule
+                        ? getScheduledRaidSetForCandidateInSchedule(selectedWeeklySchedule, fr)
+                        : new Set<string>(),
+                    };
 
                     // 4/23 현재 화면에 보이는 레이드칩이 전부 회색 조건이면 이름도 같이 회색
                     const allVisibleRaidsMuted =
@@ -8326,6 +8361,19 @@ export default function TodoTracker() {
   const RAID_NAME_ALIASES: Record<string, string> = {
     [normalizeRaidName("에키드나")]: "서막",
   };
+
+  Object.assign(RAID_NAME_ALIASES, {
+    [normalizeRaidName("4노")]: "4막 노말",
+    [normalizeRaidName("4하")]: "4막 하드",
+    [normalizeRaidName("종노")]: "종막 노말",
+    [normalizeRaidName("종하")]: "종막 하드",
+    [normalizeRaidName("세노")]: "세르카 노말",
+    [normalizeRaidName("세하")]: "세르카 하드",
+    [normalizeRaidName("세르카나메")]: "세르카 나이트메어",
+    [normalizeRaidName("성당1단계")]: "지평의 성당 1단계",
+    [normalizeRaidName("성당2단계")]: "지평의 성당 2단계",
+    [normalizeRaidName("성당3단계")]: "지평의 성당 3단계",
+  });
 
   function normalizeRaidAliasBaseName(name: string) {
     const normalized = normalizeRaidName(String(name ?? ""));
