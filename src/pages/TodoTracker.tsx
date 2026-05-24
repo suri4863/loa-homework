@@ -4275,36 +4275,45 @@ export default function TodoTracker() {
       }, [])
     );
 
-    function getWeeklyRaidTaskIdForRaidName(raidName: string) {
+    function getWeeklyRaidTaskIdsForRaidName(raidName: string) {
       const label = normalizeRaidAliasLabel(raidName);
       const normalizedLabel = normalizeRaidName(label);
-      const exactTaskId = weeklyRaidTitleToId.get(normalizedLabel);
-      if (exactTaskId) return exactTaskId;
+      const exactTaskIds = weeklyRaidTasks
+        .filter((task) => normalizeRaidName(task.title ?? "") === normalizedLabel)
+        .map((task) => task.id);
+      if (exactTaskIds.length) return exactTaskIds;
 
-      const extremeToken = normalizeRaidName("익스트림");
-      if (normalizedLabel.includes(extremeToken)) {
-        const extremeTask = weeklyRaidTasks.find((task) => {
-          const titleKey = normalizeRaidName(task.title);
-          return (
-            titleKey.includes(extremeToken) &&
-            normalizedLabel.startsWith(titleKey)
-          );
-        });
-        return extremeTask?.id ?? null;
-      }
+      const baseName = canonicalRaidName(getRaidBaseNameForRemainLabel(label));
+      const baseKey = normalizeRaidName(baseName);
+      const baseTaskIds = weeklyRaidTasks
+        .filter((task) => {
+          const taskBaseName = canonicalRaidName(getRaidBaseNameForRemainLabel(task.title ?? ""));
+          return normalizeRaidName(taskBaseName) === baseKey;
+        })
+        .map((task) => task.id);
+      if (baseTaskIds.length) return baseTaskIds;
 
-      return (
-        weeklyRaidTitleToId.get(normalizeScheduleRaidKey(label)) ??
-        weeklyRaidTitleToId.get(normalizeRaidName(getRaidBaseNameForRemainLabel(label))) ??
-        null
-      );
+      const fallbackTaskId = weeklyRaidTitleToId.get(normalizeScheduleRaidKey(label));
+      return fallbackTaskId ? [fallbackTaskId] : [];
+    }
+
+    function getWeeklyRaidTaskIdForRaidName(raidName: string) {
+      return getWeeklyRaidTaskIdsForRaidName(raidName)[0] ?? null;
     }
 
     function isMyWeeklyRaidChecked(tableId: string, charId: string, raidName: string) {
-      const taskId = getWeeklyRaidTaskIdForRaidName(raidName);
-      if (!taskId) return false;
-      const cell = getCellByTableId(state, tableId, taskId, charId);
-      return cell?.type === "CHECK" ? Boolean(cell.checked) : false;
+      const taskIds = getWeeklyRaidTaskIdsForRaidName(raidName);
+      if (!taskIds.length) return false;
+
+      let hasChecked = false;
+      for (const taskId of taskIds) {
+        const cell = getCellByTableId(state, tableId, taskId, charId);
+        if (!cell || cell.type !== "CHECK") continue;
+        if (!cell.checked) return false;
+        hasChecked = true;
+      }
+
+      return hasChecked;
     }
 
     function parsePowerValue(power?: string): number {
@@ -5454,19 +5463,15 @@ export default function TodoTracker() {
       const currentRaids = getScheduleItemRaidNames(item);
       if (!owner) return currentRaids;
 
-      const sourceRaids = uniqueRaidLabelsByBase(owner.activeRaids).filter((raid) =>
+      const sourceRaids = uniqueRaidLabelsByBase([
+        ...owner.activeRaids,
+        ...owner.remainingRaids,
+        ...owner.allRaids,
+      ]).filter((raid) =>
         isWeeklyRaidCurrentlyActive(canonicalRaidName(raid))
       );
 
-      return uniqueRaidLabelsByBase([...currentRaids, ...sourceRaids]).filter((raid) => {
-        const isCurrentRaid = currentRaids.some((currentRaid) =>
-          doesScheduleRaidSetMatch(getRaidKeysFromNames([currentRaid]), raid)
-        );
-        if (isCurrentRaid) return true;
-        if (isScheduleRaidCleared(schedule, item, raid)) return false;
-        if (isScheduleRaidScheduledForSameCharacterElsewhere(schedule, item, raid)) return false;
-        return true;
-      });
+      return uniqueRaidLabelsByBase([...currentRaids, ...sourceRaids]);
     }
 
     function getAvailableRaidKeySetForScheduleCandidate(
@@ -7418,11 +7423,11 @@ export default function TodoTracker() {
                     );
                     scheduleClearedRaidSet.forEach((raid) => clearedRaidSet.add(raid));
 
+                    const availableRaids = (fr as FriendCandidate & { unscheduledRaids?: string[] }).unscheduledRaids ?? [];
                     const currentVisibleFriendRaids = uniqueRaidLabelsByBase([
                       ...fr.allRaids,
                       ...fr.activeRaids,
                       ...fr.remainingRaids,
-                      ...(fr.clearedRaids ?? []),
                     ]);
 
                     const visibleFriendRaids =
@@ -7444,11 +7449,10 @@ export default function TodoTracker() {
                     const allVisibleRaidsMuted =
                       visibleFriendRaids.length > 0 &&
                       visibleFriendRaids.every((raid: string) => {
-                        const normalized = normalizeRaidName(raid);
-                        const isScheduled = doesScheduleRaidSetMatchBaseInclusive(scheduleState.scheduledSet, raid);
-                        const isCleared = clearedRaidSet.has(normalized);
-
-                        return isScheduled || isCleared;
+                        const isAvailable = availableRaids.some((availableRaid) =>
+                          doesScheduleRaidSetMatchForRemainCandidate(getRaidKeysFromNames([availableRaid]), raid)
+                        );
+                        return !isAvailable;
                       });
 
                     return (
@@ -7491,14 +7495,14 @@ export default function TodoTracker() {
 
                         <div className="manualRemainRaids">
                           {visibleFriendRaids.map((raid: string) => {
-                            const normalized = normalizeRaidName(raid);
-                            const isScheduled = doesScheduleRaidSetMatchBaseInclusive(scheduleState.scheduledSet, raid);
-                            const isCleared = clearedRaidSet.has(normalized);
+                            const isAvailable = availableRaids.some((availableRaid) =>
+                              doesScheduleRaidSetMatchForRemainCandidate(getRaidKeysFromNames([availableRaid]), raid)
+                            );
 
                             return (
                               <span
                                 key={raid}
-                                className={`manualRaidChip ${isScheduled || isCleared ? "is-scheduled" : ""
+                                className={`manualRaidChip ${!isAvailable ? "is-scheduled" : ""
                                   } ${allVisibleRaidsMuted ? "is-schedule-full" : ""}`}
                                 style={fr.hasNextWeekPlan ? { borderColor: "#facc15", color: "#facc15" } : undefined}
                               >
