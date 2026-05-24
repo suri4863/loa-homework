@@ -4451,18 +4451,18 @@ export default function TodoTracker() {
       schedule: SharedWeeklySchedule,
       candidate: { key?: string | null; tableName?: string | null; name?: string | null }
     ) {
-      const candidateKeys = new Set(getScheduleCandidateIdentityKeys(candidate));
+      const candidateKeys = new Set(getScheduleCandidateStrictIdentityKeys(candidate));
       const scheduledSet = new Set<string>();
 
       for (const item of schedule.items) {
         const itemKeys = [
-          ...getScheduleCandidateKeys(
+          ...getScheduleCandidateStrictKeys(
             item.myCharKey,
             item.myTableName,
             item.myCharName,
             item.mySnapshot
           ),
-          ...getScheduleCandidateKeys(
+          ...getScheduleCandidateStrictKeys(
             item.friendCharKey,
             item.friendTableName,
             item.friendCharName,
@@ -4622,7 +4622,7 @@ export default function TodoTracker() {
       });
 
       const scheduledRaids = targetRaids.filter((raid) =>
-        doesScheduleRaidSetMatchBaseInclusive(scheduledSet, raid)
+        doesScheduleRaidSetMatchForRemainCandidate(scheduledSet, raid)
       );
 
       const allScheduled =
@@ -4679,7 +4679,7 @@ export default function TodoTracker() {
     ) {
       const scheduleState = getRemainScheduleState(charKey, targetRaids, raidSetMap, extraKeys);
       return targetRaids.filter(
-        (raid) => !doesScheduleRaidSetMatchBaseInclusive(scheduleState.scheduledSet, raid)
+        (raid) => !doesScheduleRaidSetMatchForRemainCandidate(scheduleState.scheduledSet, raid)
       );
     }
 
@@ -4690,7 +4690,7 @@ export default function TodoTracker() {
     ) {
       const scheduleState = getAnySideRemainScheduleState(charKey, targetRaids, extraKeys);
       return targetRaids.filter(
-        (raid) => !doesScheduleRaidSetMatchBaseInclusive(scheduleState.scheduledSet, raid)
+        (raid) => !doesScheduleRaidSetMatchForRemainCandidate(scheduleState.scheduledSet, raid)
       );
     }
 
@@ -5031,6 +5031,22 @@ export default function TodoTracker() {
       ]);
     }
 
+    function getScheduleCandidateStrictIdentityKeys(candidate: {
+      key?: string | null;
+      tableName?: string | null;
+      name?: string | null;
+    }) {
+      const key = String(candidate.key ?? "").trim();
+      const tableName = String(candidate.tableName ?? "").trim();
+      const name = String(candidate.name ?? "").trim();
+      const tableNameKey = getScheduleSnapshotCandidateKey(tableName, name);
+      return compactScheduleKeys([
+        key,
+        tableNameKey,
+        key || tableNameKey ? "" : name,
+      ]);
+    }
+
     function getScheduleSnapshotCandidateKey(
       tableName?: string | null,
       charName?: string | null
@@ -5116,6 +5132,29 @@ export default function TodoTracker() {
         snapshot?.key,
         getScheduleSnapshotCandidateKey(table, name),
         name,
+      ]);
+    }
+
+    function getScheduleCandidateStrictKeys(
+      charKey: string | null | undefined,
+      tableName: string | null | undefined,
+      charName: string | null | undefined,
+      snapshot?: SharedScheduleCharacterSnapshot | null
+    ) {
+      const name = String(snapshot?.name ?? charName ?? "").trim();
+      const table = String(snapshot?.tableName ?? tableName ?? "").trim();
+      const localKey = resolveLocalScheduleCharKey(charKey, snapshot, charName, tableName);
+      const directKey = String(charKey ?? "").trim();
+      const snapshotKey = String(snapshot?.key ?? "").trim();
+      const tableNameKey = getScheduleSnapshotCandidateKey(table, name);
+      const hasStrongKey = Boolean(localKey || directKey || snapshotKey || tableNameKey);
+
+      return compactScheduleKeys([
+        localKey,
+        directKey,
+        snapshotKey,
+        tableNameKey,
+        hasStrongKey ? "" : name,
       ]);
     }
 
@@ -5466,7 +5505,6 @@ export default function TodoTracker() {
       const sourceRaids = uniqueRaidLabelsByBase([
         ...owner.activeRaids,
         ...owner.remainingRaids,
-        ...owner.allRaids,
       ]).filter((raid) =>
         isWeeklyRaidCurrentlyActive(canonicalRaidName(raid))
       );
@@ -6146,13 +6184,12 @@ export default function TodoTracker() {
     });
 
     const displayFriendCandidates = friendCandidates.map((fr) => {
-      const used = usedRaidsByFriendKey.get(fr.key) ?? new Set<string>();
       const directScheduledSet = selectedWeeklySchedule
         ? getScheduledRaidSetForCandidateInSchedule(selectedWeeklySchedule, fr)
         : new Set<string>();
       const scheduleAvailableRaids = selectedWeeklySchedule
         ? fr.activeRaids.filter(
-            (raid) => !doesScheduleRaidSetMatchBaseInclusive(directScheduledSet, raid)
+            (raid) => !doesScheduleRaidSetMatchForRemainCandidate(directScheduledSet, raid)
           )
         : getUnscheduledRaidsForCandidateAnySide(
             fr.key,
@@ -6160,13 +6197,9 @@ export default function TodoTracker() {
             getScheduleCandidateIdentityKeys(fr)
           );
 
-      const unscheduledRaids = scheduleAvailableRaids.filter(
-        (raid: string) => !used.has(normalizeRaidName(raid))
-      );
-
       return {
         ...fr,
-        unscheduledRaids,
+        unscheduledRaids: scheduleAvailableRaids,
       };
     });
 
