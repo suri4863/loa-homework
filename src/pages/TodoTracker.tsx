@@ -4615,16 +4615,20 @@ export default function TodoTracker() {
       const cached = availableRaidsForMyScheduleCandidateCache.get(cacheKey);
       if (cached) return cached;
 
-      const directScheduledSet = getScheduledRaidSetForCandidateInSchedule(schedule, me);
       const sourceRaids = [...me.allRaids];
+      if (schedulePlanningMode === "NEXT_RESET") {
+        availableRaidsForMyScheduleCandidateCache.set(cacheKey, sourceRaids);
+        return sourceRaids;
+      }
+
+      const directScheduledSet = getScheduledRaidSetForCandidateInSchedule(schedule, me);
       if (directScheduledSet.size > 0) {
         const availableRaids = sourceRaids.filter(
           (raid) => {
             const raidLabel = getMyScheduleComparableRaidName(raid, me);
             return !(
               doesScheduleRaidSetMatchForRemainCandidate(directScheduledSet, raidLabel) ||
-              (schedulePlanningMode !== "NEXT_RESET" &&
-                isMyWeeklyRaidChecked(me.tableId, me.charId, raidLabel))
+              isMyWeeklyRaidChecked(me.tableId, me.charId, raidLabel)
             );
           }
         );
@@ -6416,13 +6420,14 @@ export default function TodoTracker() {
         : new Set<string>();
       const sourceRaids = [...me.allRaids];
       const scheduleAvailableRaids = selectedWeeklySchedule
-        ? sourceRaids.filter(
+        ? schedulePlanningMode === "NEXT_RESET"
+          ? sourceRaids
+          : sourceRaids.filter(
             (raid) => {
               const comparableRaid = getMyScheduleComparableRaidName(raid, me);
               return !(
                 doesScheduleRaidSetMatchForRemainCandidate(directScheduledSet, comparableRaid) ||
-                (schedulePlanningMode !== "NEXT_RESET" &&
-                  isMyWeeklyRaidChecked(me.tableId, me.charId, comparableRaid))
+                isMyWeeklyRaidChecked(me.tableId, me.charId, comparableRaid)
               );
             }
           )
