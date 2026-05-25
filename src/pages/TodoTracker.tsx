@@ -6621,7 +6621,10 @@ export default function TodoTracker() {
       const comparableRaid = getMyScheduleComparableRaidName(raidName, me);
       const isMuted = selectedWeeklySchedule
         ? isMyRaidDirectlyScheduledInSelectedSchedule(me, comparableRaid)
-        : isMyWeeklyRaidChecked(me.tableId, me.charId, comparableRaid);
+        : (
+          isMyRaidGoldChecked(me.tableId, me.charId, comparableRaid) ||
+          isMyWeeklyRaidChecked(me.tableId, me.charId, comparableRaid)
+        );
       return { comparableRaid, isMuted };
     }
 
