@@ -4529,8 +4529,10 @@ export default function TodoTracker() {
 
             const baseAllRaids: string[] = getMyAllWeeklyRaids(tbl.id, ch.id, ilvl);
             const allRaids: string[] =
-              schedulePlanningMode === "NEXT_RESET" && nextWeekOverride?.raidNames?.length
-                ? nextWeekOverride.raidNames.map((raid) => normalizeFriendRaidLabel(raid)).filter(Boolean)
+              schedulePlanningMode === "NEXT_RESET"
+                ? nextWeekOverride?.raidNames?.length
+                  ? nextWeekOverride.raidNames.map((raid) => normalizeFriendRaidLabel(raid)).filter(Boolean)
+                  : baseAllRaids
                 : selectedRaids.filter((raidName) =>
                   baseAllRaids.some((baseRaid) => normalizeRaidName(baseRaid) === normalizeRaidName(raidName))
                 );
@@ -6620,8 +6622,9 @@ export default function TodoTracker() {
     function getMyRemainRaidDisplayStatus(me: MyCandidate, raidName: string) {
       const comparableRaid = getMyScheduleComparableRaidName(raidName, me);
       const isChecked =
-        isMyRaidGoldChecked(me.tableId, me.charId, comparableRaid) ||
-        isMyWeeklyRaidChecked(me.tableId, me.charId, comparableRaid);
+        schedulePlanningMode !== "NEXT_RESET" &&
+        (isMyRaidGoldChecked(me.tableId, me.charId, comparableRaid) ||
+          isMyWeeklyRaidChecked(me.tableId, me.charId, comparableRaid));
       const isMuted = selectedWeeklySchedule
         ? isMyRaidDirectlyScheduledInSelectedSchedule(me, comparableRaid) || isChecked
         : isChecked;
@@ -6629,6 +6632,10 @@ export default function TodoTracker() {
     }
 
     function getMyVisibleSelectedRaids(me: MyCandidate) {
+      if (schedulePlanningMode === "NEXT_RESET") {
+        return uniqueCanonicalRaidNames(me.allRaids);
+      }
+
       const charKey = weeklyCharKey(me.tableId, me.charId);
       const table = state.tables.find((tbl) => tbl.id === me.tableId);
       const character = table?.characters.find((ch) => ch.id === me.charId);
