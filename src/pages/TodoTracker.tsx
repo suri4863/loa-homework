@@ -6619,12 +6619,12 @@ export default function TodoTracker() {
 
     function getMyRemainRaidDisplayStatus(me: MyCandidate, raidName: string) {
       const comparableRaid = getMyScheduleComparableRaidName(raidName, me);
+      const isChecked =
+        isMyRaidGoldChecked(me.tableId, me.charId, comparableRaid) ||
+        isMyWeeklyRaidChecked(me.tableId, me.charId, comparableRaid);
       const isMuted = selectedWeeklySchedule
-        ? isMyRaidDirectlyScheduledInSelectedSchedule(me, comparableRaid)
-        : (
-          isMyRaidGoldChecked(me.tableId, me.charId, comparableRaid) ||
-          isMyWeeklyRaidChecked(me.tableId, me.charId, comparableRaid)
-        );
+        ? isMyRaidDirectlyScheduledInSelectedSchedule(me, comparableRaid) || isChecked
+        : isChecked;
       return { comparableRaid, isMuted };
     }
 
