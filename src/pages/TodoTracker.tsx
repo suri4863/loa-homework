@@ -4522,14 +4522,18 @@ export default function TodoTracker() {
                 : { raids: [], diffs: {} };
 
             const selectedRaids: string[] = Array.isArray(pick?.raids)
-              ? pick.raids.map((raid: string) => normalizeRaidName(raid))
+              ? uniqueCanonicalRaidNames(
+                pick.raids.map((raid: string) => normalizeFriendRaidLabel(raid)).filter(Boolean)
+              )
               : [];
 
             const baseAllRaids: string[] = getMyAllWeeklyRaids(tbl.id, ch.id, ilvl);
             const allRaids: string[] =
               schedulePlanningMode === "NEXT_RESET" && nextWeekOverride?.raidNames?.length
                 ? nextWeekOverride.raidNames.map((raid) => normalizeFriendRaidLabel(raid)).filter(Boolean)
-                : baseAllRaids;
+                : selectedRaids.filter((raidName) =>
+                  baseAllRaids.some((baseRaid) => normalizeRaidName(baseRaid) === normalizeRaidName(raidName))
+                );
 
             const remainingRaids: string[] = allRaids.filter((raidName: string) => {
               const raidLabel = DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(canonicalRaidName(getRaidBaseNameForRemainLabel(raidName)))
@@ -4565,7 +4569,7 @@ export default function TodoTracker() {
             (x: MyCandidate) =>
               x.ilvl >= levelRange.min &&
               x.ilvl <= levelRange.max &&
-              x.allRaids.length > 0
+              x.activeRaids.length > 0
           )
       ));
 
