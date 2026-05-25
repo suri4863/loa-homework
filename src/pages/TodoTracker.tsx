@@ -4611,7 +4611,7 @@ export default function TodoTracker() {
       me: MyCandidate
     ) {
       if (!schedule) return [];
-      const cacheKey = `${schedule.id}|${me.key}|${me.allRaids.map((raid) => normalizeRaidName(raid)).join(",")}`;
+      const cacheKey = `${schedulePlanningMode}|${schedule.id}|${me.key}|${me.allRaids.map((raid) => normalizeRaidName(raid)).join(",")}`;
       const cached = availableRaidsForMyScheduleCandidateCache.get(cacheKey);
       if (cached) return cached;
 
@@ -4623,7 +4623,8 @@ export default function TodoTracker() {
             const raidLabel = getMyScheduleComparableRaidName(raid, me);
             return !(
               doesScheduleRaidSetMatchForRemainCandidate(directScheduledSet, raidLabel) ||
-              isMyWeeklyRaidChecked(me.tableId, me.charId, raidLabel)
+              (schedulePlanningMode !== "NEXT_RESET" &&
+                isMyWeeklyRaidChecked(me.tableId, me.charId, raidLabel))
             );
           }
         );
@@ -6420,7 +6421,8 @@ export default function TodoTracker() {
               const comparableRaid = getMyScheduleComparableRaidName(raid, me);
               return !(
                 doesScheduleRaidSetMatchForRemainCandidate(directScheduledSet, comparableRaid) ||
-                isMyWeeklyRaidChecked(me.tableId, me.charId, comparableRaid)
+                (schedulePlanningMode !== "NEXT_RESET" &&
+                  isMyWeeklyRaidChecked(me.tableId, me.charId, comparableRaid))
               );
             }
           )
