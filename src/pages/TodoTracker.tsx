@@ -6520,6 +6520,24 @@ export default function TodoTracker() {
       return { comparableRaid, isScheduled, isChecked };
     }
 
+    function getMyVisibleSelectedRaids(me: MyCandidate) {
+      const charKey = weeklyCharKey(me.tableId, me.charId);
+      const table = state.tables.find((tbl) => tbl.id === me.tableId);
+      const character = table?.characters.find((ch) => ch.id === me.charId);
+      const ilvl = character ? getCharIlvl(character) : me.ilvl;
+      const savedPick = character ? loadWeeklyRaidPick(me.tableId, me.charId, ilvl) : null;
+      const pick = sanitizeWeeklyRaidPick(
+        ilvl,
+        weeklyRaidPickByChar[charKey] ?? savedPick ?? getDefaultWeeklyRaidPick(ilvl)
+      );
+      const availableRaids = getMyAllWeeklyRaids(me.tableId, me.charId, ilvl);
+
+      return uniqueCanonicalRaidNames(pick.raids)
+        .filter((raid) =>
+          availableRaids.some((availableRaid) => normalizeRaidName(availableRaid) === normalizeRaidName(raid))
+        );
+    }
+
     const buildSelectableCandidates = (
       usedMy: Map<string, Set<string>>,
       usedFriend: Map<string, Set<string>>
@@ -7648,6 +7666,7 @@ export default function TodoTracker() {
               {displayMyCandidates.length ? (
                 <div className="manualRemainList">
                   {displayMyCandidates.map((me) => {
+                    const visibleMyRaids = getMyVisibleSelectedRaids(me);
                     // 4/26 다음 주 초기화 기준도 새 일정표에 넣은 레이드는 흑백 처리되도록 수정
                     // 4/26 다음 주 초기화 기준은 레이드는 초기화값으로 보되, 일정표에 넣은 레이드는 흑백 처리
                     return (
@@ -7689,7 +7708,7 @@ export default function TodoTracker() {
                         )}
 
                         <div className="manualRemainRaids">
-                          {me.allRaids.map((raid) => {
+                          {visibleMyRaids.map((raid) => {
                             const { isScheduled, isChecked } = getMyRemainRaidDisplayStatus(me, raid);
 
                             // 4/26 다음 주 초기화 기준일 때는 기존 클리어 체크를 무시하고 전부 남은 레이드로 처리
