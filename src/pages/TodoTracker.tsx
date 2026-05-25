@@ -1637,9 +1637,31 @@ export default function TodoTracker() {
     if (!tableId || !charId) return false;
 
     const table = localTableById.get(tableId);
-    if (!table || !table.characters.some((ch) => ch.id === charId)) return false;
+    const character = table?.characters.find((ch) => ch.id === charId);
+    if (!table || !character) return false;
 
-    const taskId = getLocalWeeklyRaidTaskId(raidName);
+    const baseName = canonicalRaidName(getRaidBaseNameForRemainLabel(raidName));
+    const isExtremeRaid = DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(baseName);
+    const comparableRaidName = isExtremeRaid
+      ? formatRemainRaidWithDiff(
+        baseName,
+        getCharIlvl(character),
+        weeklyCharKey(tableId, charId)
+      )
+      : raidName;
+    const requestedDiff = getRaidDiffFromLabel(raidName);
+    const comparableDiff = getRaidDiffFromLabel(comparableRaidName);
+
+    if (
+      isExtremeRaid &&
+      requestedDiff &&
+      comparableDiff &&
+      normalizeRaidName(requestedDiff) !== normalizeRaidName(comparableDiff)
+    ) {
+      return false;
+    }
+
+    const taskId = getLocalWeeklyRaidTaskId(isExtremeRaid ? baseName : raidName);
     if (!taskId) return false;
 
     const cell = getCellByTableId(state, tableId, taskId, charId);
@@ -2023,6 +2045,13 @@ export default function TodoTracker() {
     schedule: SharedWeeklySchedule,
     item: SharedWeeklyScheduleItem
   ) {
+    const hasAssignedFriend = Boolean(
+      String(item.friendSnapshot?.name ?? item.friendCharName ?? item.friendCharKey ?? "").trim()
+    );
+    if (item.mode === "OPEN_SLOT" || !hasAssignedFriend) {
+      return { currentRaids: [], mismatchedRaidNames: [] };
+    }
+
     const scheduledRaids = getScheduleItemRaidNames(item);
     const currentRaids = getScheduleLiveRaidNames(schedule, item);
     if (!scheduledRaids.length || !currentRaids.length) {
@@ -2121,9 +2150,43 @@ export default function TodoTracker() {
   function doesScheduleRaidSetMatchForRemainCandidate(keys: Set<string>, raidName: string) {
     const baseName = canonicalRaidName(getRaidBaseNameForRemainLabel(raidName));
     if (DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(baseName)) {
-      return doesScheduleRaidSetMatch(keys, raidName);
+      const baseKey = normalizeScheduleRaidKey(raidName);
+      const diffKey = normalizeScheduleRaidDiffKey(raidName);
+      if (!baseKey) return false;
+      return diffKey ? keys.has(diffKey) : keys.has(baseKey);
     }
     return doesScheduleRaidSetMatchBaseInclusive(keys, raidName);
+  }
+
+  function getMyScheduleComparableRaidName(
+    raidName: string,
+    me: { tableId: string; charId: string; ilvl: number }
+  ) {
+    const baseName = canonicalRaidName(getRaidBaseNameForRemainLabel(raidName));
+    if (!DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(baseName)) return raidName;
+    return formatRemainRaidWithDiff(raidName, me.ilvl, weeklyCharKey(me.tableId, me.charId));
+  }
+
+  function getScheduleComparableRaidNameForItem(
+    item: SharedWeeklyScheduleItem,
+    raidName: string
+  ) {
+    const baseName = canonicalRaidName(getRaidBaseNameForRemainLabel(raidName));
+    if (!DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(baseName) || getRaidDiffFromLabel(raidName)) {
+      return raidName;
+    }
+
+    const itemIlvl =
+      parseScheduleNumberValue(item.mySnapshot?.plannedIlvl) ??
+      parseScheduleNumberValue(item.friendSnapshot?.plannedIlvl) ??
+      parseScheduleNumberValue(item.mySnapshot?.ilvl) ??
+      parseScheduleNumberValue(item.mySnapshot?.itemLevel) ??
+      parseScheduleNumberValue(item.friendSnapshot?.ilvl) ??
+      parseScheduleNumberValue(item.friendSnapshot?.itemLevel) ??
+      parseScheduleNumberValue((item as any).myCharItemLevel) ??
+      0;
+    const label = formatRemainRaidWithDiff(baseName, itemIlvl, null);
+    return getRaidDiffFromLabel(label) ? label : raidName;
   }
 
   function hydrateScheduleWithLocalCompletion(schedule: SharedWeeklySchedule) {
@@ -4284,6 +4347,9 @@ export default function TodoTracker() {
       if (exactTaskIds.length) return exactTaskIds;
 
       const baseName = canonicalRaidName(getRaidBaseNameForRemainLabel(label));
+      if (DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(baseName) && getRaidDiffFromLabel(label)) {
+        return [];
+      }
       const baseKey = normalizeRaidName(baseName);
       const baseTaskIds = weeklyRaidTasks
         .filter((task) => {
@@ -4301,8 +4367,111 @@ export default function TodoTracker() {
       return getWeeklyRaidTaskIdsForRaidName(raidName)[0] ?? null;
     }
 
+    function getMyComparableWeeklyRaidName(tableId: string, charId: string, raidName: string) {
+      const baseName = canonicalRaidName(getRaidBaseNameForRemainLabel(raidName));
+      if (!DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(baseName)) return raidName;
+
+      const table = state.tables.find((tbl) => tbl.id === tableId);
+      const character = table?.characters.find((ch) => ch.id === charId);
+      if (!character) return raidName;
+
+      return formatRemainRaidWithDiff(
+        baseName,
+        getCharIlvl(character),
+        weeklyCharKey(tableId, charId)
+      );
+    }
+
+    function getMyWeeklyRaidTaskIdsForRaidName(tableId: string, charId: string, raidName: string) {
+      const comparableRaidName = getMyComparableWeeklyRaidName(tableId, charId, raidName);
+      const baseName = canonicalRaidName(getRaidBaseNameForRemainLabel(comparableRaidName));
+      if (DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(baseName)) {
+        const requestedDiff = getRaidDiffFromLabel(raidName);
+        const comparableDiff = getRaidDiffFromLabel(comparableRaidName);
+
+        if (
+          requestedDiff &&
+          comparableDiff &&
+          normalizeRaidName(requestedDiff) !== normalizeRaidName(comparableDiff)
+        ) {
+          return [];
+        }
+
+        return getWeeklyRaidTaskIdsForRaidName(baseName);
+      }
+
+      return getWeeklyRaidTaskIdsForRaidName(comparableRaidName);
+    }
+
+    function isMyRaidCurrentlySelected(tableId: string, charId: string, raidName: string) {
+      const table = state.tables.find((tbl) => tbl.id === tableId);
+      const character = table?.characters.find((ch) => ch.id === charId);
+      if (!character) return false;
+
+      const ilvl = getCharIlvl(character);
+      const charKey = weeklyCharKey(tableId, charId);
+      const pick = Number.isFinite(ilvl) && ilvl > 0
+        ? (weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(ilvl))
+        : { raids: [], diffs: {} };
+      const selectedRaids = Array.isArray(pick?.raids) ? pick.raids : [];
+      const baseName = canonicalRaidName(getRaidBaseNameForRemainLabel(raidName));
+      const requestedDiff = getRaidDiffFromLabel(raidName);
+
+      return selectedRaids.some((selectedRaid) => {
+        const selectedBaseName = canonicalRaidName(getRaidBaseNameForRemainLabel(selectedRaid));
+        if (normalizeRaidName(selectedBaseName) !== normalizeRaidName(baseName)) {
+          return false;
+        }
+
+        if (!DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(baseName)) {
+          return true;
+        }
+
+        const selectedComparable = formatRemainRaidWithDiff(selectedBaseName, ilvl, charKey);
+        const selectedDiff = getRaidDiffFromLabel(selectedComparable);
+
+        return !requestedDiff || !selectedDiff || normalizeRaidName(requestedDiff) === normalizeRaidName(selectedDiff);
+      });
+    }
+
+    function isMyRaidGoldChecked(tableId: string, charId: string, raidName: string) {
+      const table = state.tables.find((tbl) => tbl.id === tableId);
+      const character = table?.characters.find((ch) => ch.id === charId);
+      if (!character) return false;
+
+      const ilvl = getCharIlvl(character);
+      if (!Number.isFinite(ilvl) || ilvl <= 0) return false;
+
+      const charKey = weeklyCharKey(tableId, charId);
+      const rawPick = weeklyRaidPickByChar[charKey];
+      const manualCompletedRaids = Array.isArray(rawPick?.manualCompletedRaids)
+        ? rawPick.manualCompletedRaids
+        : [];
+      if (!manualCompletedRaids.length) return false;
+
+      const baseName = canonicalRaidName(getRaidBaseNameForRemainLabel(raidName));
+      const requestedDiff = getRaidDiffFromLabel(raidName);
+
+      return manualCompletedRaids.some((completedRaid) => {
+        const goldBaseName = canonicalRaidName(getRaidBaseNameForRemainLabel(completedRaid));
+        if (normalizeRaidName(goldBaseName) !== normalizeRaidName(baseName)) {
+          return false;
+        }
+
+        if (!DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(baseName)) {
+          return true;
+        }
+
+        const goldComparable = formatRemainRaidWithDiff(goldBaseName, ilvl, charKey);
+        const goldDiff = getRaidDiffFromLabel(goldComparable);
+        return !requestedDiff || !goldDiff || normalizeRaidName(requestedDiff) === normalizeRaidName(goldDiff);
+      });
+    }
+
     function isMyWeeklyRaidChecked(tableId: string, charId: string, raidName: string) {
-      const taskIds = getWeeklyRaidTaskIdsForRaidName(raidName);
+      if (!isMyRaidCurrentlySelected(tableId, charId, raidName)) return false;
+
+      const taskIds = getMyWeeklyRaidTaskIdsForRaidName(tableId, charId, raidName);
       if (!taskIds.length) return false;
 
       let hasChecked = false;
@@ -4328,7 +4497,7 @@ export default function TodoTracker() {
       return Number.isFinite(num) ? num : 0;
     }
 
-    const myCandidates: MyCandidate[] = state.tables
+    const myCandidates: MyCandidate[] = filterAccountWideExtremeRaids(state.tables
       .filter((tbl) => !excludedKkanbuTableIds.includes(tbl.id)) // 제외 표는 매칭 후보에서 제거
       .flatMap((tbl) =>
         tbl.characters
@@ -4363,7 +4532,13 @@ export default function TodoTracker() {
                 : baseAllRaids;
 
             const remainingRaids: string[] = allRaids.filter((raidName: string) => {
-              return !isMyWeeklyRaidChecked(tbl.id, ch.id, raidName);
+              const raidLabel = DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(canonicalRaidName(getRaidBaseNameForRemainLabel(raidName)))
+                ? formatRemainRaidWithDiff(raidName, ilvl, charKey)
+                : raidName;
+              return !(
+                isMyRaidGoldChecked(tbl.id, ch.id, raidLabel) ||
+                isMyWeeklyRaidChecked(tbl.id, ch.id, raidLabel)
+              );
             });
 
             const activeRaids =
@@ -4392,9 +4567,12 @@ export default function TodoTracker() {
               x.ilvl <= levelRange.max &&
               x.allRaids.length > 0
           )
-      );
+      ));
 
     const schedule = weeklySchedules.find((s) => s.id === selectedScheduleId);
+    const scheduleCandidateNameUniqueCache = new Map<string, boolean>();
+    const scheduledRaidSetForCandidateCache = new Map<string, Set<string>>();
+    const availableRaidsForMyScheduleCandidateCache = new Map<string, string[]>();
 
     function getScheduledRaidSetForMyScheduleCandidate(
       schedule: SharedWeeklySchedule,
@@ -4431,49 +4609,101 @@ export default function TodoTracker() {
       me: MyCandidate
     ) {
       if (!schedule) return [];
+      const cacheKey = `${schedule.id}|${me.key}|${me.allRaids.map((raid) => normalizeRaidName(raid)).join(",")}`;
+      const cached = availableRaidsForMyScheduleCandidateCache.get(cacheKey);
+      if (cached) return cached;
 
       const directScheduledSet = getScheduledRaidSetForCandidateInSchedule(schedule, me);
       const sourceRaids = [...me.allRaids];
       if (directScheduledSet.size > 0) {
-        return sourceRaids.filter(
-          (raid) =>
-            !(
-              doesScheduleRaidSetMatchForRemainCandidate(directScheduledSet, raid) ||
-              isMyWeeklyRaidChecked(me.tableId, me.charId, raid)
-            )
+        const availableRaids = sourceRaids.filter(
+          (raid) => {
+            const raidLabel = getMyScheduleComparableRaidName(raid, me);
+            return !(
+              doesScheduleRaidSetMatchForRemainCandidate(directScheduledSet, raidLabel) ||
+              isMyRaidGoldChecked(me.tableId, me.charId, raidLabel) ||
+              isMyWeeklyRaidChecked(me.tableId, me.charId, raidLabel)
+            );
+          }
         );
+        availableRaidsForMyScheduleCandidateCache.set(cacheKey, availableRaids);
+        return availableRaids;
       }
 
-      return [...sourceRaids];
+      availableRaidsForMyScheduleCandidateCache.set(cacheKey, sourceRaids);
+      return sourceRaids;
+    }
+
+    function isScheduleCandidateNameUnique(
+      candidate: { tableName?: string | null; name?: string | null }
+    ) {
+      const name = String(candidate.name ?? "").trim();
+      if (!name) return false;
+      const table = String(candidate.tableName ?? "").trim();
+      const cacheKey = `${table}|${name}`;
+      const cached = scheduleCandidateNameUniqueCache.get(cacheKey);
+      if (cached !== undefined) return cached;
+
+      const allCandidates = [...myScheduleCandidates, ...friendCandidates];
+      const isUnique = allCandidates.filter(
+        (other) => String(other.name ?? "").trim() === name
+      ).length === 1;
+      scheduleCandidateNameUniqueCache.set(cacheKey, isUnique);
+      return isUnique;
     }
 
     function getScheduledRaidSetForCandidateInSchedule(
       schedule: SharedWeeklySchedule,
       candidate: { key?: string | null; tableName?: string | null; name?: string | null }
     ) {
-      const candidateKeys = new Set(getScheduleCandidateStrictIdentityKeys(candidate));
+      const identityKeys = getScheduleCandidateStrictIdentityKeys(candidate);
+      const candidateName = String(candidate.name ?? "").trim();
+      const allowNameFallback = isScheduleCandidateNameUnique(candidate);
+      const cacheKey = [
+        schedule.id,
+        identityKeys.slice().sort().join(","),
+        String(candidate.tableName ?? "").trim(),
+        candidateName,
+        allowNameFallback ? "name" : "strict",
+      ].join("|");
+      const cached = scheduledRaidSetForCandidateCache.get(cacheKey);
+      if (cached) return cached;
+
+      const candidateKeys = new Set(identityKeys);
       const scheduledSet = new Set<string>();
 
       for (const item of schedule.items) {
-        const itemKeys = [
-          ...getScheduleCandidateStrictKeys(
+        const itemMyKeys = getScheduleCandidateStrictKeys(
             item.myCharKey,
             item.myTableName,
             item.myCharName,
             item.mySnapshot
-          ),
-          ...getScheduleCandidateStrictKeys(
+          );
+        const itemFriendKeys = getScheduleCandidateStrictKeys(
             item.friendCharKey,
             item.friendTableName,
             item.friendCharName,
             item.friendSnapshot
-          ),
+          );
+        const itemKeys = [...itemMyKeys, ...itemFriendKeys];
+        const itemNames = [
+          String(item.mySnapshot?.name ?? item.myCharName ?? "").trim(),
+          String(item.friendSnapshot?.name ?? item.friendCharName ?? "").trim(),
         ];
 
-        if (!itemKeys.some((key) => candidateKeys.has(key))) continue;
-        getScheduleItemExplicitRaidNames(item).forEach((raid) => addScheduleRaidMatchKey(scheduledSet, raid));
+        const hasStrongMatch = itemKeys.some((key) => candidateKeys.has(key));
+        const hasUniqueNameMatch =
+          allowNameFallback &&
+          candidateName &&
+          itemNames.some((name) => name === candidateName);
+
+        if (!hasStrongMatch && !hasUniqueNameMatch) continue;
+        getScheduleItemExplicitRaidNames(item).forEach((raid) =>
+          addScheduleRaidMatchKey(scheduledSet, getScheduleComparableRaidNameForItem(item, raid))
+        );
       }
 
+      scheduledRaidSetForCandidateCache.set(cacheKey, scheduledSet);
       return scheduledSet;
     }
 
@@ -4512,13 +4742,15 @@ export default function TodoTracker() {
 
       for (const item of schedule.items) {
         // 4/26 실제 일정표에 들어간 레이드만 흑백 처리되도록 수정
-        const itemScheduledRaids = getScheduleItemExplicitRaidNames(item);
+        const itemScheduledRaids = getScheduleItemExplicitRaidNames(item).map((raid) =>
+          getScheduleComparableRaidNameForItem(item, raid)
+        );
 
         if (isTargetView) {
           if (item.mode === "OPEN_SLOT" || !item.friendCharKey) {
             addScheduledRaidsToKeys(
               scheduledMyRaidSetByChar,
-              getScheduleCandidateKeys(
+              getScheduleCandidateStrictKeys(
                 item.myCharKey,
                 item.myTableName,
                 item.myCharName,
@@ -4530,7 +4762,7 @@ export default function TodoTracker() {
 
           addScheduledRaidsToKeys(
             scheduledMyRaidSetByChar,
-            getScheduleCandidateKeys(
+            getScheduleCandidateStrictKeys(
               item.friendCharKey,
               item.friendTableName,
               item.friendCharName,
@@ -4543,7 +4775,7 @@ export default function TodoTracker() {
           // 최신 일정표는 tableName|charName으로 맞추고, 구버전 일정표는 이름만으로도 보정한다.
           addScheduledRaidsToKeys(
             scheduledFriendRaidSetByChar,
-            getScheduleCandidateKeys(
+            getScheduleCandidateStrictKeys(
               item.myCharKey,
               item.myTableName,
               item.myCharName,
@@ -4554,7 +4786,7 @@ export default function TodoTracker() {
         } else {
           addScheduledRaidsToKeys(
             scheduledMyRaidSetByChar,
-            getScheduleCandidateKeys(
+            getScheduleCandidateStrictKeys(
               item.myCharKey,
               item.myTableName,
               item.myCharName,
@@ -4564,7 +4796,7 @@ export default function TodoTracker() {
           );
           addScheduledRaidsToKeys(
             scheduledFriendRaidSetByChar,
-            getScheduleCandidateKeys(
+            getScheduleCandidateStrictKeys(
               item.friendCharKey,
               item.friendTableName,
               item.friendCharName,
@@ -4611,14 +4843,6 @@ export default function TodoTracker() {
         const directSet = raidSetMap.get(key);
         if (directSet) directSet.forEach((raid) => scheduledSet.add(raid));
 
-        const charNameFallback = key.includes("|")
-          ? key.split("|").slice(-1)[0]
-          : "";
-
-        if (charNameFallback) {
-          const nameSet = raidSetMap.get(charNameFallback);
-          if (nameSet) nameSet.forEach((raid) => scheduledSet.add(raid));
-        }
       });
 
       const scheduledRaids = targetRaids.filter((raid) =>
@@ -4647,7 +4871,7 @@ export default function TodoTracker() {
       });
 
       const scheduledRaids = targetRaids.filter((raid) =>
-        doesScheduleRaidSetMatchBaseInclusive(scheduledSet, raid)
+        doesScheduleRaidSetMatchForRemainCandidate(scheduledSet, raid)
       );
 
       return {
@@ -5116,6 +5340,33 @@ export default function TodoTracker() {
       );
     }
 
+    function resolveStrictLocalScheduleCharKey(
+      charKey: string | null | undefined,
+      snapshot?: SharedScheduleCharacterSnapshot | null,
+      fallbackName?: string | null,
+      fallbackTableName?: string | null
+    ) {
+      const direct = String(charKey ?? "").trim();
+      if (hasLocalScheduleCharKey(direct)) return direct;
+
+      const snapshotKey = String(snapshot?.key ?? "").trim();
+      if (hasLocalScheduleCharKey(snapshotKey)) return snapshotKey;
+
+      const tableName = String(snapshot?.tableName ?? fallbackTableName ?? "").trim();
+      const name = String(snapshot?.name ?? fallbackName ?? "").trim();
+      if (!tableName || !name) return "";
+
+      const matches = state.tables.flatMap((table) =>
+        String(table.name ?? "").trim() === tableName
+          ? table.characters
+            .filter((candidate) => String(candidate.name ?? "").trim() === name)
+            .map((candidate) => `${table.id}|${candidate.id}`)
+          : []
+      );
+
+      return matches.length === 1 ? matches[0] : "";
+    }
+
     function getScheduleCandidateKeys(
       charKey: string | null | undefined,
       tableName: string | null | undefined,
@@ -5124,7 +5375,7 @@ export default function TodoTracker() {
     ) {
       const name = String(snapshot?.name ?? charName ?? "").trim();
       const table = String(snapshot?.tableName ?? tableName ?? "").trim();
-      const localKey = resolveLocalScheduleCharKey(charKey, snapshot, charName, tableName);
+      const localKey = resolveStrictLocalScheduleCharKey(charKey, snapshot, charName, tableName);
 
       return compactScheduleKeys([
         localKey,
@@ -5143,7 +5394,7 @@ export default function TodoTracker() {
     ) {
       const name = String(snapshot?.name ?? charName ?? "").trim();
       const table = String(snapshot?.tableName ?? tableName ?? "").trim();
-      const localKey = resolveLocalScheduleCharKey(charKey, snapshot, charName, tableName);
+      const localKey = resolveStrictLocalScheduleCharKey(charKey, snapshot, charName, tableName);
       const directKey = String(charKey ?? "").trim();
       const snapshotKey = String(snapshot?.key ?? "").trim();
       const tableNameKey = getScheduleSnapshotCandidateKey(table, name);
@@ -6165,11 +6416,14 @@ export default function TodoTracker() {
       const sourceRaids = [...me.allRaids];
       const scheduleAvailableRaids = selectedWeeklySchedule
         ? sourceRaids.filter(
-            (raid) =>
-              !(
-                doesScheduleRaidSetMatchForRemainCandidate(directScheduledSet, raid) ||
-                isMyWeeklyRaidChecked(me.tableId, me.charId, raid)
-              )
+            (raid) => {
+              const comparableRaid = getMyScheduleComparableRaidName(raid, me);
+              return !(
+                doesScheduleRaidSetMatchForRemainCandidate(directScheduledSet, comparableRaid) ||
+                isMyRaidGoldChecked(me.tableId, me.charId, comparableRaid) ||
+                isMyWeeklyRaidChecked(me.tableId, me.charId, comparableRaid)
+              );
+            }
           )
         : getUnscheduledRaidsForCandidateAnySide(
             me.key,
@@ -6183,19 +6437,45 @@ export default function TodoTracker() {
       };
     });
 
-    const displayFriendCandidates = friendCandidates.map((fr) => {
+    function getAvailableRaidsForFriendDisplayCandidate(fr: FriendCandidate) {
       const directScheduledSet = selectedWeeklySchedule
         ? getScheduledRaidSetForCandidateInSchedule(selectedWeeklySchedule, fr)
         : new Set<string>();
-      const scheduleAvailableRaids = selectedWeeklySchedule
-        ? fr.activeRaids.filter(
-            (raid) => !doesScheduleRaidSetMatchForRemainCandidate(directScheduledSet, raid)
-          )
-        : getUnscheduledRaidsForCandidateAnySide(
-            fr.key,
-            fr.activeRaids,
-            getScheduleCandidateIdentityKeys(fr)
-          );
+      const clearedSet = new Set<string>();
+
+      if (schedulePlanningMode !== "NEXT_RESET") {
+        (fr.clearedRaids ?? []).forEach((raid: string) =>
+          addScheduleAvailabilityKeys(clearedSet, raid)
+        );
+      }
+
+      if (selectedWeeklySchedule) {
+        const friendKeys = getScheduleCandidateIdentityKeys(fr);
+        getClearedScheduleRaidSetForKeys(selectedWeeklySchedule, friendKeys, "FRIEND").forEach((raid) =>
+          addScheduleAvailabilityKeys(clearedSet, raid)
+        );
+        getClearedScheduleRaidSetForKeys(selectedWeeklySchedule, friendKeys, "MY").forEach((raid) =>
+          addScheduleAvailabilityKeys(clearedSet, raid)
+        );
+      }
+
+      return fr.activeRaids.filter((raid) => {
+        if (hasScheduleAvailabilityKey(clearedSet, raid)) return false;
+        if (selectedWeeklySchedule) {
+          return !doesScheduleRaidSetMatchForRemainCandidate(directScheduledSet, raid);
+        }
+
+        const scheduleState = getAnySideRemainScheduleState(
+          fr.key,
+          [raid],
+          getScheduleCandidateIdentityKeys(fr)
+        );
+        return !doesScheduleRaidSetMatchForRemainCandidate(scheduleState.scheduledSet, raid);
+      });
+    }
+
+    const displayFriendCandidates = friendCandidates.map((fr) => {
+      const scheduleAvailableRaids = getAvailableRaidsForFriendDisplayCandidate(fr);
 
       return {
         ...fr,
@@ -6217,6 +6497,26 @@ export default function TodoTracker() {
           (me) => getAvailableRaidsForMyScheduleCandidate(selectedWeeklySchedule, me).length > 0
         )
       : remainingMyCandidates;
+
+    function isMyRaidDirectlyScheduledInSelectedSchedule(
+      me: MyCandidate,
+      raidName: string
+    ) {
+      if (!selectedWeeklySchedule) return false;
+
+      const scheduledSet = getScheduledRaidSetForCandidateInSchedule(selectedWeeklySchedule, me);
+      if (!scheduledSet.size) return false;
+      return doesScheduleRaidSetMatchForRemainCandidate(scheduledSet, raidName);
+    }
+
+    function getMyRemainRaidDisplayStatus(me: MyCandidate, raidName: string) {
+      const comparableRaid = getMyScheduleComparableRaidName(raidName, me);
+      const isScheduled = isMyRaidDirectlyScheduledInSelectedSchedule(me, comparableRaid);
+      const isChecked =
+        isMyRaidGoldChecked(me.tableId, me.charId, comparableRaid) ||
+        isMyWeeklyRaidChecked(me.tableId, me.charId, comparableRaid);
+      return { comparableRaid, isScheduled, isChecked };
+    }
 
     const buildSelectableCandidates = (
       usedMy: Map<string, Set<string>>,
@@ -7347,30 +7647,14 @@ export default function TodoTracker() {
                 <div className="manualRemainList">
                   {displayMyCandidates.map((me) => {
                     // 4/26 다음 주 초기화 기준도 새 일정표에 넣은 레이드는 흑백 처리되도록 수정
-                    const scheduleState = {
-                      scheduledSet: selectedWeeklySchedule
-                        ? getScheduledRaidSetForCandidateInSchedule(selectedWeeklySchedule, me)
-                        : new Set<string>(),
-                    };
                     // 4/26 다음 주 초기화 기준은 레이드는 초기화값으로 보되, 일정표에 넣은 레이드는 흑백 처리
-                    const availableRaids = (me as MyCandidate & { unscheduledRaids?: string[] }).unscheduledRaids ?? [];
-                    const allVisibleRaidsMuted =
-                      me.allRaids.length > 0 &&
-                      me.allRaids.every((raid) => {
-                        const isAvailable = availableRaids.some((availableRaid) =>
-                          doesScheduleRaidSetMatchForRemainCandidate(getRaidKeysFromNames([availableRaid]), raid)
-                        );
-                        // 4/26 다음 주 초기화 기준일 때는 모든 표시 레이드를 남은 레이드로 처리
-                        return !isAvailable;
-                      });
-
                     return (
                       <div
                         key={me.key}
-                        className={`manualRemainItem ${allVisibleRaidsMuted ? "is-schedule-full" : ""}`}
+                        className="manualRemainItem"
                       >
                         <div
-                          className={`manualRemainName ${allVisibleRaidsMuted ? "is-schedule-full" : ""}`}
+                          className="manualRemainName"
                         >
                           {me.name}{" "}
                           <span className="manualRemainMeta">
@@ -7404,16 +7688,14 @@ export default function TodoTracker() {
 
                         <div className="manualRemainRaids">
                           {me.allRaids.map((raid) => {
-                            const isAvailable = availableRaids.some((availableRaid) =>
-                              doesScheduleRaidSetMatchForRemainCandidate(getRaidKeysFromNames([availableRaid]), raid)
-                            );
+                            const { isScheduled, isChecked } = getMyRemainRaidDisplayStatus(me, raid);
 
                             // 4/26 다음 주 초기화 기준일 때는 기존 클리어 체크를 무시하고 전부 남은 레이드로 처리
                             return (
                               <span
                                 key={raid}
-                                className={`manualRaidChip ${!isAvailable ? "is-scheduled" : ""
-                                  } ${allVisibleRaidsMuted ? "is-schedule-full" : ""}`}
+                                className={`manualRaidChip ${isScheduled || isChecked ? "is-scheduled" : ""
+                                  }`}
                                 style={me.hasNextWeekPlan ? { borderColor: "#facc15", color: "#facc15" } : undefined}
                               >
                                 {renderRemainRaidWithDiff(
@@ -9371,15 +9653,61 @@ export default function TodoTracker() {
   // =========================
   // 셀 동작 (tableId 기준)
   // =========================
+  function syncManualWeeklyRaidCompletion(tableId: string, charId: string, raidName: string, checked: boolean) {
+    const table = state.tables.find((tbl) => tbl.id === tableId);
+    const character = table?.characters.find((candidate) => candidate.id === charId);
+    if (!character) return;
+
+    const ilvl = getCharIlvl(character);
+    if (!Number.isFinite(ilvl) || ilvl <= 0) return;
+
+    const canonical = canonicalRaidName(getRaidBaseNameForRemainLabel(raidName));
+    if (!canonical || availableDiffNames(ilvl, canonical).length === 0) return;
+
+    const charKey = weeklyCharKey(tableId, charId);
+    setWeeklyRaidPickByChar((prev) => {
+      const cur = sanitizeWeeklyRaidPick(ilvl, prev[charKey] ?? getDefaultWeeklyRaidPick(ilvl));
+      const raids = cur.raids.some((name) => normalizeRaidName(name) === normalizeRaidName(canonical))
+        ? cur.raids
+        : [...cur.raids, canonical];
+      const manualCompletedRaids = checked
+        ? (cur.manualCompletedRaids ?? []).some((name) => normalizeRaidName(name) === normalizeRaidName(canonical))
+          ? (cur.manualCompletedRaids ?? [])
+          : [...(cur.manualCompletedRaids ?? []), canonical]
+        : (cur.manualCompletedRaids ?? []).filter(
+          (name) => normalizeRaidName(name) !== normalizeRaidName(canonical)
+        );
+
+      const nextChar = sanitizeWeeklyRaidPick(ilvl, {
+        raids,
+        goldRaids: cur.goldRaids ?? [],
+        manualCompletedRaids,
+        diffs: cur.diffs ?? {},
+      });
+
+      saveWeeklyRaidPick(tableId, charId, nextChar);
+      return { ...prev, [charKey]: nextChar };
+    });
+  }
+
   function onCellClick(tableId: string, task: TaskRow, ch: Character) {
+    const cellBefore = getCellByTableId(state, tableId, task.id, ch.id);
+    const nextCheckedBefore = !(cellBefore?.type === "CHECK" ? cellBefore.checked : false);
+    if (
+      task.cellType === "CHECK" &&
+      task.period === "WEEKLY" &&
+      isWeeklyRaidTaskTitle(task.title)
+    ) {
+      syncManualWeeklyRaidCompletion(tableId, ch.id, task.title, nextCheckedBefore);
+    }
+
     setState((prev) => {
       const cell = getCellByTableId(prev, tableId, task.id, ch.id);
 
       if (task.cellType === "CHECK") {
-        const nextChecked = !(cell?.type === "CHECK" ? cell.checked : false);
         return setCellByTableId(prev, tableId, task, ch, {
           type: "CHECK",
-          checked: nextChecked,
+          checked: nextCheckedBefore,
           updatedAt: Date.now(),
         });
       }
@@ -9435,6 +9763,7 @@ export default function TodoTracker() {
 
       const cell = getCellByTableId(nextState, tableId, task.id, charId);
       const nextChecked = !(cell?.type === "CHECK" ? cell.checked : false);
+      syncManualWeeklyRaidCompletion(tableId, charId, raidName, nextChecked);
 
       return setCellByTableId(nextState, tableId, task, ch, {
         type: "CHECK",
@@ -9600,6 +9929,7 @@ export default function TodoTracker() {
   type WeeklyRaidPick = {
     raids: string[];      // 이번 주 도는 레이드 전체
     goldRaids: string[];  // 골드 받는 레이드 (최대 3개)
+    manualCompletedRaids?: string[];
     diffs: Record<string, DiffName>;
   };
 
@@ -9877,6 +10207,12 @@ export default function TodoTracker() {
 
     const goldRaids = [...normalGoldRaids.slice(0, 3), ...extremeGoldRaids];
 
+    const manualCompletedRaids = filterActiveWeeklyRaidNames(
+      Array.isArray(source?.manualCompletedRaids) ? source!.manualCompletedRaids! : []
+    )
+      .filter((raidName) => finalRaids.some((name) => normalizeRaidName(name) === normalizeRaidName(raidName)))
+      .filter((raidName) => availableDiffNames(ilvl, raidName).length > 0);
+
     const diffsSource = source?.diffs && typeof source.diffs === "object" ? source.diffs : {};
     const diffs = Object.fromEntries(
       Object.entries(diffsSource).flatMap(([raidName, diff]) => {
@@ -9903,6 +10239,7 @@ export default function TodoTracker() {
         : (goldRaids.length > 0
           ? goldRaids
           : [...fallbackNormalGoldRaids, ...fallbackExtremeGoldRaids]),
+      manualCompletedRaids,
       diffs,
     };
   }
@@ -13585,6 +13922,9 @@ body.pip-dark .pip-select option{
             const nextChar = sanitizeWeeklyRaidPick(popupIlvl, {
               raids: nextRaids,
               goldRaids: cur.goldRaids ?? [],
+              manualCompletedRaids: (cur.manualCompletedRaids ?? []).filter((name) =>
+                nextRaids.some((raid) => normalizeRaidName(raid) === normalizeRaidName(name))
+              ),
               diffs: cur.diffs ?? {},
             });
 
@@ -13631,9 +13971,22 @@ body.pip-dark .pip-select option{
               ? latestGoldRaids.filter((name) => normalizeRaidName(name) !== normalizeRaidName(raidName))
               : [...latestGoldRaids, normalizedRaidName];
 
+            const latestManualCompletedRaids = Array.isArray(latest.manualCompletedRaids)
+              ? latest.manualCompletedRaids
+              : [];
+            const latestManualExists = latestManualCompletedRaids.some(
+              (name) => normalizeRaidName(name) === normalizeRaidName(raidName)
+            );
+            const nextManualCompletedRaids = latestExists
+              ? latestManualCompletedRaids.filter((name) => normalizeRaidName(name) !== normalizeRaidName(raidName))
+              : latestManualExists
+                ? latestManualCompletedRaids
+                : [...latestManualCompletedRaids, normalizedRaidName];
+
             const nextChar = sanitizeWeeklyRaidPick(popupIlvl, {
               raids: latest.raids,
               goldRaids: nextGoldRaids,
+              manualCompletedRaids: nextManualCompletedRaids,
               diffs: latest.diffs ?? {},
             });
 
@@ -13651,6 +14004,7 @@ body.pip-dark .pip-select option{
             const nextChar = sanitizeWeeklyRaidPick(popupIlvl, {
               raids: cur.raids,
               goldRaids: cur.goldRaids ?? [],
+              manualCompletedRaids: cur.manualCompletedRaids ?? [],
               diffs: { ...(cur.diffs ?? {}), [canonicalRaidName(raidName)]: diff },
             });
 
