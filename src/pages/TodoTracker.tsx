@@ -4612,9 +4612,13 @@ export default function TodoTracker() {
 
     function getAvailableRaidsForMyScheduleCandidate(
       schedule: SharedWeeklySchedule,
-      me: MyCandidate
+      me: MyCandidate & { unscheduledRaids?: string[] }
     ) {
       if (!schedule) return [];
+      if (schedulePlanningMode === "NEXT_RESET" && Array.isArray(me.unscheduledRaids)) {
+        return me.unscheduledRaids;
+      }
+
       const cacheKey = `${schedulePlanningMode}|${schedule.id}|${me.key}|${me.allRaids.map((raid) => normalizeRaidName(raid)).join(",")}`;
       const cached = availableRaidsForMyScheduleCandidateCache.get(cacheKey);
       if (cached) return cached;
