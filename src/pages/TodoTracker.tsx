@@ -6436,7 +6436,7 @@ export default function TodoTracker() {
 
     function getAvailableRaidsForFriendDisplayCandidate(fr: FriendCandidate) {
       const directScheduledSet = selectedWeeklySchedule
-        ? getScheduledRaidSetForCandidateInSchedule(selectedWeeklySchedule, fr)
+        ? getScheduledRaidSetForFriendRemainCandidate(selectedWeeklySchedule, fr)
         : new Set<string>();
       const clearedSet = new Set<string>();
 
@@ -6501,9 +6501,120 @@ export default function TodoTracker() {
     ) {
       if (!selectedWeeklySchedule) return false;
 
-      const scheduledSet = getScheduledRaidSetForCandidateInSchedule(selectedWeeklySchedule, me);
+      const scheduledSet = getScheduledRaidSetForMyRemainCandidate(selectedWeeklySchedule, me);
       if (!scheduledSet.size) return false;
       return doesScheduleRaidSetMatchForRemainCandidate(scheduledSet, raidName);
+    }
+
+    function doesScheduleItemMatchCandidate(
+      item: SharedWeeklyScheduleItem,
+      candidate: { key?: string | null; tableName?: string | null; name?: string | null }
+    ) {
+      const identityKeys = getScheduleCandidateStrictIdentityKeys(candidate);
+      const candidateKeys = new Set(identityKeys);
+      const candidateName = String(candidate.name ?? "").trim();
+      const allowNameFallback = isScheduleCandidateNameUnique(candidate);
+      const itemKeys = [
+        ...getScheduleCandidateStrictKeys(
+          item.myCharKey,
+          item.myTableName,
+          item.myCharName,
+          item.mySnapshot
+        ),
+        ...getScheduleCandidateStrictKeys(
+          item.friendCharKey,
+          item.friendTableName,
+          item.friendCharName,
+          item.friendSnapshot
+        ),
+      ];
+      const itemNames = [
+        String(item.mySnapshot?.name ?? item.myCharName ?? "").trim(),
+        String(item.friendSnapshot?.name ?? item.friendCharName ?? "").trim(),
+      ];
+
+      return (
+        itemKeys.some((key) => candidateKeys.has(key)) ||
+        Boolean(
+          allowNameFallback &&
+          candidateName &&
+          itemNames.some((name) => name === candidateName)
+        )
+      );
+    }
+
+    function doesScheduleItemSideMatchCandidate(
+      item: SharedWeeklyScheduleItem,
+      candidate: { key?: string | null; tableName?: string | null; name?: string | null },
+      side: "MY" | "FRIEND"
+    ) {
+      const candidateKeys = new Set(getScheduleCandidateStrictIdentityKeys(candidate));
+      const itemKeys =
+        side === "MY"
+          ? getScheduleCandidateStrictKeys(
+            item.myCharKey,
+            item.myTableName,
+            item.myCharName,
+            item.mySnapshot
+          )
+          : getScheduleCandidateStrictKeys(
+            item.friendCharKey,
+            item.friendTableName,
+            item.friendCharName,
+            item.friendSnapshot
+          );
+
+      return itemKeys.some((key) => candidateKeys.has(key));
+    }
+
+    function getScheduledRaidSetForMyRemainCandidate(
+      schedule: SharedWeeklySchedule,
+      me: MyCandidate
+    ) {
+      const scheduledSet = new Set<string>();
+
+      for (const item of schedule.items) {
+        if (!doesScheduleItemSideMatchCandidate(item, me, "MY")) continue;
+        getScheduleItemExplicitRaidNames(item).forEach((raid) =>
+          addScheduleRaidMatchKey(scheduledSet, getMyScheduleComparableRaidName(raid, me))
+        );
+      }
+
+      return scheduledSet;
+    }
+
+    function addFriendScheduleRaidMatchKeys(
+      scheduledSet: Set<string>,
+      fr: FriendCandidate,
+      raidName: string
+    ) {
+      addScheduleRaidMatchKey(scheduledSet, raidName);
+
+      const raidBaseName = canonicalRaidName(getScheduleRaidBaseName(raidName));
+      for (const candidateRaid of uniqueRaidLabelsByBase([
+        ...fr.allRaids,
+        ...fr.activeRaids,
+        ...fr.remainingRaids,
+      ])) {
+        if (normalizeRaidName(getScheduleRaidBaseName(candidateRaid)) !== normalizeRaidName(raidBaseName)) continue;
+        addScheduleRaidMatchKey(scheduledSet, candidateRaid);
+      }
+    }
+
+    function getScheduledRaidSetForFriendRemainCandidate(
+      schedule: SharedWeeklySchedule,
+      fr: FriendCandidate
+    ) {
+      const scheduledSet = new Set<string>();
+
+      for (const item of schedule.items) {
+        if (!doesScheduleItemSideMatchCandidate(item, fr, "FRIEND")) continue;
+        getScheduleItemExplicitRaidNames(item).forEach((raid) =>
+          addFriendScheduleRaidMatchKeys(scheduledSet, fr, raid)
+        );
+      }
+
+      return scheduledSet;
     }
 
     function getMyRemainRaidDisplayStatus(me: MyCandidate, raidName: string) {
