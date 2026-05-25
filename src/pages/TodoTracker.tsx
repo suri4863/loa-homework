@@ -4581,6 +4581,7 @@ export default function TodoTracker() {
       me: MyCandidate
     ) {
       const scheduledRaidSet = new Set<string>();
+      const meKeys = new Set(getScheduleCandidateIdentityKeys(me));
 
       for (const item of schedule.items) {
         const itemKeys = getScheduleCandidateKeys(
@@ -4596,10 +4597,13 @@ export default function TodoTracker() {
           item.friendSnapshot
         );
 
-        if (!itemKeys.includes(me.key) && !friendItemKeys.includes(me.key)) continue;
+        if (
+          !itemKeys.some((key) => meKeys.has(key)) &&
+          !friendItemKeys.some((key) => meKeys.has(key))
+        ) continue;
 
         for (const raid of getScheduleItemExplicitRaidNames(item)) {
-          scheduledRaidSet.add(normalizeRaidName(raid));
+          addScheduleRaidMatchKey(scheduledRaidSet, getMyScheduleComparableRaidName(raid, me));
         }
       }
 
@@ -4616,7 +4620,7 @@ export default function TodoTracker() {
       if (cached) return cached;
 
       const sourceRaids = [...me.allRaids];
-      const directScheduledSet = getScheduledRaidSetForCandidateInSchedule(schedule, me);
+      const directScheduledSet = getScheduledRaidSetForMyScheduleCandidate(schedule, me);
       if (schedulePlanningMode === "NEXT_RESET") {
         const availableRaids = sourceRaids.filter((raid) => {
           const raidLabel = getMyScheduleComparableRaidName(raid, me);
@@ -6420,7 +6424,7 @@ export default function TodoTracker() {
     // 일정표에 이미 전부 들어간 캐릭터는 흐리게만 표시되도록 분리
     const displayMyCandidates = myCandidates.map((me) => {
       const directScheduledSet = selectedWeeklySchedule
-        ? getScheduledRaidSetForCandidateInSchedule(selectedWeeklySchedule, me)
+        ? getScheduledRaidSetForMyScheduleCandidate(selectedWeeklySchedule, me)
         : new Set<string>();
       const sourceRaids = [...me.allRaids];
       const scheduleAvailableRaids = selectedWeeklySchedule
