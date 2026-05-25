@@ -6522,9 +6522,16 @@ export default function TodoTracker() {
     );
 
     const selectableMyScheduleCandidates = selectedWeeklySchedule
-      ? remainingMyCandidates.filter(
+      ? (schedulePlanningMode === "NEXT_RESET"
+        ? myCandidates
+          .map((me) => ({
+            ...me,
+            unscheduledRaids: getAvailableRaidsForMyScheduleCandidate(selectedWeeklySchedule, me),
+          }))
+          .filter((me) => me.unscheduledRaids.length > 0)
+        : remainingMyCandidates.filter(
           (me) => getAvailableRaidsForMyScheduleCandidate(selectedWeeklySchedule, me).length > 0
-        )
+        ))
       : remainingMyCandidates;
 
     function isMyRaidDirectlyScheduledInSelectedSchedule(
