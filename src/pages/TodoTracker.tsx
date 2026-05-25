@@ -4568,8 +4568,7 @@ export default function TodoTracker() {
           .filter(
             (x: MyCandidate) =>
               x.ilvl >= levelRange.min &&
-              x.ilvl <= levelRange.max &&
-              x.activeRaids.length > 0
+              x.ilvl <= levelRange.max
           )
       ));
 
@@ -5102,8 +5101,7 @@ export default function TodoTracker() {
       .filter(
         (x: FriendCandidate) =>
           x.ilvl >= levelRange.min &&
-          x.ilvl <= levelRange.max &&
-          x.allRaids.length > 0
+          x.ilvl <= levelRange.max
       ));
 
     const hasNoFriendCandidates = friendCandidates.length === 0;
@@ -7743,19 +7741,11 @@ export default function TodoTracker() {
                     scheduleClearedRaidSet.forEach((raid) => clearedRaidSet.add(raid));
 
                     const availableRaids = (fr as FriendCandidate & { unscheduledRaids?: string[] }).unscheduledRaids ?? [];
-                    const currentVisibleFriendRaids = uniqueRaidLabelsByBase([
-                      ...fr.allRaids,
-                      ...fr.activeRaids,
-                      ...fr.remainingRaids,
-                    ]);
+                    const currentVisibleFriendRaids = uniqueRaidLabelsByBase(fr.allRaids);
 
                     const visibleFriendRaids =
                       schedulePlanningMode === "NEXT_RESET"
-                        ? fr.allRaids.length > 0
-                          ? fr.allRaids
-                          : fr.activeRaids.length > 0
-                            ? fr.activeRaids
-                            : fr.remainingRaids
+                        ? fr.allRaids
                         : currentVisibleFriendRaids;
 
                     const scheduleState = {
