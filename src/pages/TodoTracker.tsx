@@ -4632,7 +4632,7 @@ export default function TodoTracker() {
       if (cached) return cached;
 
       const sourceRaids = [...me.allRaids];
-      const directScheduledSet = getScheduledRaidSetForMyScheduleCandidate(schedule, me);
+      const directScheduledSet = getScheduledRaidSetForMyRemainCandidate(schedule, me);
       if (schedulePlanningMode === "NEXT_RESET") {
         const availableRaids = sourceRaids.filter((raid) => {
           const raidLabel = getMyScheduleComparableRaidName(raid, me);
@@ -6436,7 +6436,7 @@ export default function TodoTracker() {
     // 일정표에 이미 전부 들어간 캐릭터는 흐리게만 표시되도록 분리
     const displayMyCandidates = myCandidates.map((me) => {
       const directScheduledSet = selectedWeeklySchedule
-        ? getScheduledRaidSetForMyScheduleCandidate(selectedWeeklySchedule, me)
+        ? getScheduledRaidSetForMyRemainCandidate(selectedWeeklySchedule, me)
         : new Set<string>();
       const sourceRaids = [...me.allRaids];
       const scheduleAvailableRaids = selectedWeeklySchedule
