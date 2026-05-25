@@ -6509,8 +6509,7 @@ export default function TodoTracker() {
     function getMyRemainRaidDisplayStatus(me: MyCandidate, raidName: string) {
       const comparableRaid = getMyScheduleComparableRaidName(raidName, me);
       const isScheduled = isMyRaidDirectlyScheduledInSelectedSchedule(me, comparableRaid);
-      const isChecked = isMyWeeklyRaidChecked(me.tableId, me.charId, comparableRaid);
-      return { comparableRaid, isScheduled, isChecked };
+      return { comparableRaid, isScheduled };
     }
 
     function getMyVisibleSelectedRaids(me: MyCandidate) {
@@ -7702,13 +7701,13 @@ export default function TodoTracker() {
 
                         <div className="manualRemainRaids">
                           {visibleMyRaids.map((raid) => {
-                            const { isScheduled, isChecked } = getMyRemainRaidDisplayStatus(me, raid);
+                            const { isScheduled } = getMyRemainRaidDisplayStatus(me, raid);
 
                             // 4/26 다음 주 초기화 기준일 때는 기존 클리어 체크를 무시하고 전부 남은 레이드로 처리
                             return (
                               <span
                                 key={raid}
-                                className={`manualRaidChip ${isScheduled || isChecked ? "is-scheduled" : ""
+                                className={`manualRaidChip ${isScheduled ? "is-scheduled" : ""
                                   }`}
                                 style={me.hasNextWeekPlan ? { borderColor: "#facc15", color: "#facc15" } : undefined}
                               >
