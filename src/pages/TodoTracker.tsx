@@ -4581,25 +4581,33 @@ export default function TodoTracker() {
       me: MyCandidate
     ) {
       const scheduledRaidSet = new Set<string>();
-      const meKeys = new Set(getScheduleCandidateIdentityKeys(me));
+      const candidateKey = String(me.key ?? "").trim();
+      const candidateName = String(me.name ?? "").trim();
+      const candidateTableName = String(me.tableName ?? "").trim();
+      const candidateTableNameKey = getScheduleSnapshotCandidateKey(candidateTableName, candidateName);
+      const allowNameFallback = isScheduleCandidateNameUnique(me);
+
+      const matchesSide = (
+        charKey: string | null | undefined,
+        tableName: string | null | undefined,
+        charName: string | null | undefined,
+        snapshot?: SharedScheduleCharacterSnapshot | null
+      ) => {
+        const itemKey = String(charKey ?? "").trim();
+        const snapshotKey = String(snapshot?.key ?? "").trim();
+        const itemName = String(snapshot?.name ?? charName ?? "").trim();
+        const itemTableName = String(snapshot?.tableName ?? tableName ?? "").trim();
+        const itemTableNameKey = getScheduleSnapshotCandidateKey(itemTableName, itemName);
+
+        if (candidateKey && (itemKey === candidateKey || snapshotKey === candidateKey)) return true;
+        if (candidateTableNameKey && itemTableNameKey === candidateTableNameKey) return true;
+        return Boolean(allowNameFallback && candidateName && itemName === candidateName);
+      };
 
       for (const item of schedule.items) {
-        const itemKeys = getScheduleCandidateKeys(
-          item.myCharKey,
-          item.myTableName,
-          item.myCharName,
-          item.mySnapshot
-        );
-        const friendItemKeys = getScheduleCandidateKeys(
-          item.friendCharKey,
-          item.friendTableName,
-          item.friendCharName,
-          item.friendSnapshot
-        );
-
         if (
-          !itemKeys.some((key) => meKeys.has(key)) &&
-          !friendItemKeys.some((key) => meKeys.has(key))
+          !matchesSide(item.myCharKey, item.myTableName, item.myCharName, item.mySnapshot) &&
+          !matchesSide(item.friendCharKey, item.friendTableName, item.friendCharName, item.friendSnapshot)
         ) continue;
 
         for (const raid of getScheduleItemExplicitRaidNames(item)) {
