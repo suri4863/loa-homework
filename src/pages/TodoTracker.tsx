@@ -4539,10 +4539,7 @@ export default function TodoTracker() {
               const raidLabel = DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(canonicalRaidName(getRaidBaseNameForRemainLabel(raidName)))
                 ? formatRemainRaidWithDiff(raidName, ilvl, charKey)
                 : raidName;
-              return !(
-                isMyRaidGoldChecked(tbl.id, ch.id, raidLabel) ||
-                isMyWeeklyRaidChecked(tbl.id, ch.id, raidLabel)
-              );
+              return !isMyWeeklyRaidChecked(tbl.id, ch.id, raidLabel);
             });
 
             const activeRaids =
@@ -4624,7 +4621,6 @@ export default function TodoTracker() {
             const raidLabel = getMyScheduleComparableRaidName(raid, me);
             return !(
               doesScheduleRaidSetMatchForRemainCandidate(directScheduledSet, raidLabel) ||
-              isMyRaidGoldChecked(me.tableId, me.charId, raidLabel) ||
               isMyWeeklyRaidChecked(me.tableId, me.charId, raidLabel)
             );
           }
@@ -6422,7 +6418,6 @@ export default function TodoTracker() {
               const comparableRaid = getMyScheduleComparableRaidName(raid, me);
               return !(
                 doesScheduleRaidSetMatchForRemainCandidate(directScheduledSet, comparableRaid) ||
-                isMyRaidGoldChecked(me.tableId, me.charId, comparableRaid) ||
                 isMyWeeklyRaidChecked(me.tableId, me.charId, comparableRaid)
               );
             }
@@ -6514,9 +6509,7 @@ export default function TodoTracker() {
     function getMyRemainRaidDisplayStatus(me: MyCandidate, raidName: string) {
       const comparableRaid = getMyScheduleComparableRaidName(raidName, me);
       const isScheduled = isMyRaidDirectlyScheduledInSelectedSchedule(me, comparableRaid);
-      const isChecked =
-        isMyRaidGoldChecked(me.tableId, me.charId, comparableRaid) ||
-        isMyWeeklyRaidChecked(me.tableId, me.charId, comparableRaid);
+      const isChecked = isMyWeeklyRaidChecked(me.tableId, me.charId, comparableRaid);
       return { comparableRaid, isScheduled, isChecked };
     }
 
