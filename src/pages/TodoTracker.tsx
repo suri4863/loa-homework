@@ -10116,6 +10116,7 @@ export default function TodoTracker() {
   // =========================
 
   const WEEKLY_PICK_KEY = "loa-weekly-raid-pick:v1";
+  const WEEKLY_PICK_RESET_KEY = "loa-weekly-raid-pick-reset:v1";
   const [weeklyRaidPickByChar, setWeeklyRaidPickByChar] = useState<Record<string, WeeklyRaidPick>>({});
   const weeklyRaidPickRef = useRef<Record<string, WeeklyRaidPick>>({});
   const [weeklyTop3Popup, setWeeklyTop3Popup] = useState<WeeklyTop3Popup>(null);
@@ -10445,6 +10446,44 @@ export default function TodoTracker() {
   }
 
   // ✅ 표/캐릭터 바뀔 때 로컬저장 값 선로딩(합산값도 바로 반영되게)
+  useEffect(() => {
+    const weeklyResetAt = state.reset?.lastWeeklyResetAt ?? 0;
+    if (!weeklyResetAt) return;
+
+    try {
+      const resetKey = String(weeklyResetAt);
+      if (localStorage.getItem(WEEKLY_PICK_RESET_KEY) === resetKey) return;
+
+      const storageKeys: string[] = [];
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i);
+        if (key?.startsWith(`${WEEKLY_PICK_KEY}:`)) storageKeys.push(key);
+      }
+
+      for (const key of storageKeys) {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        const parsed = JSON.parse(raw) as WeeklyRaidPick;
+        if (!parsed || !Array.isArray(parsed.manualCompletedRaids) || parsed.manualCompletedRaids.length === 0) {
+          continue;
+        }
+        localStorage.setItem(key, JSON.stringify({ ...parsed, manualCompletedRaids: [] }));
+      }
+
+      localStorage.setItem(WEEKLY_PICK_RESET_KEY, resetKey);
+      setWeeklyRaidPickByChar((prev) =>
+        Object.fromEntries(
+          Object.entries(prev).map(([key, pick]) => [
+            key,
+            { ...pick, manualCompletedRaids: [] },
+          ])
+        )
+      );
+    } catch {
+      // ignore
+    }
+  }, [state.reset?.lastWeeklyResetAt]);
+
   useEffect(() => {
     const next: Record<string, WeeklyRaidPick> = {};
 
