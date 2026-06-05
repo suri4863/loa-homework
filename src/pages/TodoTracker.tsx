@@ -1601,7 +1601,10 @@ export default function TodoTracker() {
   }
 
   function parseScheduleMyCharKey(myCharKey: string) {
-    const [tableId, charId] = String(myCharKey ?? "").split("|");
+    const rawKey = String(myCharKey ?? "");
+    const [tableId, charId] = rawKey.includes("|")
+      ? rawKey.split("|")
+      : rawKey.split(":");
     return { tableId: tableId ?? "", charId: charId ?? "" };
   }
 
