@@ -6668,7 +6668,15 @@ export default function TodoTracker() {
       for (const item of schedule.items) {
         const matchesFriendSide = doesScheduleItemSideMatchCandidate(item, fr, "FRIEND");
         const matchesMySide = doesScheduleItemSideMatchCandidate(item, fr, "MY");
-        if (!matchesFriendSide && !matchesMySide) continue;
+        const friendName = String(fr.name ?? "").trim();
+        const matchesName = Boolean(
+          friendName &&
+            [
+              String(item.mySnapshot?.name ?? item.myCharName ?? "").trim(),
+              String(item.friendSnapshot?.name ?? item.friendCharName ?? "").trim(),
+            ].some((name) => name === friendName)
+        );
+        if (!matchesFriendSide && !matchesMySide && !matchesName) continue;
         getScheduleItemRaidNames(item).forEach((raid) =>
           addFriendScheduleRaidMatchKeys(scheduledSet, fr, raid)
         );
