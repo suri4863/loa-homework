@@ -1671,7 +1671,10 @@ export default function TodoTracker() {
     return !!(cell && cell.type === "CHECK" && cell.checked);
   }
 
-  function getLocalScheduleCharKeysByItem(item: SharedWeeklyScheduleItem) {
+  function getLocalScheduleCharKeysByItem(
+    schedule: SharedWeeklySchedule,
+    item: SharedWeeklyScheduleItem
+  ) {
     const keys = new Set<string>();
     const addKey = (rawKey: string | null | undefined) => {
       const key = String(rawKey ?? "").trim();
@@ -1690,13 +1693,24 @@ export default function TodoTracker() {
         }
       }
     };
+    const addSide = (side: "MY" | "FRIEND") => {
+      if (side === "MY") {
+        addKey(item.myCharKey);
+        addKey(item.mySnapshot?.key);
+        addName(item.mySnapshot?.name ?? item.myCharName);
+        return;
+      }
 
-    addKey(item.myCharKey);
-    addKey(item.mySnapshot?.key);
-    addKey(item.friendCharKey);
-    addKey(item.friendSnapshot?.key);
-    addName(item.mySnapshot?.name ?? item.myCharName);
-    addName(item.friendSnapshot?.name ?? item.friendCharName);
+      addKey(item.friendCharKey);
+      addKey(item.friendSnapshot?.key);
+      addName(item.friendSnapshot?.name ?? item.friendCharName);
+    };
+
+    const { isOwnerView, isTargetView } = getSchedulePerspectiveForCurrentUser(schedule);
+
+    if (isOwnerView) addSide("MY");
+    else if (isTargetView) addSide("FRIEND");
+    else addSide("MY");
 
     return Array.from(keys);
   }
@@ -2284,8 +2298,7 @@ export default function TodoTracker() {
     raidName: string
   ) {
     // 로컬 캐릭터는 저장된 공유 완료값보다 현재 체크박스 상태를 우선한다.
-    void schedule;
-    return getLocalScheduleCharKeysByItem(item).some((charKey) =>
+    return getLocalScheduleCharKeysByItem(schedule, item).some((charKey) =>
       isLocalScheduleCharRaidCleared(charKey, raidName)
     );
   }
