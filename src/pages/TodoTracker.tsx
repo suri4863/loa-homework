@@ -1738,9 +1738,7 @@ export default function TodoTracker() {
           (candidate) => String(candidate.name ?? "").trim() === normalizedName
         );
         if (ch) return `${table.id}|${ch.id}`;
-
       }
-      return "";
     }
 
     for (const table of state.tables) {
