@@ -2252,10 +2252,9 @@ export default function TodoTracker() {
     raidName: string
   ) {
     // 미래 일정표는 항상 클린
-    if (isFutureWeeklySchedule(schedule)) return false;
-
     const { isOwnerView, isTargetView } = getSchedulePerspectiveForCurrentUser(schedule);
-    const useStoredCompletion = !shouldClearStaleScheduleCompletion(schedule);
+    const useStoredCompletion =
+      !isFutureWeeklySchedule(schedule) && !shouldClearStaleScheduleCompletion(schedule);
 
     if (useStoredCompletion && isStoredScheduleRaidCleared(item.myClearedRaidNames, raidName)) return true;
     if (useStoredCompletion && isStoredScheduleRaidCleared(item.friendClearedRaidNames, raidName)) return true;
