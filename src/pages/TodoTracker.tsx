@@ -1706,11 +1706,10 @@ export default function TodoTracker() {
       addName(item.friendSnapshot?.name ?? item.friendCharName);
     };
 
-    const { isOwnerView, isTargetView } = getSchedulePerspectiveForCurrentUser(schedule);
+    const { isTargetView } = getSchedulePerspectiveForCurrentUser(schedule);
 
-    if (isOwnerView) addSide("MY");
-    else if (isTargetView) addSide("FRIEND");
-    else addSide("MY");
+    addSide("MY");
+    if (isTargetView) addSide("FRIEND");
 
     return Array.from(keys);
   }
