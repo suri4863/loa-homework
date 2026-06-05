@@ -6650,9 +6650,10 @@ export default function TodoTracker() {
 
       for (const item of schedule.items) {
         if (!doesScheduleItemSideMatchCandidate(item, me, "MY")) continue;
-        getScheduleItemExplicitRaidNames(item).forEach((raid) =>
-          addScheduleRaidMatchKey(scheduledSet, getMyScheduleComparableRaidName(raid, me))
-        );
+        getScheduleItemExplicitRaidNames(item).forEach((raid) => {
+          addScheduleRaidMatchKey(scheduledSet, getMyScheduleComparableRaidName(raid, me));
+          addScheduleItemRaidMatchKeys(scheduledSet, item, raid);
+        });
       }
 
       return scheduledSet;
@@ -6664,6 +6665,16 @@ export default function TodoTracker() {
       raidName: string
     ) {
       addScheduleRaidMatchKey(scheduledSet, raidName);
+      addScheduleRaidMatchKey(scheduledSet, formatRemainRaidWithDiff(raidName, fr.ilvl));
+    }
+
+    function addScheduleItemRaidMatchKeys(
+      scheduledSet: Set<string>,
+      item: SharedWeeklyScheduleItem,
+      raidName: string
+    ) {
+      addScheduleRaidMatchKey(scheduledSet, raidName);
+      addScheduleRaidMatchKey(scheduledSet, formatScheduleRaidNameWithDifficulty(item, raidName));
     }
 
     function getScheduledRaidSetForFriendRemainCandidate(
@@ -6684,9 +6695,10 @@ export default function TodoTracker() {
             ].some((name) => name === friendName)
         );
         if (!matchesFriendSide && !matchesMySide && !matchesName) continue;
-        getScheduleItemRaidNames(item).forEach((raid) =>
-          addFriendScheduleRaidMatchKeys(scheduledSet, fr, raid)
-        );
+        getScheduleItemRaidNames(item).forEach((raid) => {
+          addFriendScheduleRaidMatchKeys(scheduledSet, fr, raid);
+          addScheduleItemRaidMatchKeys(scheduledSet, item, raid);
+        });
       }
 
       return scheduledSet;
