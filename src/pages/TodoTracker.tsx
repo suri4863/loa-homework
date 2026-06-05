@@ -7891,21 +7891,12 @@ export default function TodoTracker() {
                 <div className="manualRemainList">
                   {displayFriendCandidates.map((fr: FriendCandidate) => {
                     // 4/26 다음 주 초기화 기준은 친구 클리어 기록은 무시하고, 새 일정표에 넣은 레이드만 흑백 처리
-                    const clearedRaidSet = new Set(
-                      schedulePlanningMode === "NEXT_RESET"
-                        ? []
-                        : (fr.clearedRaids ?? []).map((raid: string) => normalizeRaidName(raid))
-                    );
-                    const friendKeys = getScheduleCandidateIdentityKeys(fr);
-                    const scheduleClearedRaidSet = getClearedScheduleRaidSetForKeys(
-                      schedule,
-                      friendKeys,
-                      "FRIEND"
-                    );
-                    getClearedScheduleRaidSetForKeys(schedule, friendKeys, "MY").forEach((raid) =>
-                      scheduleClearedRaidSet.add(raid)
-                    );
-                    scheduleClearedRaidSet.forEach((raid) => clearedRaidSet.add(raid));
+                    const clearedRaidSet = new Set<string>();
+                    if (schedulePlanningMode !== "NEXT_RESET") {
+                      (fr.clearedRaids ?? []).forEach((raid: string) =>
+                        addScheduleRaidMatchKey(clearedRaidSet, raid)
+                      );
+                    }
 
                     const currentVisibleFriendRaids = uniqueRaidLabelsByBase(fr.allRaids);
 
@@ -7922,7 +7913,7 @@ export default function TodoTracker() {
 
                     // 4/23 현재 화면에 보이는 레이드칩이 전부 회색 조건이면 이름도 같이 회색
                     const isFriendRaidMuted = (raid: string) =>
-                      hasScheduleAvailabilityKey(clearedRaidSet, raid) ||
+                      doesScheduleRaidSetMatchForRemainCandidate(clearedRaidSet, raid) ||
                       doesScheduleRaidSetMatchForRemainCandidate(scheduleState.scheduledSet, raid);
 
                     const allVisibleRaidsMuted =
