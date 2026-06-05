@@ -7920,7 +7920,6 @@ export default function TodoTracker() {
                     );
                     scheduleClearedRaidSet.forEach((raid) => clearedRaidSet.add(raid));
 
-                    const availableRaids = (fr as FriendCandidate & { unscheduledRaids?: string[] }).unscheduledRaids ?? [];
                     const currentVisibleFriendRaids = uniqueRaidLabelsByBase(fr.allRaids);
 
                     const visibleFriendRaids =
@@ -7935,14 +7934,13 @@ export default function TodoTracker() {
                     };
 
                     // 4/23 현재 화면에 보이는 레이드칩이 전부 회색 조건이면 이름도 같이 회색
+                    const isFriendRaidMuted = (raid: string) =>
+                      hasScheduleAvailabilityKey(clearedRaidSet, raid) ||
+                      doesScheduleRaidSetMatchForRemainCandidate(scheduleState.scheduledSet, raid);
+
                     const allVisibleRaidsMuted =
                       visibleFriendRaids.length > 0 &&
-                      visibleFriendRaids.every((raid: string) => {
-                        const isAvailable = availableRaids.some((availableRaid) =>
-                          doesScheduleRaidSetMatchForRemainCandidate(getRaidKeysFromNames([availableRaid]), raid)
-                        );
-                        return !isAvailable;
-                      });
+                      visibleFriendRaids.every((raid: string) => isFriendRaidMuted(raid));
 
                     return (
                       <div
@@ -7984,14 +7982,12 @@ export default function TodoTracker() {
 
                         <div className="manualRemainRaids">
                           {visibleFriendRaids.map((raid: string) => {
-                            const isAvailable = availableRaids.some((availableRaid) =>
-                              doesScheduleRaidSetMatchForRemainCandidate(getRaidKeysFromNames([availableRaid]), raid)
-                            );
+                            const isMuted = isFriendRaidMuted(raid);
 
                             return (
                               <span
                                 key={raid}
-                                className={`manualRaidChip ${!isAvailable ? "is-scheduled" : ""
+                                className={`manualRaidChip ${isMuted ? "is-scheduled" : ""
                                   } ${allVisibleRaidsMuted ? "is-schedule-full" : ""}`}
                                 style={fr.hasNextWeekPlan ? { borderColor: "#facc15", color: "#facc15" } : undefined}
                               >
