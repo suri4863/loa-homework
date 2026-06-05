@@ -6669,7 +6669,7 @@ export default function TodoTracker() {
         const matchesFriendSide = doesScheduleItemSideMatchCandidate(item, fr, "FRIEND");
         const matchesMySide = doesScheduleItemSideMatchCandidate(item, fr, "MY");
         if (!matchesFriendSide && !matchesMySide) continue;
-        getScheduleItemExplicitRaidNames(item).forEach((raid) =>
+        getScheduleItemRaidNames(item).forEach((raid) =>
           addFriendScheduleRaidMatchKeys(scheduledSet, fr, raid)
         );
       }
