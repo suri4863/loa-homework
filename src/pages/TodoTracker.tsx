@@ -6666,7 +6666,9 @@ export default function TodoTracker() {
       const scheduledSet = new Set<string>();
 
       for (const item of schedule.items) {
-        if (!doesScheduleItemSideMatchCandidate(item, fr, "FRIEND")) continue;
+        const matchesFriendSide = doesScheduleItemSideMatchCandidate(item, fr, "FRIEND");
+        const matchesMySide = doesScheduleItemSideMatchCandidate(item, fr, "MY");
+        if (!matchesFriendSide && !matchesMySide) continue;
         getScheduleItemExplicitRaidNames(item).forEach((raid) =>
           addFriendScheduleRaidMatchKeys(scheduledSet, fr, raid)
         );
