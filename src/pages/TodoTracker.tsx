@@ -1713,8 +1713,9 @@ export default function TodoTracker() {
 
   function hasLocalScheduleCharKeyForItem(charKey: string | null | undefined) {
     const key = String(charKey ?? "").trim();
-    if (!key || !key.includes("|")) return false;
-    const [tableId, charId] = key.split("|");
+    if (!key || (!key.includes("|") && !key.includes(":"))) return false;
+    const { tableId, charId } = parseScheduleMyCharKey(key);
+    if (!tableId || !charId) return false;
 
     return state.tables.some(
       (table) =>
@@ -2254,14 +2255,8 @@ export default function TodoTracker() {
     item: SharedWeeklyScheduleItem,
     raidName: string
   ) {
-    // 미래 일정표는 항상 클린
+    // 로컬 캐릭터는 저장된 공유 완료값보다 현재 체크박스 상태를 우선한다.
     const { isOwnerView, isTargetView } = getSchedulePerspectiveForCurrentUser(schedule);
-    const useStoredCompletion =
-      !isFutureWeeklySchedule(schedule) && !shouldClearStaleScheduleCompletion(schedule);
-
-    if (useStoredCompletion && isStoredScheduleRaidCleared(item.myClearedRaidNames, raidName)) return true;
-    if (useStoredCompletion && isStoredScheduleRaidCleared(item.friendClearedRaidNames, raidName)) return true;
-
     const myLocalKey = resolveLocalScheduleCharKeyForItem(
       item.myCharKey,
       item.mySnapshot,
@@ -2274,15 +2269,30 @@ export default function TodoTracker() {
       item.friendCharName,
       item.friendTableName
     );
+    const hasLocalMy = hasLocalScheduleCharKeyForItem(myLocalKey);
+    const hasLocalFriend = hasLocalScheduleCharKeyForItem(friendLocalKey);
+
+    if (hasLocalMy || hasLocalFriend) {
+      return (
+        (hasLocalMy && isLocalScheduleCharRaidCleared(myLocalKey, raidName)) ||
+        (hasLocalFriend && isLocalScheduleCharRaidCleared(friendLocalKey, raidName))
+      );
+    }
+
+    const useStoredCompletion =
+      !isFutureWeeklySchedule(schedule) && !shouldClearStaleScheduleCompletion(schedule);
+
+    if (useStoredCompletion && isStoredScheduleRaidCleared(item.myClearedRaidNames, raidName)) return true;
+    if (useStoredCompletion && isStoredScheduleRaidCleared(item.friendClearedRaidNames, raidName)) return true;
 
     if (
-      (isOwnerView || hasLocalScheduleCharKeyForItem(myLocalKey)) &&
+      isOwnerView &&
       isLocalScheduleCharRaidCleared(myLocalKey, raidName)
     ) {
       return true;
     }
     if (
-      (isTargetView || hasLocalScheduleCharKeyForItem(friendLocalKey)) &&
+      isTargetView &&
       isLocalScheduleCharRaidCleared(friendLocalKey, raidName)
     ) {
       return true;
