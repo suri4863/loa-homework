@@ -5061,14 +5061,15 @@ export default function TodoTracker() {
             : currentIlvl;
         const ilvl = schedulePlanningMode === "NEXT_RESET" ? plannedIlvl : currentIlvl;
 
+        const hasRemainingRaidsField = Array.isArray(row.remainingRaids);
         const normalizedRemainingRaids =
-          Array.isArray(row.remainingRaids) && row.remainingRaids.length > 0
-            ? row.remainingRaids.map((raid: string) => normalizeFriendRaidLabel(raid))
+          hasRemainingRaidsField
+            ? row.remainingRaids.map((raid: string) => normalizeFriendRaidLabel(raid)).filter(Boolean)
             : [];
 
         const normalizedAllRaids =
           Array.isArray(row.allRaids) && row.allRaids.length > 0
-            ? row.allRaids.map((raid: string) => normalizeFriendRaidLabel(raid))
+            ? row.allRaids.map((raid: string) => normalizeFriendRaidLabel(raid)).filter(Boolean)
             : normalizedRemainingRaids;
 
         const computedNextResetRaids = narrowFriendPlanRaids(
@@ -5082,21 +5083,26 @@ export default function TodoTracker() {
           nextWeekOverride?.raidNames?.length
             ? nextWeekOverride.raidNames.map((raid) => normalizeFriendRaidLabel(raid)).filter(Boolean)
             : computedNextResetRaids;
-        const currentPlanRaids = uniqueRaidLabelsByBase(
+        const currentAllRaids = uniqueRaidLabelsByBase(
           filterActiveWeeklyRaidNames(
-            normalizedRemainingRaids.length > 0 ? normalizedRemainingRaids : normalizedAllRaids
+            normalizedAllRaids.length > 0 ? normalizedAllRaids : normalizedRemainingRaids
+          )
+        );
+        const currentRemainingRaids = uniqueRaidLabelsByBase(
+          filterActiveWeeklyRaidNames(
+            hasRemainingRaidsField ? normalizedRemainingRaids : normalizedAllRaids
           )
         );
 
         const allRaids =
           schedulePlanningMode === "NEXT_RESET"
             ? plannedRaidNames
-            : currentPlanRaids;
+            : currentAllRaids;
 
         const remainingRaids =
           schedulePlanningMode === "NEXT_RESET"
             ? plannedRaidNames
-            : currentPlanRaids;
+            : currentRemainingRaids;
 
         const clearedRaids = Array.isArray(row.clearedRaids)
           ? row.clearedRaids.map((raid: string) => normalizeFriendRaidLabel(raid))
