@@ -7999,7 +7999,7 @@ export default function TodoTracker() {
                               <span
                                 key={raid}
                                 className={`manualRaidChip ${isMuted ? "is-scheduled" : ""
-                                  } ${allVisibleRaidsMuted ? "is-schedule-full" : ""}`}
+                                  }`}
                                 style={fr.hasNextWeekPlan ? { borderColor: "#facc15", color: "#facc15" } : undefined}
                               >
                                 {renderRemainRaidWithDiff(raid, fr.ilvl)}
