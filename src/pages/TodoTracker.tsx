@@ -2148,14 +2148,11 @@ export default function TodoTracker() {
   }
 
   function doesScheduleRaidSetMatchForRemainCandidate(keys: Set<string>, raidName: string) {
-    const baseName = canonicalRaidName(getRaidBaseNameForRemainLabel(raidName));
-    if (DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(baseName)) {
-      const baseKey = normalizeScheduleRaidKey(raidName);
-      const diffKey = normalizeScheduleRaidDiffKey(raidName);
-      if (!baseKey) return false;
-      return diffKey ? keys.has(diffKey) : keys.has(baseKey);
-    }
-    return doesScheduleRaidSetMatchBaseInclusive(keys, raidName);
+    const baseKey = normalizeScheduleRaidKey(raidName);
+    const diffKey = normalizeScheduleRaidDiffKey(raidName);
+    if (!baseKey) return false;
+    if (diffKey) return keys.has(diffKey);
+    return keys.has(baseKey) || Array.from(keys).some((key) => key.startsWith(`${baseKey}|`));
   }
 
   function getMyScheduleComparableRaidName(
@@ -6637,16 +6634,6 @@ export default function TodoTracker() {
       raidName: string
     ) {
       addScheduleRaidMatchKey(scheduledSet, raidName);
-
-      const raidBaseName = canonicalRaidName(getScheduleRaidBaseName(raidName));
-      for (const candidateRaid of uniqueRaidLabelsByBase([
-        ...fr.allRaids,
-        ...fr.activeRaids,
-        ...fr.remainingRaids,
-      ])) {
-        if (normalizeRaidName(getScheduleRaidBaseName(candidateRaid)) !== normalizeRaidName(raidBaseName)) continue;
-        addScheduleRaidMatchKey(scheduledSet, candidateRaid);
-      }
     }
 
     function getScheduledRaidSetForFriendRemainCandidate(
@@ -7929,7 +7916,7 @@ export default function TodoTracker() {
 
                     const scheduleState = {
                       scheduledSet: selectedWeeklySchedule
-                        ? getScheduledRaidSetForCandidateInSchedule(selectedWeeklySchedule, fr)
+                        ? getScheduledRaidSetForFriendRemainCandidate(selectedWeeklySchedule, fr)
                         : new Set<string>(),
                     };
 
