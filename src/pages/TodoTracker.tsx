@@ -1855,9 +1855,9 @@ export default function TodoTracker() {
   function filterActiveWeeklyRaidNames(raidNames: string[]) {
     return uniqueCanonicalRaidNames(
       (Array.isArray(raidNames) ? raidNames : [])
-        .map((raidName) => normalizeRaidName(raidName))
+        .map((raidName) => normalizeRaidAliasLabel(raidName))
         .filter(Boolean)
-        .filter((raidName) => isWeeklyRaidCurrentlyActive(raidName))
+        .filter((raidName) => isWeeklyRaidCurrentlyActive(getRaidBaseNameForRemainLabel(raidName)))
     );
   }
 
@@ -1908,8 +1908,10 @@ export default function TodoTracker() {
   }
 
   function addScheduleRaidMatchKey(set: Set<string>, raidName: string) {
-    const matchKey = normalizeScheduleRaidMatchKey(raidName);
-    if (matchKey) set.add(matchKey);
+    for (const label of [raidName, normalizeRaidAliasLabel(raidName)]) {
+      const matchKey = normalizeScheduleRaidMatchKey(label);
+      if (matchKey) set.add(matchKey);
+    }
   }
 
   function getWeeklyPickRaidNamesByKey(pickKey: string | null | undefined) {
@@ -2193,11 +2195,16 @@ export default function TodoTracker() {
   }
 
   function doesScheduleRaidSetMatchForRemainCandidate(keys: Set<string>, raidName: string) {
-    const baseKey = normalizeScheduleRaidKey(raidName);
-    const diffKey = normalizeScheduleRaidDiffKey(raidName);
-    if (!baseKey) return false;
-    if (diffKey) return keys.has(diffKey);
-    return keys.has(baseKey) || Array.from(keys).some((key) => key.startsWith(`${baseKey}|`));
+    for (const label of [raidName, normalizeRaidAliasLabel(raidName)]) {
+      const baseKey = normalizeScheduleRaidKey(label);
+      const diffKey = normalizeScheduleRaidDiffKey(label);
+      if (!baseKey) continue;
+      if (diffKey && keys.has(diffKey)) return true;
+      if (!diffKey && (keys.has(baseKey) || Array.from(keys).some((key) => key.startsWith(`${baseKey}|`)))) {
+        return true;
+      }
+    }
+    return false;
   }
 
   function getMyScheduleComparableRaidName(
