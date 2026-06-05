@@ -2273,8 +2273,18 @@ export default function TodoTracker() {
       item.friendTableName
     );
 
-    if (isOwnerView && isLocalScheduleCharRaidCleared(myLocalKey, raidName)) return true;
-    if (isTargetView && isLocalScheduleCharRaidCleared(friendLocalKey, raidName)) return true;
+    if (
+      (isOwnerView || hasLocalScheduleCharKeyForItem(myLocalKey)) &&
+      isLocalScheduleCharRaidCleared(myLocalKey, raidName)
+    ) {
+      return true;
+    }
+    if (
+      (isTargetView || hasLocalScheduleCharKeyForItem(friendLocalKey)) &&
+      isLocalScheduleCharRaidCleared(friendLocalKey, raidName)
+    ) {
+      return true;
+    }
 
     return false;
   }
