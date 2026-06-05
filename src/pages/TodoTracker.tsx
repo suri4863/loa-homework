@@ -6494,7 +6494,10 @@ export default function TodoTracker() {
         );
       }
 
-      return fr.activeRaids.filter((raid) => {
+      const sourceRaids =
+        schedulePlanningMode === "NEXT_RESET" ? fr.activeRaids : fr.allRaids;
+
+      return sourceRaids.filter((raid) => {
         if (hasScheduleAvailabilityKey(clearedSet, raid)) return false;
         if (selectedWeeklySchedule) {
           return !doesScheduleRaidSetMatchForRemainCandidate(directScheduledSet, raid);
