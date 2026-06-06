@@ -4217,18 +4217,22 @@ export default function TodoTracker() {
           )
         );
 
-      const allRaids = mergeRaids(
+      const configuredRaids = mergeRaids(
         base?.allRaids,
-        base?.remainingRaids,
+        base?.raidNames,
+        base?.activeRaids
+      );
+      const snapshotRaids = mergeRaids(
         incoming?.allRaids,
+        incoming?.raidNames,
+        incoming?.activeRaids,
         incoming?.remainingRaids
       );
-      const remainingRaids = mergeRaids(
-        base?.remainingRaids,
-        base?.allRaids,
-        incoming?.remainingRaids,
-        incoming?.allRaids
-      );
+      const allRaids = configuredRaids.length > 0 ? configuredRaids : snapshotRaids;
+      const hasIncomingRemainingRaids = Array.isArray(incoming?.remainingRaids);
+      const remainingRaids = hasIncomingRemainingRaids
+        ? mergeRaids(incoming.remainingRaids)
+        : allRaids;
 
       return {
         ...incoming,
@@ -4240,8 +4244,9 @@ export default function TodoTracker() {
         charPower: base?.charPower ?? incoming?.charPower,
         ilvl: base?.ilvl ?? incoming?.ilvl,
         allRaids,
-        remainingRaids: remainingRaids.length > 0 ? remainingRaids : allRaids,
-        clearedRaids: mergeRaids(base?.clearedRaids, incoming?.clearedRaids),
+        activeRaids: allRaids,
+        remainingRaids,
+        clearedRaids: mergeRaids(incoming?.clearedRaids, base?.clearedRaids),
       };
     }
 
@@ -4301,7 +4306,7 @@ export default function TodoTracker() {
             };
           })
           .filter((r: FriendSnapshotRow) => Boolean(r && r.charName && r.remainingRaids.length > 0))
-        : (Array.isArray(snap?.data) ? snap.data : [])
+        : nextResetSourceRows
           .map((row: any): FriendSnapshotRow => {
             const rowIlvl =
               typeof row?.ilvl === "number"
@@ -4315,6 +4320,9 @@ export default function TodoTracker() {
             const normalizedRemainingRaids = Array.isArray(row?.remainingRaids)
               ? row.remainingRaids.map((raid: string) => normalizeFriendRaidLabel(raid)).filter(Boolean)
               : [];
+            const normalizedClearedRaids = Array.isArray(row?.clearedRaids)
+              ? row.clearedRaids.map((raid: string) => normalizeFriendRaidLabel(raid)).filter(Boolean)
+              : [];
             const displayAllRaids = normalizedAllRaids.length > 0 ? normalizedAllRaids : normalizedRemainingRaids;
 
             return {
@@ -4326,7 +4334,9 @@ export default function TodoTracker() {
               tableName: row?.tableName ? String(row.tableName) : "",
               ilvl: rowIlvl,
               allRaids: displayAllRaids,
+              activeRaids: displayAllRaids,
               remainingRaids: normalizedRemainingRaids,
+              clearedRaids: normalizedClearedRaids,
               clearedCount: Number(row?.clearedCount ?? 0),
               totalCount: Number(row?.totalCount ?? displayAllRaids.length),
             };
@@ -8382,12 +8392,11 @@ export default function TodoTracker() {
   useEffect(() => {
     if (!SERVER_MODE) return;
     if (!selectedFriendCode) return;
-    if (schedulePlanningMode !== "NEXT_RESET") return;
 
     refreshFriendRaidPlan(selectedFriendCode).catch((e) => {
       console.error("친구 레이드 계획 불러오기 실패", e);
     });
-  }, [SERVER_MODE, selectedFriendCode, schedulePlanningMode]);
+  }, [SERVER_MODE, selectedFriendCode]);
 
   async function setShareMode(mode: "PUBLIC" | "PRIVATE") {
     setState((prev) => ({ ...prev, profile: { ...prev.profile, shareMode: mode } }));
