@@ -143,6 +143,8 @@ export type FriendRaidPlanPayload = {
     charRole?: CharacterRole;
     tableName?: string;
     ilvl?: number;
+    originalIlvl?: number;
+    plannedIlvl?: number;
 
     allRaids: string[];
   }>;
@@ -634,6 +636,8 @@ export function importFriendRaidPlan(raw: any): FriendRaidPlanPayload {
     charRole: r?.charRole === "SUPPORT" ? "SUPPORT" : "DEALER",
     tableName: r?.tableName ? String(r.tableName) : undefined,
     ilvl: typeof r?.ilvl === "number" ? r.ilvl : undefined,
+    originalIlvl: typeof r?.originalIlvl === "number" ? r.originalIlvl : undefined,
+    plannedIlvl: typeof r?.plannedIlvl === "number" ? r.plannedIlvl : undefined,
     allRaids: Array.isArray(r?.allRaids) ? r.allRaids.filter(Boolean) : [],
   }));
 

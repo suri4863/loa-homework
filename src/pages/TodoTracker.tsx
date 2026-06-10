@@ -3252,11 +3252,28 @@ export default function TodoTracker() {
     }));
   }
 
-  async function uploadFriendRaidPlan(sourceState: TodoState = stateRef.current) {
+  async function uploadFriendRaidPlan(
+    sourceState: TodoState = stateRef.current,
+    overrideSource: Record<string, NextWeekLevelOverride> = nextWeekLevelOverrides
+  ) {
     if (!SERVER_MODE) return;
 
     const s = sourceState;
-    const planJson = exportFriendRaidPlan(s, "ALL", weeklyRaidPickRef.current);
+    const plan = JSON.parse(exportFriendRaidPlan(s, "ALL", weeklyRaidPickRef.current));
+    plan.data = (Array.isArray(plan.data) ? plan.data : []).map((row: any) => {
+      const charKey = String(row?.charKey ?? "").trim();
+      const override = overrideSource[getNextWeekLevelOverrideKey("MY:CURRENT", charKey)];
+      if (!override) return row;
+      return {
+        ...row,
+        charItemLevel: String(override.plannedIlvl),
+        ilvl: override.plannedIlvl,
+        originalIlvl: override.currentIlvl,
+        plannedIlvl: override.plannedIlvl,
+        allRaids: [...override.raidNames],
+      };
+    });
+    const planJson = JSON.stringify(plan);
 
     await apiFetch2("/api/me/raid-plan", {
       method: "PUT",
@@ -4106,6 +4123,10 @@ export default function TodoTracker() {
       return `MY:${selectedFriendCode || "local"}`;
     }
 
+    function getMyCurrentWeekOverrideScope() {
+      return "MY:CURRENT";
+    }
+
     function openMyNextWeekLevelOverridePrompt(me: MyCandidate) {
       const currentIlvl = Number(me.currentIlvl ?? me.ilvl) || 0;
       const scope = getMyNextWeekOverrideScope();
@@ -4177,10 +4198,12 @@ export default function TodoTracker() {
     }
 
     function openMyCurrentWeekLevelRaidPrompt(me: MyCandidate) {
-      const currentIlvl = Number(me.ilvl) || 0;
+      const currentIlvl = Number(me.currentIlvl ?? me.ilvl) || 0;
+      const overrideKey = getNextWeekLevelOverrideKey(getMyCurrentWeekOverrideScope(), me.key);
+      const existing = nextWeekLevelOverrides[overrideKey];
       const levelRaw = prompt(
-        `${me.name} 현재 레벨 수정\n현재 레벨: ${currentIlvl || "-"}`,
-        String(currentIlvl || "")
+        `${me.name} 레벨/레이드 변동 예정\n현재 레벨: ${currentIlvl || "-"}\n달성 예정 레벨`,
+        String(existing?.plannedIlvl ?? currentIlvl ?? "")
       );
       if (levelRaw == null) return;
 
@@ -4207,7 +4230,9 @@ export default function TodoTracker() {
         return diffName ? `${baseName} ${diffName}` : baseName;
       });
       const fallback = currentRaidLabels.length
-        ? currentRaidLabels
+        ? existing?.raidNames?.length
+          ? existing.raidNames
+          : currentRaidLabels
         : getDefaultNextWeekPlanRaids(nextIlvl, me.allRaids);
       const choiceText = choices
         .map((raid, index) => `${index + 1}. ${raid}`)
@@ -4232,50 +4257,34 @@ export default function TodoTracker() {
         return;
       }
 
-      const selectedRaids = uniqueCanonicalRaidNames(
-        selectedRaidLabels.map((raid) => getRaidBaseNameForRemainLabel(raid))
-      );
-      const selectedRaidKeys = new Set(selectedRaids.map((raid) => normalizeRaidName(raid)));
-      const diffs = Object.fromEntries(
-        selectedRaidLabels.flatMap((raid) => {
-          const baseName = canonicalRaidName(getRaidBaseNameForRemainLabel(raid));
-          const diffName = getRaidDiffFromLabel(raid);
-          return diffName ? [[baseName, diffName]] : [];
-        })
-      ) as Record<string, DiffName>;
-      const nextPick = sanitizeWeeklyRaidPick(nextIlvl, {
-        raids: selectedRaids,
-        goldRaids: selectedRaids,
-        manualCompletedRaids: (currentPick.manualCompletedRaids ?? []).filter((raid) =>
-          selectedRaidKeys.has(normalizeRaidName(canonicalRaidName(getRaidBaseNameForRemainLabel(raid))))
-        ),
-        diffs,
+      const nextOverrides = {
+        ...nextWeekLevelOverrides,
+        [overrideKey]: {
+          friendCode: getMyCurrentWeekOverrideScope(),
+          charKey: me.key,
+          currentIlvl,
+          plannedIlvl: nextIlvl,
+          raidNames: selectedRaidLabels,
+          updatedAt: Date.now(),
+        },
+      };
+      setNextWeekLevelOverrides(nextOverrides);
+      uploadFriendRaidPlan(stateRef.current, nextOverrides).catch((error) => {
+        console.error("레벨/레이드 변동 예정 공유 실패", error);
+        alert("예정값은 저장했지만 친구 공유 업로드에 실패했어.");
       });
+    }
 
-      saveWeeklyRaidPick(me.tableId, me.charId, nextPick);
-      setWeeklyRaidPickByChar((prev) => ({ ...prev, [charKey]: nextPick }));
-      setState((prev) => ({
-        ...prev,
-        tables: prev.tables.map((table) =>
-          table.id !== me.tableId
-            ? table
-            : {
-              ...table,
-              characters: table.characters.map((character) =>
-                character.id === me.charId
-                  ? { ...character, itemLevel: String(nextIlvl) }
-                  : character
-              ),
-            }
-        ),
-      }));
-
-      window.setTimeout(() => {
-        uploadRaidLeftSnapshot("manual").catch((error) => {
-          console.error("현재 레벨/레이드 공유 실패", error);
-          alert("현재 레벨/레이드는 저장했지만 친구 공유 업로드에 실패했어.");
-        });
-      }, 100);
+    function clearMyCurrentWeekLevelRaidPlan(me: MyCandidate) {
+      const overrideKey = getNextWeekLevelOverrideKey(getMyCurrentWeekOverrideScope(), me.key);
+      if (!nextWeekLevelOverrides[overrideKey]) return;
+      const nextOverrides = { ...nextWeekLevelOverrides };
+      delete nextOverrides[overrideKey];
+      setNextWeekLevelOverrides(nextOverrides);
+      uploadFriendRaidPlan(stateRef.current, nextOverrides).catch((error) => {
+        console.error("레벨/레이드 변동 예정 해제 공유 실패", error);
+        alert("예정값은 해제했지만 친구 공유 업로드에 실패했어.");
+      });
     }
 
     const nextResetRowMap = new Map<string, any>();
@@ -4648,15 +4657,15 @@ export default function TodoTracker() {
             const key = `${tbl.id}|${ch.id}`;
             const currentIlvl = getCharIlvl(ch);
             const power = parsePowerValue(ch.power);
-            const nextWeekOverride =
+            const planOverride =
               schedulePlanningMode === "NEXT_RESET"
                 ? nextWeekLevelOverrides[getNextWeekLevelOverrideKey(getMyNextWeekOverrideScope(), key)]
-                : undefined;
+                : nextWeekLevelOverrides[getNextWeekLevelOverrideKey(getMyCurrentWeekOverrideScope(), key)];
             const plannedIlvl =
-              nextWeekOverride && Number.isFinite(nextWeekOverride.plannedIlvl)
-                ? nextWeekOverride.plannedIlvl
+              planOverride && Number.isFinite(planOverride.plannedIlvl)
+                ? planOverride.plannedIlvl
                 : currentIlvl;
-            const ilvl = schedulePlanningMode === "NEXT_RESET" ? plannedIlvl : currentIlvl;
+            const ilvl = planOverride ? plannedIlvl : currentIlvl;
 
             const charKey = weeklyCharKey(tbl.id, ch.id);
             const pick =
@@ -4672,13 +4681,13 @@ export default function TodoTracker() {
 
             const baseAllRaids: string[] = getMyAllWeeklyRaids(tbl.id, ch.id, ilvl);
             const allRaids: string[] =
-              schedulePlanningMode === "NEXT_RESET"
-                ? nextWeekOverride?.raidNames?.length
-                  ? nextWeekOverride.raidNames.map((raid) => normalizeFriendRaidLabel(raid)).filter(Boolean)
-                  : baseAllRaids
-                : selectedRaids.filter((raidName) =>
-                  baseAllRaids.some((baseRaid) => normalizeRaidName(baseRaid) === normalizeRaidName(raidName))
-                );
+              planOverride
+                ? planOverride.raidNames.map((raid) => normalizeFriendRaidLabel(raid)).filter(Boolean)
+                : schedulePlanningMode === "NEXT_RESET"
+                  ? baseAllRaids
+                  : selectedRaids.filter((raidName) =>
+                    baseAllRaids.some((baseRaid) => normalizeRaidName(baseRaid) === normalizeRaidName(raidName))
+                  );
 
             const remainingRaids: string[] = allRaids.filter((raidName: string) => {
               const raidLabel = DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(canonicalRaidName(getRaidBaseNameForRemainLabel(raidName)))
@@ -4698,9 +4707,9 @@ export default function TodoTracker() {
               name: ch.name,
               ilvl,
               currentIlvl,
-              plannedIlvl: nextWeekOverride ? plannedIlvl : undefined,
-              originalIlvl: nextWeekOverride ? currentIlvl : undefined,
-              hasNextWeekPlan: Boolean(nextWeekOverride),
+              plannedIlvl: planOverride ? plannedIlvl : undefined,
+              originalIlvl: planOverride ? currentIlvl : undefined,
+              hasNextWeekPlan: Boolean(planOverride),
               power,
               remainingRaids,
               allRaids,
@@ -5192,17 +5201,32 @@ export default function TodoTracker() {
       })
       .map((row: any) => {
         const key = String(row.charKey ?? "").trim() || `${row.tableName ?? ""}|${row.charName ?? ""}`;
-        const currentIlvl = Number(row.ilvl) || parsePowerValue(row.charItemLevel);
+        const sharedOriginalIlvl = Number(row.originalIlvl) || 0;
+        const sharedPlannedIlvl = Number(row.plannedIlvl) || 0;
+        const currentIlvl =
+          sharedOriginalIlvl ||
+          Number(row.ilvl) ||
+          parsePowerValue(row.charItemLevel);
         const power = parsePowerValue(row.charPower);
         const nextWeekOverride =
           schedulePlanningMode === "NEXT_RESET"
             ? nextWeekLevelOverrides[getNextWeekLevelOverrideKey(selectedFriendCode, key)]
             : undefined;
+        const sharedCurrentPlan =
+          schedulePlanningMode === "CURRENT" && sharedPlannedIlvl > 0;
+        const planOverride = nextWeekOverride ?? (
+          sharedCurrentPlan
+            ? {
+              plannedIlvl: sharedPlannedIlvl,
+              raidNames: Array.isArray(row.allRaids) ? row.allRaids : [],
+            }
+            : undefined
+        );
         const plannedIlvl =
-          nextWeekOverride && Number.isFinite(nextWeekOverride.plannedIlvl)
-            ? nextWeekOverride.plannedIlvl
+          planOverride && Number.isFinite(planOverride.plannedIlvl)
+            ? planOverride.plannedIlvl
             : currentIlvl;
-        const ilvl = schedulePlanningMode === "NEXT_RESET" ? plannedIlvl : currentIlvl;
+        const ilvl = planOverride ? plannedIlvl : currentIlvl;
 
         const hasRemainingRaidsField = Array.isArray(row.remainingRaids);
         const normalizedRemainingRaids =
@@ -5223,8 +5247,8 @@ export default function TodoTracker() {
           )
         );
         const plannedRaidNames =
-          nextWeekOverride?.raidNames?.length
-            ? nextWeekOverride.raidNames.map((raid) => normalizeFriendRaidLabel(raid)).filter(Boolean)
+          planOverride?.raidNames?.length
+            ? planOverride.raidNames.map((raid: string) => normalizeFriendRaidLabel(raid)).filter(Boolean)
             : computedNextResetRaids;
         const currentAllRaids = uniqueRaidLabelsByBase(
           filterActiveWeeklyRaidNames(
@@ -5238,12 +5262,12 @@ export default function TodoTracker() {
         );
 
         const allRaids =
-          schedulePlanningMode === "NEXT_RESET"
+          planOverride
             ? plannedRaidNames
             : currentAllRaids;
 
         const remainingRaids =
-          schedulePlanningMode === "NEXT_RESET"
+          planOverride
             ? plannedRaidNames
             : currentRemainingRaids;
 
@@ -5251,8 +5275,7 @@ export default function TodoTracker() {
           ? row.clearedRaids.map((raid: string) => normalizeFriendRaidLabel(raid))
           : [];
 
-        const activeRaids =
-          schedulePlanningMode === "NEXT_RESET" ? allRaids : remainingRaids;
+        const activeRaids = planOverride ? allRaids : remainingRaids;
 
         return {
           key,
@@ -5260,9 +5283,9 @@ export default function TodoTracker() {
           name: row.charName ?? "",
           ilvl,
           currentIlvl,
-          plannedIlvl: nextWeekOverride ? plannedIlvl : undefined,
-          originalIlvl: nextWeekOverride ? currentIlvl : undefined,
-          hasNextWeekPlan: Boolean(nextWeekOverride),
+          plannedIlvl: planOverride ? plannedIlvl : undefined,
+          originalIlvl: planOverride ? currentIlvl : undefined,
+          hasNextWeekPlan: Boolean(planOverride),
           power,
           remainingRaids,
           allRaids,
@@ -6828,8 +6851,8 @@ export default function TodoTracker() {
     }
 
     function getMyVisibleSelectedRaids(me: MyCandidate) {
-      if (schedulePlanningMode === "NEXT_RESET") {
-        return uniqueCanonicalRaidNames(me.allRaids);
+      if (schedulePlanningMode === "NEXT_RESET" || me.hasNextWeekPlan) {
+        return uniqueRaidLabelsByBase(me.allRaids);
       }
 
       const charKey = weeklyCharKey(me.tableId, me.charId);
@@ -8024,9 +8047,19 @@ export default function TodoTracker() {
                               type="button"
                               className="mini"
                               onClick={() => openMyCurrentWeekLevelRaidPrompt(me)}
+                              style={me.hasNextWeekPlan ? { borderColor: "#facc15", color: "#facc15" } : undefined}
                             >
-                              현재 레벨/레이드 수정
+                              레벨/레이드 변동 예정
                             </button>
+                            {me.hasNextWeekPlan && (
+                              <button
+                                type="button"
+                                className="mini"
+                                onClick={() => clearMyCurrentWeekLevelRaidPlan(me)}
+                              >
+                                예정 해제
+                              </button>
+                            )}
                           </div>
                         )}
 
