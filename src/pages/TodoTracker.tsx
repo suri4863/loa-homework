@@ -6521,16 +6521,6 @@ export default function TodoTracker() {
         );
       }
 
-      if (selectedWeeklySchedule) {
-        const friendKeys = getScheduleCandidateIdentityKeys(fr);
-        getClearedScheduleRaidSetForKeys(selectedWeeklySchedule, friendKeys, "FRIEND").forEach((raid) =>
-          addScheduleAvailabilityKeys(clearedSet, raid)
-        );
-        getClearedScheduleRaidSetForKeys(selectedWeeklySchedule, friendKeys, "MY").forEach((raid) =>
-          addScheduleAvailabilityKeys(clearedSet, raid)
-        );
-      }
-
       const sourceRaids =
         schedulePlanningMode === "NEXT_RESET" ? fr.activeRaids : fr.allRaids;
 
@@ -6657,9 +6647,11 @@ export default function TodoTracker() {
       me: MyCandidate
     ) {
       const scheduledSet = new Set<string>();
+      const { isTargetView } = getSchedulePerspectiveForCurrentUser(schedule);
+      const localSide = isTargetView ? "FRIEND" : "MY";
 
       for (const item of schedule.items) {
-        if (!doesScheduleItemSideMatchCandidate(item, me, "MY")) continue;
+        if (!doesScheduleItemSideMatchCandidate(item, me, localSide)) continue;
         getScheduleItemExplicitRaidNames(item).forEach((raid) => {
           addScheduleRaidMatchKey(scheduledSet, getMyScheduleComparableRaidName(raid, me));
           addScheduleItemRaidMatchKeys(scheduledSet, item, raid);
@@ -6692,19 +6684,22 @@ export default function TodoTracker() {
       fr: FriendCandidate
     ) {
       const scheduledSet = new Set<string>();
+      const { isTargetView } = getSchedulePerspectiveForCurrentUser(schedule);
+      const friendSide = isTargetView ? "MY" : "FRIEND";
 
       for (const item of schedule.items) {
-        const matchesFriendSide = doesScheduleItemSideMatchCandidate(item, fr, "FRIEND");
-        const matchesMySide = doesScheduleItemSideMatchCandidate(item, fr, "MY");
+        const matchesFriendSide = doesScheduleItemSideMatchCandidate(item, fr, friendSide);
         const friendName = String(fr.name ?? "").trim();
+        const scheduledFriendName = String(
+          friendSide === "MY"
+            ? item.mySnapshot?.name ?? item.myCharName ?? ""
+            : item.friendSnapshot?.name ?? item.friendCharName ?? ""
+        ).trim();
         const matchesName = Boolean(
           friendName &&
-            [
-              String(item.mySnapshot?.name ?? item.myCharName ?? "").trim(),
-              String(item.friendSnapshot?.name ?? item.friendCharName ?? "").trim(),
-            ].some((name) => name === friendName)
+            scheduledFriendName === friendName
         );
-        if (!matchesFriendSide && !matchesMySide && !matchesName) continue;
+        if (!matchesFriendSide && !matchesName) continue;
         getScheduleItemRaidNames(item).forEach((raid) => {
           addFriendScheduleRaidMatchKeys(scheduledSet, fr, raid);
           addScheduleItemRaidMatchKeys(scheduledSet, item, raid);
