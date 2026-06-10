@@ -3992,7 +3992,11 @@ export default function TodoTracker() {
         .flatMap((raid) => availableDiffNames(ilvl, raid.name).map((diff) => `${raid.name} ${diff}`));
     }
 
-    function parseNextWeekRaidSelection(raw: string, choices: string[]) {
+    function parseNextWeekRaidSelection(
+      raw: string,
+      choices: string[],
+      maxCount: number = 3
+    ) {
       const picked: string[] = [];
       const tokens = raw
         .split(/[,\s/]+/g)
@@ -4008,7 +4012,7 @@ export default function TodoTracker() {
         if (!raid) continue;
         if (picked.some((name) => normalizeRaidName(name) === normalizeRaidName(raid))) continue;
         picked.push(raid);
-        if (picked.length >= 3) break;
+        if (picked.length >= maxCount) break;
       }
 
       return picked;
@@ -4170,6 +4174,108 @@ export default function TodoTracker() {
         delete next[key];
         return next;
       });
+    }
+
+    function openMyCurrentWeekLevelRaidPrompt(me: MyCandidate) {
+      const currentIlvl = Number(me.ilvl) || 0;
+      const levelRaw = prompt(
+        `${me.name} 현재 레벨 수정\n현재 레벨: ${currentIlvl || "-"}`,
+        String(currentIlvl || "")
+      );
+      if (levelRaw == null) return;
+
+      const nextIlvl = Number(String(levelRaw).replace(/[^\d.]/g, ""));
+      if (!Number.isFinite(nextIlvl) || nextIlvl <= 0) {
+        alert("현재 레벨을 숫자로 입력해줘.");
+        return;
+      }
+
+      const choices = getSelectableNextWeekRaidNames(nextIlvl);
+      if (!choices.length) {
+        alert("해당 레벨에서 선택 가능한 레이드가 없어.");
+        return;
+      }
+
+      const charKey = weeklyCharKey(me.tableId, me.charId);
+      const currentPick = sanitizeWeeklyRaidPick(
+        currentIlvl,
+        weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(currentIlvl)
+      );
+      const currentRaidLabels = currentPick.raids.map((raid) => {
+        const baseName = canonicalRaidName(getRaidBaseNameForRemainLabel(raid));
+        const diffName = currentPick.diffs?.[baseName] ?? getRaidDiffFromLabel(raid);
+        return diffName ? `${baseName} ${diffName}` : baseName;
+      });
+      const fallback = currentRaidLabels.length
+        ? currentRaidLabels
+        : getDefaultNextWeekPlanRaids(nextIlvl, me.allRaids);
+      const choiceText = choices
+        .map((raid, index) => `${index + 1}. ${raid}`)
+        .join("\n");
+      const defaultSelection = fallback
+        .map((raid) => getNextWeekChoiceNumber(raid, choices))
+        .filter(Boolean)
+        .join(", ");
+      const rawSelection = prompt(
+        `현재 가는 레이드를 번호로 골라줘.\n\n${choiceText}`,
+        defaultSelection
+      );
+      if (rawSelection == null) return;
+
+      const selectedRaidLabels = parseNextWeekRaidSelection(
+        rawSelection,
+        choices,
+        Number.MAX_SAFE_INTEGER
+      );
+      if (!selectedRaidLabels.length) {
+        alert("선택한 레이드를 찾지 못했어.");
+        return;
+      }
+
+      const selectedRaids = uniqueCanonicalRaidNames(
+        selectedRaidLabels.map((raid) => getRaidBaseNameForRemainLabel(raid))
+      );
+      const selectedRaidKeys = new Set(selectedRaids.map((raid) => normalizeRaidName(raid)));
+      const diffs = Object.fromEntries(
+        selectedRaidLabels.flatMap((raid) => {
+          const baseName = canonicalRaidName(getRaidBaseNameForRemainLabel(raid));
+          const diffName = getRaidDiffFromLabel(raid);
+          return diffName ? [[baseName, diffName]] : [];
+        })
+      ) as Record<string, DiffName>;
+      const nextPick = sanitizeWeeklyRaidPick(nextIlvl, {
+        raids: selectedRaids,
+        goldRaids: selectedRaids,
+        manualCompletedRaids: (currentPick.manualCompletedRaids ?? []).filter((raid) =>
+          selectedRaidKeys.has(normalizeRaidName(canonicalRaidName(getRaidBaseNameForRemainLabel(raid))))
+        ),
+        diffs,
+      });
+
+      saveWeeklyRaidPick(me.tableId, me.charId, nextPick);
+      setWeeklyRaidPickByChar((prev) => ({ ...prev, [charKey]: nextPick }));
+      setState((prev) => ({
+        ...prev,
+        tables: prev.tables.map((table) =>
+          table.id !== me.tableId
+            ? table
+            : {
+              ...table,
+              characters: table.characters.map((character) =>
+                character.id === me.charId
+                  ? { ...character, itemLevel: String(nextIlvl) }
+                  : character
+              ),
+            }
+        ),
+      }));
+
+      window.setTimeout(() => {
+        uploadRaidLeftSnapshot("manual").catch((error) => {
+          console.error("현재 레벨/레이드 공유 실패", error);
+          alert("현재 레벨/레이드는 저장했지만 친구 공유 업로드에 실패했어.");
+        });
+      }, 100);
     }
 
     const nextResetRowMap = new Map<string, any>();
@@ -7909,6 +8015,18 @@ export default function TodoTracker() {
                                 기존 레이드로 계획
                               </button>
                             )}
+                          </div>
+                        )}
+
+                        {schedulePlanningMode === "CURRENT" && (
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                            <button
+                              type="button"
+                              className="mini"
+                              onClick={() => openMyCurrentWeekLevelRaidPrompt(me)}
+                            >
+                              현재 레벨/레이드 수정
+                            </button>
                           </div>
                         )}
 
