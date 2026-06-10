@@ -314,6 +314,7 @@ export default function TodoTracker() {
 
   const [shareKkanbuOpen, setShareKkanbuOpen] = useState(false);
   const [shareKkanbuCopied, setShareKkanbuCopied] = useState(false);
+  const [hiddenMyCharactersOpen, setHiddenMyCharactersOpen] = useState(false);
 
   const WEEK_DAYS: WeeklyScheduleDay[] = ["수", "목", "금", "토", "일", "월", "화"];
 
@@ -392,6 +393,17 @@ export default function TodoTracker() {
   }, [state.tasks]);
 
   const excludedKkanbuTableIds = state.profile.kkanbuExcludedTableIds ?? [];
+  const hiddenKkanbuMyCharKeys = state.profile.kkanbuHiddenMyCharKeys ?? [];
+  const hiddenKkanbuMyCharKeySet = new Set(hiddenKkanbuMyCharKeys);
+  const hiddenKkanbuMyCharacters = state.tables.flatMap((table) =>
+    table.characters
+      .filter((character) => hiddenKkanbuMyCharKeySet.has(makeMyCharKey(table.id, character.id)))
+      .map((character) => ({
+        key: makeMyCharKey(table.id, character.id),
+        name: character.name,
+        tableName: table.name,
+      }))
+  );
 
   function isKkanbuExcludedTable(tableId: string) {
     return excludedKkanbuTableIds.includes(tableId);
@@ -1606,6 +1618,23 @@ export default function TodoTracker() {
       ? rawKey.split("|")
       : rawKey.split(":");
     return { tableId: tableId ?? "", charId: charId ?? "" };
+  }
+
+  function toggleHiddenKkanbuMyCharacter(myCharKey: string) {
+    setState((prev) => {
+      const prevKeys = prev.profile.kkanbuHiddenMyCharKeys ?? [];
+      const exists = prevKeys.includes(myCharKey);
+
+      return {
+        ...prev,
+        profile: {
+          ...prev.profile,
+          kkanbuHiddenMyCharKeys: exists
+            ? prevKeys.filter((key) => key !== myCharKey)
+            : [...prevKeys, myCharKey],
+        },
+      };
+    });
   }
 
   function getCurrentFriendCode() {
@@ -4653,6 +4682,7 @@ export default function TodoTracker() {
       .filter((tbl) => !excludedKkanbuTableIds.includes(tbl.id)) // 제외 표는 매칭 후보에서 제거
       .flatMap((tbl) =>
         tbl.characters
+          .filter((ch) => !hiddenKkanbuMyCharKeySet.has(makeMyCharKey(tbl.id, ch.id)))
           .map((ch) => {
             const key = `${tbl.id}|${ch.id}`;
             const currentIlvl = getCharIlvl(ch);
@@ -7718,7 +7748,44 @@ export default function TodoTracker() {
                 <span>{tbl.name}</span>
               </label>
             ))}
+            <button
+              type="button"
+              className="mini"
+              onClick={() => setHiddenMyCharactersOpen((open) => !open)}
+            >
+              숨긴 캐릭터 ({hiddenKkanbuMyCharacters.length})
+            </button>
           </div>
+
+          {hiddenMyCharactersOpen && (
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 8,
+                marginBottom: 12,
+                padding: 10,
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+              }}
+            >
+              {hiddenKkanbuMyCharacters.length ? hiddenKkanbuMyCharacters.map((character) => (
+                <label
+                  key={character.key}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+                >
+                  <input
+                    type="checkbox"
+                    checked
+                    onChange={() => toggleHiddenKkanbuMyCharacter(character.key)}
+                  />
+                  <span>{character.name} / {character.tableName}</span>
+                </label>
+              )) : (
+                <span className="manualKkanbuEmpty">숨긴 캐릭터 없음</span>
+              )}
+            </div>
+          )}
 
           <div className="manualKkanbuLabel" style={{ marginBottom: 6 }}>친구 표 제외</div>
 
@@ -8008,16 +8075,24 @@ export default function TodoTracker() {
                         key={me.key}
                         className="manualRemainItem"
                       >
-                        <div
-                          className="manualRemainName"
-                        >
-                          {me.name}{" "}
-                          <span className="manualRemainMeta">
-                            {me.hasNextWeekPlan && me.currentIlvl
-                              ? <>Lv {me.currentIlvl} → <span style={{ color: "#facc15", fontWeight: 800 }}>{me.plannedIlvl}</span></>
-                              : <>Lv {me.ilvl}</>}{" "}
-                            / 전투력 {me.power}
-                          </span>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                          <div className="manualRemainName">
+                            {me.name}{" "}
+                            <span className="manualRemainMeta">
+                              {me.hasNextWeekPlan && me.currentIlvl
+                                ? <>Lv {me.currentIlvl} → <span style={{ color: "#facc15", fontWeight: 800 }}>{me.plannedIlvl}</span></>
+                                : <>Lv {me.ilvl}</>}{" "}
+                              / 전투력 {me.power}
+                            </span>
+                          </div>
+                          <label style={{ display: "inline-flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
+                            <input
+                              type="checkbox"
+                              checked={false}
+                              onChange={() => toggleHiddenKkanbuMyCharacter(me.key)}
+                            />
+                            <span>매칭 제외</span>
+                          </label>
                         </div>
 
                         {schedulePlanningMode === "NEXT_RESET" && (

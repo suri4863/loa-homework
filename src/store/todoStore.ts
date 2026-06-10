@@ -83,6 +83,7 @@ export type UserProfile = {
 
   // 깐부매칭에서 제외할 내 표 id 목록
   kkanbuExcludedTableIds?: string[];
+  kkanbuHiddenMyCharKeys?: string[];
 
   // 깐부매칭에서 제외할 친구 표 이름 목록
   kkanbuExcludedFriendTableNames?: string[];
@@ -762,6 +763,7 @@ function makeDefaultState(): TodoState {
     nickname: "",
     kkanbuExcludePairs: [],
     kkanbuExcludedTableIds: [],
+    kkanbuHiddenMyCharKeys: [],
     kkanbuExcludedFriendTableNames: [],
     autoRaidLeftUploadEnabled: false,
     autoRaidLeftUploadMinutes: 30,
@@ -791,6 +793,7 @@ function normalizeState(parsed: any): TodoState {
         nickname: "",
         kkanbuExcludePairs: [],
         kkanbuExcludedTableIds: [],
+        kkanbuHiddenMyCharKeys: [],
         kkanbuExcludedFriendTableNames: [],
         autoRaidLeftUploadEnabled: false,
         autoRaidLeftUploadMinutes: 30,
@@ -804,6 +807,9 @@ function normalizeState(parsed: any): TodoState {
         : [];
       st.profile.kkanbuExcludedTableIds = Array.isArray(st.profile.kkanbuExcludedTableIds)
         ? st.profile.kkanbuExcludedTableIds
+        : [];
+      st.profile.kkanbuHiddenMyCharKeys = Array.isArray(st.profile.kkanbuHiddenMyCharKeys)
+        ? st.profile.kkanbuHiddenMyCharKeys.map((key) => String(key))
         : [];
       st.profile.kkanbuExcludedFriendTableNames = Array.isArray(st.profile.kkanbuExcludedFriendTableNames)
         ? st.profile.kkanbuExcludedFriendTableNames
@@ -966,6 +972,7 @@ function normalizeState(parsed: any): TodoState {
       shareMode: "PUBLIC",
       nickname: "",
       kkanbuExcludePairs: [],
+      kkanbuHiddenMyCharKeys: [],
       autoRaidLeftUploadEnabled: false,
       autoRaidLeftUploadMinutes: 30,
     },
