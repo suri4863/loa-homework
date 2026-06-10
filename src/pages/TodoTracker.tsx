@@ -4253,16 +4253,22 @@ export default function TodoTracker() {
         currentIlvl,
         weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(currentIlvl)
       );
-      const currentRaidLabels = currentPick.raids.map((raid) => {
+      const toRaidLabels = (pick: WeeklyRaidPick) => pick.raids.map((raid) => {
         const baseName = canonicalRaidName(getRaidBaseNameForRemainLabel(raid));
-        const diffName = currentPick.diffs?.[baseName] ?? getRaidDiffFromLabel(raid);
+        const diffName = pick.diffs?.[baseName] ?? getRaidDiffFromLabel(raid);
         return diffName ? `${baseName} ${diffName}` : baseName;
       });
-      const fallback = currentRaidLabels.length
-        ? existing?.raidNames?.length
+      const currentRaidLabels = toRaidLabels(currentPick);
+      const previousPlannedIlvl = Number(existing?.plannedIlvl ?? currentIlvl);
+      const levelChanged = nextIlvl !== previousPlannedIlvl;
+      const defaultNextPick = getDefaultWeeklyRaidPick(nextIlvl);
+      const fallback = levelChanged
+        ? toRaidLabels(defaultNextPick)
+        : existing?.raidNames?.length
           ? existing.raidNames
-          : currentRaidLabels
-        : getDefaultNextWeekPlanRaids(nextIlvl, me.allRaids);
+          : currentRaidLabels.length
+            ? currentRaidLabels
+            : getDefaultNextWeekPlanRaids(nextIlvl, me.allRaids);
       const choiceText = choices
         .map((raid, index) => `${index + 1}. ${raid}`)
         .join("\n");
@@ -8122,7 +8128,7 @@ export default function TodoTracker() {
                               type="button"
                               className="mini"
                               onClick={() => openMyCurrentWeekLevelRaidPrompt(me)}
-                              style={me.hasNextWeekPlan ? { borderColor: "#facc15", color: "#facc15" } : undefined}
+                              style={me.hasNextWeekPlan ? { borderColor: "#facc15", color: "var(--text)" } : undefined}
                             >
                               레벨/레이드 변동 예정
                             </button>
@@ -8131,6 +8137,7 @@ export default function TodoTracker() {
                                 type="button"
                                 className="mini"
                                 onClick={() => clearMyCurrentWeekLevelRaidPlan(me)}
+                                style={{ borderColor: "#facc15", color: "var(--text)" }}
                               >
                                 예정 해제
                               </button>
@@ -8148,7 +8155,7 @@ export default function TodoTracker() {
                                 key={raid}
                                 className={`manualRaidChip ${isMuted ? "is-scheduled" : ""
                                   }`}
-                                style={me.hasNextWeekPlan ? { borderColor: "#facc15", color: "#facc15" } : undefined}
+                                style={me.hasNextWeekPlan ? { borderColor: "#facc15", color: "var(--text)" } : undefined}
                               >
                                 {renderRemainRaidWithDiff(
                                   raid,
@@ -8250,7 +8257,7 @@ export default function TodoTracker() {
                                 key={raid}
                                 className={`manualRaidChip ${isMuted ? "is-scheduled" : ""
                                   }`}
-                                style={fr.hasNextWeekPlan ? { borderColor: "#facc15", color: "#facc15" } : undefined}
+                                style={fr.hasNextWeekPlan ? { borderColor: "#facc15", color: "var(--text)" } : undefined}
                               >
                                 {renderRemainRaidWithDiff(raid, fr.ilvl)}
                               </span>
