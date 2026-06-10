@@ -3913,7 +3913,7 @@ export default function TodoTracker() {
 
     function getFriendNextResetDefaultRaids(ilvl: number, fallbackRaids: string[]): string[] {
       const normalizedFallbackRaids = Array.isArray(fallbackRaids)
-        ? fallbackRaids.map((raid: string) => normalizeRaidName(raid)).filter(Boolean)
+        ? fallbackRaids.map((raid: string) => normalizeFriendRaidLabel(raid)).filter(Boolean)
         : [];
 
       if (normalizedFallbackRaids.length > 0) {
@@ -4209,10 +4209,10 @@ export default function TodoTracker() {
 
     function mergeFriendNextResetRows(base: any, incoming: any) {
       const mergeRaids = (...sources: unknown[]) =>
-        uniqueCanonicalRaidNames(
+        uniqueRaidLabelsByBase(
           sources.flatMap((source) =>
             Array.isArray(source)
-              ? source.map((raid: string) => normalizeRaidName(raid)).filter(Boolean)
+              ? source.map((raid: string) => normalizeFriendRaidLabel(raid)).filter(Boolean)
               : []
           )
         );
