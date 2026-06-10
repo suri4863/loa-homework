@@ -2668,8 +2668,13 @@ export default function TodoTracker() {
     );
   }
 
-  function getRecommendedScheduleRaidCount(item: SharedWeeklyScheduleItem) {
-    return getScheduleItemRaidNames(item).length;
+  function getRecommendedScheduleRemainingRaidCount(
+    schedule: SharedWeeklySchedule,
+    item: SharedWeeklyScheduleItem
+  ) {
+    return getScheduleItemRaidNames(item).filter(
+      (raid) => !isScheduleRaidCleared(schedule, item, raid)
+    ).length;
   }
 
   function getScheduleItemLevels(item: SharedWeeklyScheduleItem) {
@@ -2806,8 +2811,20 @@ export default function TodoTracker() {
 
   async function applyRecommendedScheduleOrder(scheduleId: string) {
     const schedule = weeklySchedules.find((item) => item.id === scheduleId);
-    if (!schedule || schedule.items.length <= 1) {
+    if (!schedule || schedule.items.length === 0) {
       alert("추천 일정으로 정리할 일정이 없어.");
+      return;
+    }
+
+    const completedItems = schedule.items.filter(
+      (item) => getScheduleRaidCompletion(schedule, item).allCleared
+    );
+    const remainingScheduleItems = schedule.items.filter(
+      (item) => !getScheduleRaidCompletion(schedule, item).allCleared
+    );
+
+    if (!remainingScheduleItems.length) {
+      alert("남은 일정이 없어. 완료된 일정은 추천 배치에서 제외돼.");
       return;
     }
 
@@ -2824,8 +2841,8 @@ export default function TodoTracker() {
     }
 
     const dayRaidCapacity = maxPerDay * 3;
-    const totalRaidCount = schedule.items.reduce(
-      (sum, item) => sum + getRecommendedScheduleRaidCount(item),
+    const totalRaidCount = remainingScheduleItems.reduce(
+      (sum, item) => sum + getRecommendedScheduleRemainingRaidCount(schedule, item),
       0
     );
     const totalRaidCapacity = allowedDays.length * dayRaidCapacity;
@@ -2835,7 +2852,7 @@ export default function TodoTracker() {
       return;
     }
 
-    const sortedItems = buildRecommendedScheduleOrder(schedule.items);
+    const sortedItems = buildRecommendedScheduleOrder(remainingScheduleItems);
 
     const nextItems: SharedWeeklyScheduleItem[] = [];
     const dayOrderCounts = new Map<WeeklyScheduleDay, number>();
@@ -2843,7 +2860,7 @@ export default function TodoTracker() {
     const remainingItems = [...sortedItems];
 
     for (const item of remainingItems) {
-      const raidCount = getRecommendedScheduleRaidCount(item);
+      const raidCount = getRecommendedScheduleRemainingRaidCount(schedule, item);
       if (raidCount <= dayRaidCapacity) continue;
 
       const itemName = String(item.myCharName ?? item.mySnapshot?.name ?? "선택한").trim();
@@ -2869,7 +2886,7 @@ export default function TodoTracker() {
           let bestTie = "";
 
           remainingItems.forEach((item, index) => {
-            const raidCount = getRecommendedScheduleRaidCount(item);
+            const raidCount = getRecommendedScheduleRemainingRaidCount(schedule, item);
             if (raidCount > remainingCapacity) return;
             const rangeMatched =
               !ranges.length || isScheduleItemMatchingLevelRanges(item, ranges);
@@ -2905,7 +2922,7 @@ export default function TodoTracker() {
 
         const [item] = remainingItems.splice(nextIndex, 1);
         const order = dayOrderCounts.get(day) ?? 0;
-        const raidCount = getRecommendedScheduleRaidCount(item);
+        const raidCount = getRecommendedScheduleRemainingRaidCount(schedule, item);
 
         nextItems.push({
           ...item,
@@ -2928,12 +2945,12 @@ export default function TodoTracker() {
 
     if (primaryLightDays.length) {
       const remainingRaidCount = remainingItems.reduce(
-        (sum, item) => sum + getRecommendedScheduleRaidCount(item),
+        (sum, item) => sum + getRecommendedScheduleRemainingRaidCount(schedule, item),
         0
       );
       const maxRemainingItemRaidCount = Math.max(
         0,
-        ...remainingItems.map((item) => getRecommendedScheduleRaidCount(item))
+        ...remainingItems.map((item) => getRecommendedScheduleRemainingRaidCount(schedule, item))
       );
       const softRaidLimit = Math.min(
         dayRaidCapacity,
@@ -2956,9 +2973,23 @@ export default function TodoTracker() {
       return;
     }
 
+    const mergedItems = WEEK_DAYS.flatMap((day) => {
+      const fixedDayItems = completedItems
+        .filter((item) => item.day === day)
+        .sort((a, b) => a.order - b.order);
+      const recommendedDayItems = nextItems
+        .filter((item) => item.day === day)
+        .sort((a, b) => a.order - b.order);
+
+      return [...fixedDayItems, ...recommendedDayItems].map((item, order) => ({
+        ...item,
+        order,
+      }));
+    });
+
     const nextSchedule: SharedWeeklySchedule = {
       ...schedule,
-      items: nextItems,
+      items: mergedItems,
     };
 
     setRecommendedScheduleUndoItems((prev) => ({
@@ -8286,6 +8317,9 @@ export default function TodoTracker() {
               </div>
 
               <div className="recommendedScheduleBody">
+                <div className="manualKkanbuHint">
+                  완료된 일정은 현재 요일에 고정하고, 남은 레이드만 기준으로 추천 배치해.
+                </div>
                 <div className="recommendedScheduleField">
                   <div className="manualKkanbuLabel">제외하는 요일</div>
                   <div className="recommendedScheduleDayList">
