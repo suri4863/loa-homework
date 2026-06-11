@@ -4652,40 +4652,6 @@ export default function TodoTracker() {
       });
     }
 
-    function isMyRaidGoldChecked(tableId: string, charId: string, raidName: string) {
-      const table = state.tables.find((tbl) => tbl.id === tableId);
-      const character = table?.characters.find((ch) => ch.id === charId);
-      if (!character) return false;
-
-      const ilvl = getCharIlvl(character);
-      if (!Number.isFinite(ilvl) || ilvl <= 0) return false;
-
-      const charKey = weeklyCharKey(tableId, charId);
-      const rawPick = weeklyRaidPickByChar[charKey];
-      const manualCompletedRaids = Array.isArray(rawPick?.manualCompletedRaids)
-        ? rawPick.manualCompletedRaids
-        : [];
-      if (!manualCompletedRaids.length) return false;
-
-      const baseName = canonicalRaidName(getRaidBaseNameForRemainLabel(raidName));
-      const requestedDiff = getRaidDiffFromLabel(raidName);
-
-      return manualCompletedRaids.some((completedRaid) => {
-        const goldBaseName = canonicalRaidName(getRaidBaseNameForRemainLabel(completedRaid));
-        if (normalizeRaidName(goldBaseName) !== normalizeRaidName(baseName)) {
-          return false;
-        }
-
-        if (!DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(baseName)) {
-          return true;
-        }
-
-        const goldComparable = formatRemainRaidWithDiff(goldBaseName, ilvl, charKey);
-        const goldDiff = getRaidDiffFromLabel(goldComparable);
-        return !requestedDiff || !goldDiff || normalizeRaidName(requestedDiff) === normalizeRaidName(goldDiff);
-      });
-    }
-
     function isMyWeeklyRaidChecked(tableId: string, charId: string, raidName: string) {
       if (!isMyRaidCurrentlySelected(tableId, charId, raidName)) return false;
 
@@ -6899,8 +6865,7 @@ export default function TodoTracker() {
       const comparableRaid = getMyScheduleComparableRaidName(raidName, me);
       const isChecked =
         schedulePlanningMode !== "NEXT_RESET" &&
-        (isMyRaidGoldChecked(me.tableId, me.charId, comparableRaid) ||
-          isMyWeeklyRaidChecked(me.tableId, me.charId, comparableRaid));
+        isMyWeeklyRaidChecked(me.tableId, me.charId, comparableRaid);
       const isMuted = selectedWeeklySchedule
         ? isMyRaidDirectlyScheduledInSelectedSchedule(me, comparableRaid) || isChecked
         : isChecked;
