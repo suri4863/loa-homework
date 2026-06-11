@@ -8077,13 +8077,38 @@ export default function TodoTracker() {
                               / 전투력 {me.power}
                             </span>
                           </div>
-                          <label style={{ display: "inline-flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
+                          <label
+                            title="추천 매칭과 일정 추가 후보에서 제외"
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 5,
+                              flexShrink: 0,
+                              padding: "4px 8px",
+                              border: "1px solid var(--border)",
+                              borderRadius: 999,
+                              background: "var(--card)",
+                              color: "var(--muted)",
+                              fontSize: 12,
+                              fontWeight: 700,
+                              lineHeight: 1,
+                              whiteSpace: "nowrap",
+                              cursor: "pointer",
+                            }}
+                          >
                             <input
                               type="checkbox"
                               checked={false}
                               onChange={() => toggleHiddenKkanbuMyCharacter(me.key)}
+                              style={{
+                                width: 13,
+                                height: 13,
+                                margin: 0,
+                                accentColor: "var(--primary)",
+                                cursor: "pointer",
+                              }}
                             />
-                            <span>매칭 제외</span>
+                            <span>제외</span>
                           </label>
                         </div>
 
