@@ -3766,7 +3766,10 @@ export default function TodoTracker() {
 
             const snapshot = side === "MY" ? candidateItem.mySnapshot : candidateItem.friendSnapshot;
             const charPower = side === "MY" ? candidateItem.myCharPower : candidateItem.friendCharPower;
-            const currentPower = parseScheduleNumberValue(snapshot?.power) ?? parseScheduleNumberValue(charPower);
+            const currentPower = Math.max(
+              parseScheduleNumberValue(snapshot?.power) ?? 0,
+              parseScheduleNumberValue(charPower) ?? 0
+            ) || null;
             const nextPower =
               importedPower != null && (currentPower == null || importedPower > currentPower)
                 ? importedPower
@@ -5770,23 +5773,29 @@ export default function TodoTracker() {
       item: SharedWeeklyScheduleItem
     ) {
       const { isOwnerView, isTargetView } = getScheduleViewerPerspective(schedule);
+      const highestPower = (...values: Array<number | null | undefined>) => {
+        const valid = values.filter((value): value is number => value != null && Number.isFinite(value));
+        return valid.length ? Math.max(...valid) : null;
+      };
 
       // owner가 볼 때:
       // - myChar = 내 로컬 캐릭이므로 실시간 조회 가능
       // - friendChar = 스냅샷/선택값 기준
       if (isOwnerView) {
-        const myPower =
-          getLiveSchedulePower(item.myCharKey, item.mySnapshot, item.myCharName, item.myTableName) ??
-          getScheduleSnapshotPower(item.mySnapshot, item.myCharPower);
-        const friendPower =
+        const myPower = highestPower(
+          getLiveSchedulePower(item.myCharKey, item.mySnapshot, item.myCharName, item.myTableName),
+          getScheduleSnapshotPower(item.mySnapshot, item.myCharPower)
+        );
+        const friendPower = highestPower(
           getLivePowerFromScheduleCandidates(
             friendCandidates,
             item.friendCharKey,
             item.friendSnapshot,
             item.friendCharName,
             item.friendTableName
-          ) ??
-          getScheduleSnapshotPower(item.friendSnapshot, item.friendCharPower);
+          ),
+          getScheduleSnapshotPower(item.friendSnapshot, item.friendCharPower)
+        );
 
         return {
           myPower,
@@ -5802,18 +5811,20 @@ export default function TodoTracker() {
       // - friendCharKey가 "내 캐릭"이므로 로컬에서 실시간 조회 가능
       // - myCharPower는 상대(owner) 저장값 사용
       if (isTargetView) {
-        const myPower =
+        const myPower = highestPower(
           getLivePowerFromScheduleCandidates(
             friendCandidates,
             item.myCharKey,
             item.mySnapshot,
             item.myCharName,
             item.myTableName
-          ) ??
-          getScheduleSnapshotPower(item.mySnapshot, item.myCharPower);
-        const friendPower =
-          getLiveSchedulePower(item.friendCharKey, item.friendSnapshot, item.friendCharName, item.friendTableName) ??
-          getScheduleSnapshotPower(item.friendSnapshot, item.friendCharPower);
+          ),
+          getScheduleSnapshotPower(item.mySnapshot, item.myCharPower)
+        );
+        const friendPower = highestPower(
+          getLiveSchedulePower(item.friendCharKey, item.friendSnapshot, item.friendCharName, item.friendTableName),
+          getScheduleSnapshotPower(item.friendSnapshot, item.friendCharPower)
+        );
 
         return {
           myPower,
@@ -5825,24 +5836,26 @@ export default function TodoTracker() {
         };
       }
 
-      const myPower =
+      const myPower = highestPower(
         getLivePowerFromScheduleCandidates(
           friendCandidates,
           item.myCharKey,
           item.mySnapshot,
           item.myCharName,
           item.myTableName
-        ) ??
-        getScheduleSnapshotPower(item.mySnapshot, item.myCharPower);
-      const friendPower =
+        ),
+        getScheduleSnapshotPower(item.mySnapshot, item.myCharPower)
+      );
+      const friendPower = highestPower(
         getLivePowerFromScheduleCandidates(
           friendCandidates,
           item.friendCharKey,
           item.friendSnapshot,
           item.friendCharName,
           item.friendTableName
-        ) ??
-        getScheduleSnapshotPower(item.friendSnapshot, item.friendCharPower);
+        ),
+        getScheduleSnapshotPower(item.friendSnapshot, item.friendCharPower)
+      );
 
       return {
         myPower,
