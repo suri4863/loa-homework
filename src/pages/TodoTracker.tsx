@@ -1650,15 +1650,25 @@ export default function TodoTracker() {
   }
 
   function getLocalWeeklyRaidTaskId(raidName: string) {
-    const normalizedTarget = normalizeRaidName(raidName);
-    const cachedTaskId = localWeeklyRaidTaskIdByName.get(normalizedTarget);
-    if (cachedTaskId) return cachedTaskId;
+    const candidates = [
+      raidName,
+      normalizeRaidAliasLabel(raidName),
+      canonicalRaidName(getRaidBaseNameForRemainLabel(raidName)),
+    ];
+
+    for (const candidate of candidates) {
+      const taskId = localWeeklyRaidTaskIdByName.get(normalizeRaidName(candidate));
+      if (taskId) return taskId;
+    }
 
     const task = state.tasks.find(
       (t) =>
         t.period === "WEEKLY" &&
         (t.section ?? "").trim() === "주간 레이드" &&
-        normalizeRaidName(String(t.title ?? "")) === normalizedTarget
+        candidates.some(
+          (candidate) =>
+            normalizeRaidName(String(t.title ?? "")) === normalizeRaidName(candidate)
+        )
     );
 
     return task?.id ?? "";
@@ -1669,31 +1679,10 @@ export default function TodoTracker() {
     if (!tableId || !charId) return false;
 
     const table = localTableById.get(tableId);
-    const character = table?.characters.find((ch) => ch.id === charId);
-    if (!table || !character) return false;
+    if (!table || !table.characters.some((ch) => ch.id === charId)) return false;
 
     const baseName = canonicalRaidName(getRaidBaseNameForRemainLabel(raidName));
-    const isExtremeRaid = DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(baseName);
-    const comparableRaidName = isExtremeRaid
-      ? formatRemainRaidWithDiff(
-        baseName,
-        getCharIlvl(character),
-        weeklyCharKey(tableId, charId)
-      )
-      : raidName;
-    const requestedDiff = getRaidDiffFromLabel(raidName);
-    const comparableDiff = getRaidDiffFromLabel(comparableRaidName);
-
-    if (
-      isExtremeRaid &&
-      requestedDiff &&
-      comparableDiff &&
-      normalizeRaidName(requestedDiff) !== normalizeRaidName(comparableDiff)
-    ) {
-      return false;
-    }
-
-    const taskId = getLocalWeeklyRaidTaskId(isExtremeRaid ? baseName : raidName);
+    const taskId = getLocalWeeklyRaidTaskId(baseName);
     if (!taskId) return false;
 
     const cell = getCellByTableId(state, tableId, taskId, charId);
