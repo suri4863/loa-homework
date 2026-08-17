@@ -9432,13 +9432,6 @@ export default function TodoTracker() {
         if (!Number.isFinite(ilvl) || ilvl <= 0) continue;
 
         if (guardianTask) {
-          const guardianCell = getCellByTableId(state, table.id, guardianTask.id, ch.id);
-          const guardianDone =
-            guardianCell?.type === "CHECK"
-              ? !!guardianCell.checked
-              : guardianCell?.type === "COUNTER"
-                ? Number(guardianCell.count ?? 0) >= 1
-                : false;
           const reward = getGemRewardByIlvl(GUARDIAN_GEM_REWARDS, ilvl);
 
           if (reward) {
@@ -9452,7 +9445,7 @@ export default function TodoTracker() {
             if (reward.provisional) hasProvisionalReward = true;
           }
 
-          if (reward && !guardianDone) {
+          if (reward) {
             const restValue = Number(table.restGauges?.[ch.id]?.guardian ?? 0);
             const multiplier = restValue >= 20 ? 2 : 1;
             const gemLevel = getRewardGemLevel(reward);
@@ -13425,7 +13418,7 @@ body.pip-dark .pip-select option{
             </div>
 
             <div className="homeworkGemBreakdown">
-              <span>{gemIncomeRestedOnly ? "휴게 가디언" : "남은 가디언"} {displayedRemainingGuardianCount.toLocaleString()}개</span>
+              <span>{gemIncomeRestedOnly ? "휴게 가디언" : "전체 가디언"} {displayedRemainingGuardianCount.toLocaleString()}개</span>
               <span>남은 할모시 {homeworkGemIncome.remainingSandglassCount.toLocaleString()}개</span>
               <span>{gemIncomeWeeklyThreeRestMode ? "주 3회 휴식 가디언" : "주간 가디언"} {displayedWeeklyGuardianCount.toLocaleString()}개</span>
               <span>주간 할모시 {homeworkGemIncome.weeklySandglassCount.toLocaleString()}개</span>
@@ -13450,7 +13443,7 @@ body.pip-dark .pip-select option{
             {gemIncomeDetailsOpen && (
               <div className="homeworkGemDetails">
                 {homeworkGemIncome.rows.length === 0 ? (
-                  <div className="homeworkGemEmpty">남은 가디언/할의 모래시계 보석 수급이 없어.</div>
+                  <div className="homeworkGemEmpty">가디언/할의 모래시계 보석 수급 대상이 없어.</div>
                 ) : (
                   homeworkGemIncome.rows.map((row) => (
                     <div key={row.key} className="homeworkGemRow">
