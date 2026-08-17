@@ -33,6 +33,48 @@ const COMBAT_STORAGE_KEY = "loa-growth-combat-target:v1";
 const GOLD_CASH_RATE_STORAGE_KEY = "loa-growth-gold-cash-rate:v1";
 const ACCESSORY_PRICE_QUERY_VERSION = "buy-price-efficiency-candidates-v4";
 
+type ArmguardRefineRow = {
+  level: number;
+  successRate: number;
+  growthShards: number;
+  growthSilver: number;
+  tapShards: number;
+  destructionStones: number;
+  protectionStones: number;
+  leapstones: number;
+  fusion: number;
+  gold: number;
+  tapSilver: number;
+};
+
+const ARMGUARD_REFINE_ROWS: ArmguardRefineRow[] = [
+  { level: 1, successRate: 0.15, growthShards: 145000, growthSilver: 1450000, tapShards: 14500, destructionStones: 600, protectionStones: 1800, leapstones: 30, fusion: 22, gold: 5200, tapSilver: 80000 },
+  { level: 2, successRate: 0.15, growthShards: 145000, growthSilver: 1450000, tapShards: 15000, destructionStones: 620, protectionStones: 1860, leapstones: 31, fusion: 23, gold: 5400, tapSilver: 80000 },
+  { level: 3, successRate: 0.15, growthShards: 145000, growthSilver: 1450000, tapShards: 15630, destructionStones: 640, protectionStones: 1925, leapstones: 32, fusion: 24, gold: 5610, tapSilver: 80000 },
+  { level: 4, successRate: 0.15, growthShards: 145000, growthSilver: 1450000, tapShards: 16280, destructionStones: 660, protectionStones: 1990, leapstones: 33, fusion: 25, gold: 5830, tapSilver: 80000 },
+  { level: 5, successRate: 0.15, growthShards: 145000, growthSilver: 1450000, tapShards: 16960, destructionStones: 680, protectionStones: 2055, leapstones: 34, fusion: 26, gold: 6060, tapSilver: 80000 },
+  { level: 6, successRate: 0.10, growthShards: 148000, growthSilver: 1480000, tapShards: 17670, destructionStones: 700, protectionStones: 2125, leapstones: 36, fusion: 27, gold: 6300, tapSilver: 80000 },
+  { level: 7, successRate: 0.10, growthShards: 166000, growthSilver: 1660000, tapShards: 18410, destructionStones: 720, protectionStones: 2195, leapstones: 38, fusion: 28, gold: 6550, tapSilver: 88000 },
+  { level: 8, successRate: 0.10, growthShards: 166000, growthSilver: 1660000, tapShards: 19180, destructionStones: 745, protectionStones: 2270, leapstones: 40, fusion: 29, gold: 6810, tapSilver: 88000 },
+  { level: 9, successRate: 0.10, growthShards: 169000, growthSilver: 1690000, tapShards: 19980, destructionStones: 770, protectionStones: 2345, leapstones: 42, fusion: 30, gold: 7080, tapSilver: 88000 },
+  { level: 10, successRate: 0.10, growthShards: 204000, growthSilver: 2040000, tapShards: 20810, destructionStones: 795, protectionStones: 2425, leapstones: 44, fusion: 31, gold: 7360, tapSilver: 88000 },
+  { level: 11, successRate: 0.05, growthShards: 207000, growthSilver: 2070000, tapShards: 21680, destructionStones: 820, protectionStones: 2505, leapstones: 46, fusion: 32, gold: 7650, tapSilver: 88000 },
+  { level: 12, successRate: 0.05, growthShards: 227000, growthSilver: 2270000, tapShards: 22590, destructionStones: 845, protectionStones: 2590, leapstones: 48, fusion: 33, gold: 7950, tapSilver: 88000 },
+  { level: 13, successRate: 0.05, growthShards: 253000, growthSilver: 2530000, tapShards: 23530, destructionStones: 870, protectionStones: 2680, leapstones: 50, fusion: 34, gold: 8260, tapSilver: 88000 },
+  { level: 14, successRate: 0.05, growthShards: 275000, growthSilver: 2750000, tapShards: 24510, destructionStones: 900, protectionStones: 2770, leapstones: 53, fusion: 36, gold: 8590, tapSilver: 88000 },
+  { level: 15, successRate: 0.05, growthShards: 306000, growthSilver: 3060000, tapShards: 25530, destructionStones: 930, protectionStones: 2865, leapstones: 56, fusion: 38, gold: 8930, tapSilver: 88000 },
+  { level: 16, successRate: 0.03, growthShards: 328000, growthSilver: 3280000, tapShards: 26600, destructionStones: 960, protectionStones: 2965, leapstones: 59, fusion: 40, gold: 9280, tapSilver: 88000 },
+  { level: 17, successRate: 0.03, growthShards: 360000, growthSilver: 3600000, tapShards: 27710, destructionStones: 990, protectionStones: 3065, leapstones: 62, fusion: 42, gold: 9650, tapSilver: 104000 },
+  { level: 18, successRate: 0.03, growthShards: 388000, growthSilver: 3880000, tapShards: 28870, destructionStones: 1020, protectionStones: 3170, leapstones: 65, fusion: 44, gold: 10030, tapSilver: 104000 },
+  { level: 19, successRate: 0.03, growthShards: 420000, growthSilver: 4200000, tapShards: 30080, destructionStones: 1055, protectionStones: 3280, leapstones: 68, fusion: 46, gold: 10430, tapSilver: 104000 },
+  { level: 20, successRate: 0.03, growthShards: 447000, growthSilver: 4470000, tapShards: 31340, destructionStones: 1090, protectionStones: 3390, leapstones: 72, fusion: 48, gold: 10840, tapSilver: 144000 },
+  { level: 21, successRate: 0.015, growthShards: 480000, growthSilver: 4800000, tapShards: 32650, destructionStones: 1125, protectionStones: 3505, leapstones: 76, fusion: 50, gold: 11270, tapSilver: 144000 },
+  { level: 22, successRate: 0.015, growthShards: 513000, growthSilver: 5130000, tapShards: 34020, destructionStones: 1160, protectionStones: 3625, leapstones: 80, fusion: 53, gold: 11720, tapSilver: 192000 },
+  { level: 23, successRate: 0.015, growthShards: 541000, growthSilver: 5410000, tapShards: 35440, destructionStones: 1200, protectionStones: 3750, leapstones: 84, fusion: 56, gold: 12180, tapSilver: 192000 },
+  { level: 24, successRate: 0.015, growthShards: 574000, growthSilver: 5740000, tapShards: 36920, destructionStones: 1240, protectionStones: 3880, leapstones: 89, fusion: 59, gold: 12660, tapSilver: 240000 },
+  { level: 25, successRate: 0.015, growthShards: 607000, growthSilver: 6070000, tapShards: 38470, destructionStones: 1280, protectionStones: 4015, leapstones: 94, fusion: 62, gold: 13160, tapSilver: 240000 },
+];
+
 const SLOT_ORDER: EquipmentSlot[] = ["helmet", "shoulder", "chest", "pants", "gloves", "weapon"];
 
 const SLOT_NAMES: Record<EquipmentSlot, string> = {
@@ -108,6 +150,8 @@ const MATERIAL_LABELS: Array<[keyof MaterialInventory, string]> = [
   ["tradableLavaBreaths", "용암의 숨결(거래 가능)"],
   ["tailoringBooks", "재봉술"],
   ["metallurgyBooks", "야금술"],
+  ["agrisScales", "아그리스의 비늘"],
+  ["lightningHorns", "낙뢰의 뿔"],
   ["gold", "현재 골드"],
   ["boundGold", "현재 캐릭터 귀속골드"],
   ["silver", "현재 실링"],
@@ -185,6 +229,10 @@ const MATERIAL_FIELD_GROUPS: Array<Array<[keyof MaterialInventory, string]>> = [
   [
     ["enhancedUpheavalTailoringBook19", "강화 재봉술: 업화 [19-20]"],
     ["enhancedUpheavalMetallurgyBook19", "강화 야금술: 업화 [19-20]"],
+  ],
+  [
+    ["agrisScales", "아그리스의 비늘"],
+    ["lightningHorns", "낙뢰의 뿔"],
   ],
   [["graceFragments", "은총의 파편"]],
   [
@@ -341,6 +389,7 @@ type GemAuctionPriceResponse = {
     buyPrice: number;
   }>;
   warnings?: string[];
+  cache?: "fresh" | "stale";
   error?: string;
   detail?: string;
 };
@@ -392,6 +441,7 @@ type AccessoryAuctionPriceResponse = {
     options: string[];
   }>;
   warnings?: string[];
+  cache?: "fresh" | "stale";
   error?: string;
   detail?: string;
 };
@@ -416,6 +466,7 @@ type EngravingMarketPriceResponse = {
   >;
   missingNames?: string[];
   warnings?: string[];
+  cache?: "fresh" | "stale";
   error?: string;
   detail?: string;
 };
@@ -2351,6 +2402,44 @@ function formatGold(value: number) {
   return `${Math.round(value).toLocaleString()} G`;
 }
 
+function estimateArmguardPlan(currentLevel: number, targetLevel: number) {
+  const from = Math.max(0, Math.min(25, Math.floor(Number(currentLevel) || 0)));
+  const to = Math.max(from, Math.min(25, Math.floor(Number(targetLevel) || 0)));
+  const rows = ARMGUARD_REFINE_ROWS.filter((row) => row.level > from && row.level <= to);
+  const totals = rows.reduce(
+    (acc, row) => {
+      const expectedAttempts = row.successRate > 0 ? 1 / row.successRate : 0;
+      acc.expectedAttempts += expectedAttempts;
+      acc.shards += row.growthShards + row.tapShards * expectedAttempts;
+      acc.silver += row.growthSilver + row.tapSilver * expectedAttempts;
+      acc.destructionStones += row.destructionStones * expectedAttempts;
+      acc.protectionStones += row.protectionStones * expectedAttempts;
+      acc.leapstones += row.leapstones * expectedAttempts;
+      acc.fusion += row.fusion * expectedAttempts;
+      acc.gold += row.gold * expectedAttempts;
+      return acc;
+    },
+    {
+      expectedAttempts: 0,
+      shards: 0,
+      silver: 0,
+      destructionStones: 0,
+      protectionStones: 0,
+      leapstones: 0,
+      fusion: 0,
+      gold: 0,
+    }
+  );
+
+  const limitBreaks = [
+    from < 10 && to >= 10 ? "10단계: 사령의 잔영 200개 또는 죽음의 손 100개" : "",
+    from < 15 && to >= 15 ? "15단계: 사령의 잔영 240개 또는 죽음의 손 120개" : "",
+    from < 20 && to >= 20 ? "20단계: 죽음의 손 150개" : "",
+  ].filter(Boolean);
+
+  return { from, to, rows, totals, limitBreaks };
+}
+
 function formatCompactGold(value: number) {
   const rounded = Math.round(value);
   if (rounded === 0) return "0G";
@@ -2458,6 +2547,8 @@ function getRouteMaterialLines(step: DisplayRouteStep) {
     ["용암의 숨결", materials.lavaBreaths || 0],
     ["재봉술", materials.tailoringBooks || 0],
     ["야금술", materials.metallurgyBooks || 0],
+    ["아그리스의 비늘", materials.agrisScales || 0],
+    ["낙뢰의 뿔", materials.lightningHorns || 0],
   ];
   return rows.filter(([, value]) => Math.round(value) > 0);
 }
@@ -2551,6 +2642,8 @@ const ROUTE_MATERIAL_USAGE_FIELDS: Array<{
   { key: "upheavalMetallurgyBook19", label: "야금술 : 업화 [19-20]", singleInventoryKey: "upheavalMetallurgyBook19", singleInventoryLabel: "보유" },
   { key: "enhancedUpheavalTailoringBook19", label: "강화 재봉술 : 업화 [19-20]", singleInventoryKey: "enhancedUpheavalTailoringBook19", singleInventoryLabel: "보유" },
   { key: "enhancedUpheavalMetallurgyBook19", label: "강화 야금술 : 업화 [19-20]", singleInventoryKey: "enhancedUpheavalMetallurgyBook19", singleInventoryLabel: "보유" },
+  { key: "agrisScales", label: "아그리스의 비늘", singleInventoryKey: "agrisScales", singleInventoryLabel: "보유" },
+  { key: "lightningHorns", label: "낙뢰의 뿔", singleInventoryKey: "lightningHorns", singleInventoryLabel: "보유" },
 ];
 
 function formatCount(value: number) {
@@ -2670,6 +2763,13 @@ function inferRouteMaterials(step: DisplayRouteStep): RefiningRouteStep["expecte
       : isWeapon
         ? legacyWeaponRows[band]
         : legacyArmorRows[band];
+  const temperingMaterials =
+    step.materialFamily === "legacy"
+      ? {
+          agrisScales: step.fromLevel < 20 && step.toLevel >= 20 ? (isWeapon ? 60 : 24) : 0,
+          lightningHorns: step.fromLevel < 40 && step.toLevel >= 40 ? (isWeapon ? 120 : 48) : 0,
+        }
+      : {};
 
   if (step.materialFamily === "successor") {
     return {
@@ -2680,6 +2780,7 @@ function inferRouteMaterials(step: DisplayRouteStep): RefiningRouteStep["expecte
       superiorFusion: row.fusion * count,
       iceBreaths: isWeapon ? 0 : row.breath * count,
       lavaBreaths: isWeapon ? row.breath * count : 0,
+      ...temperingMaterials,
     };
   }
 
@@ -2691,6 +2792,7 @@ function inferRouteMaterials(step: DisplayRouteStep): RefiningRouteStep["expecte
     fusion: row.fusion * count,
     iceBreaths: isWeapon ? 0 : row.breath * count,
     lavaBreaths: isWeapon ? row.breath * count : 0,
+    ...temperingMaterials,
   };
 }
 
@@ -3359,6 +3461,8 @@ export default function GrowthPlannerPage() {
   const [combatPlanner, setCombatPlanner] = useState<CombatPlannerState>(() => loadCombatPlanner());
   const [resourceTab, setResourceTab] = useState<"materials" | "market">("materials");
   const [weeklyRewardTab, setWeeklyRewardTab] = useState<"gold" | "bonus">("gold");
+  const [armguardCurrentLevel, setArmguardCurrentLevel] = useState(0);
+  const [armguardTargetLevel, setArmguardTargetLevel] = useState(10);
   const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
   const [scanError, setScanError] = useState("");
   const [screenSharing, setScreenSharing] = useState(false);
@@ -3473,6 +3577,10 @@ export default function GrowthPlannerPage() {
   const selectedRouteUsageRows = useMemo(
     () => getSequentialRouteMaterialUsageRows(displayRouteSteps, Math.min(selectedRouteIndex, Math.max(0, displayRouteSteps.length - 1)), finalEstimateInput.materials),
     [displayRouteSteps, finalEstimateInput.materials, selectedRouteIndex]
+  );
+  const armguardPlan = useMemo(
+    () => estimateArmguardPlan(armguardCurrentLevel, armguardTargetLevel),
+    [armguardCurrentLevel, armguardTargetLevel]
   );
   const selectedRouteSupportGuides = useMemo(
     () => (selectedRouteStep ? getRouteSupportTimingGuides(selectedRouteStep, selectedRouteUsageRows, planner.market) : []),
@@ -4506,6 +4614,14 @@ export default function GrowthPlannerPage() {
         throw new Error("즉시구매가가 있는 악세 후보를 찾지 못했어. 품질 조건을 낮추거나 잠시 뒤 다시 눌러줘.");
       }
       setAccessoryPriceSummary(data);
+      const rateLimited = data.warnings?.some((message) => message.includes("LOSTARK_API_429"));
+      if (data.cache === "stale") {
+        setAccessoryPriceError("공식 API 호출 제한 때문에 최근 저장된 악세 시세를 대신 보여주고 있어. 1분 정도 뒤에 새로고침해줘.");
+      } else if (rateLimited) {
+        setAccessoryPriceError("일부 악세 검색이 공식 API 호출 제한에 걸렸어. 반영된 후보는 저장했고, 부족하면 1분 뒤 다시 눌러줘.");
+      } else if (data.cache === "fresh") {
+        setAccessoryPriceError("방금 조회한 악세 시세 캐시를 사용했어. 연타해도 API 요청은 줄어들게 해뒀어.");
+      }
       setCombatPlanner((prev) => ({
         ...prev,
         profile: {
@@ -6009,6 +6125,55 @@ export default function GrowthPlannerPage() {
               </div>
             ) : (
               <div className="growthEmpty">확정으로 먼저 진행할 스펙업이 없으면 추천 경로만으로 계산해.</div>
+            )}
+          </div>
+
+          <div className="armguardCalculatorCard">
+            <div>
+              <h3 className="growthCardTitle small">완갑 성장 계산기</h3>
+              <p className="growthHint">완갑은 아이템레벨에 포함되지 않아서 별도 계산으로 보여줘. 성공률 기준 기대 시도 횟수라 실제 비용은 편차가 있을 수 있어.</p>
+            </div>
+            <div className="growthFieldGrid armguardControls">
+              <label>
+                <span>현재 단계</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="25"
+                  value={armguardCurrentLevel}
+                  onChange={(event) => setArmguardCurrentLevel(Math.max(0, Math.min(25, Number(event.target.value) || 0)))}
+                />
+              </label>
+              <label>
+                <span>목표 단계</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="25"
+                  value={armguardTargetLevel}
+                  onChange={(event) => setArmguardTargetLevel(Math.max(0, Math.min(25, Number(event.target.value) || 0)))}
+                />
+              </label>
+            </div>
+            <div className="armguardSummaryGrid">
+              <div><span>기대 시도</span><strong>{armguardPlan.totals.expectedAttempts.toFixed(1)}회</strong></div>
+              <div><span>골드</span><strong>{formatGold(armguardPlan.totals.gold)}</strong></div>
+              <div><span>실링</span><strong>{Math.round(armguardPlan.totals.silver).toLocaleString()}</strong></div>
+              <div><span>운명의 파편</span><strong>{formatCount(armguardPlan.totals.shards)}개</strong></div>
+              <div><span>파괴석 결정</span><strong>{formatCount(armguardPlan.totals.destructionStones)}개</strong></div>
+              <div><span>수호석 결정</span><strong>{formatCount(armguardPlan.totals.protectionStones)}개</strong></div>
+              <div><span>돌파석</span><strong>{formatCount(armguardPlan.totals.leapstones)}개</strong></div>
+              <div><span>상급 융화</span><strong>{formatCount(armguardPlan.totals.fusion)}개</strong></div>
+            </div>
+            {armguardPlan.limitBreaks.length ? (
+              <div className="armguardLimitBox">
+                <strong>한계 해방 필요 재료</strong>
+                {armguardPlan.limitBreaks.map((line) => (
+                  <span key={line}>{line}</span>
+                ))}
+              </div>
+            ) : (
+              <div className="growthHint">선택 구간에 한계 해방 단계가 없어.</div>
             )}
           </div>
         </section>

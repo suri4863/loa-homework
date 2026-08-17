@@ -197,6 +197,57 @@
   padding-top: 12px;
 }
 
+.armguardCalculatorCard {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 12px;
+}
+
+.armguardControls {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.armguardSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.armguardSummaryGrid div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--soft);
+  padding: 9px 10px;
+}
+
+.armguardSummaryGrid strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.armguardLimitBox {
+  display: grid;
+  gap: 6px;
+  border: 1px solid rgba(96, 165, 250, 0.45);
+  border-radius: 12px;
+  background: rgba(96, 165, 250, 0.1);
+  padding: 10px 12px;
+}
+
+.armguardLimitBox strong {
+  color: var(--text);
+}
+
+.armguardLimitBox span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .routePanel {
   grid-column: 2;
   grid-row: 1 / span 2;
@@ -700,54 +751,73 @@
 .bonusRewardBreakdown {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  align-items: center;
+  gap: 8px;
 }
 
-.bonusRewardBreakdown span {
+.bonusRewardBreakdown > span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--soft);
   color: var(--text);
-  padding: 2px 7px;
+  padding: 5px 8px;
+  line-height: 1;
 }
 
 .bonusRewardPriceChip {
-  display: inline-flex;
+  display: inline-grid;
+  grid-template-columns: minmax(108px, max-content) auto;
   align-items: center;
-  gap: 6px;
+  column-gap: 8px;
 }
 
 .bonusRewardPriceChip b,
 .bonusRewardPriceChip em {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
   font-size: 11px;
   font-style: normal;
   font-weight: 800;
+  line-height: 1.15;
 }
 
 .bonusRewardPriceInput {
-  display: inline-flex;
+  display: inline-grid;
+  grid-template-columns: auto 84px;
   align-items: center;
-  gap: 5px;
+  column-gap: 6px;
+  min-height: 28px;
 }
 
+.bonusRewardBreakdown .bonusRewardPriceInput span,
 .bonusRewardPriceInput span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 0;
   background: transparent;
   padding: 0;
   color: var(--muted);
   font-size: 11px;
+  line-height: 1;
 }
 
 .bonusRewardPriceInput input {
-  width: 86px;
-  min-height: 26px;
+  width: 84px;
+  height: 28px;
+  min-height: 28px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--card);
   color: var(--text);
-  padding: 3px 7px;
+  padding: 0 8px;
   font: inherit;
   font-size: 12px;
+  line-height: 28px;
   text-align: right;
 }
 

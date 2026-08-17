@@ -448,6 +448,7 @@ export default function AccountPage() {
       "loa-weekly-raid-pick:v1:",
       "todoMemo:v1:",
       "loa-account-daily:v1:",
+      "loa-account-weekly:v1:",
       "loa-life-energy:v1:",
     ];
     const exactKeys = [

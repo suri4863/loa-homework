@@ -83,6 +83,8 @@ export type MaterialInventory = {
   upheavalMetallurgyBook19: number;
   enhancedUpheavalTailoringBook19: number;
   enhancedUpheavalMetallurgyBook19: number;
+  agrisScales: number;
+  lightningHorns: number;
   graceFragments: number;
   gold: number;
   boundGold: number;
@@ -179,6 +181,8 @@ export type MaterialNeedBreakdown = {
   upheavalMetallurgyBook19: number;
   enhancedUpheavalTailoringBook19: number;
   enhancedUpheavalMetallurgyBook19: number;
+  agrisScales: number;
+  lightningHorns: number;
 };
 
 export type RefiningRouteStep = {
@@ -313,6 +317,8 @@ function emptyNeeds(): MaterialNeedBreakdown {
     upheavalMetallurgyBook19: 0,
     enhancedUpheavalTailoringBook19: 0,
     enhancedUpheavalMetallurgyBook19: 0,
+    agrisScales: 0,
+    lightningHorns: 0,
   };
 }
 
@@ -333,6 +339,16 @@ function scaleMaterialNeeds(patch: MaterialNeedPatch, multiplier: number): Mater
     if (value > 0) scaled[key] = value;
   }
   return scaled;
+}
+
+function addAdvancedTemperingMaterials(patch: MaterialNeedPatch, piece: EquipmentPieceState, fromLevel: number, toLevel: number) {
+  if (fromLevel < 20 && toLevel >= 20) {
+    patch.agrisScales = (patch.agrisScales || 0) + (isWeapon(piece) ? 60 : 24);
+  }
+  if (fromLevel < 40 && toLevel >= 40) {
+    patch.lightningHorns = (patch.lightningHorns || 0) + (isWeapon(piece) ? 120 : 48);
+  }
+  return patch;
 }
 
 function materialFamilyForPiece(piece: EquipmentPieceState): MaterialFamily {
@@ -1151,7 +1167,12 @@ function createCandidate(
 
     if (best) {
       const bestReport = best.report;
-      const expectedMaterials = best.expectedMaterials;
+      const expectedMaterials = addAdvancedTemperingMaterials(
+        { ...best.expectedMaterials },
+        piece,
+        piece.advancedRefiningLevel,
+        piece.advancedRefiningLevel + 1
+      );
       const averageCost = best.score;
       const directGold = best.directGold;
       const levelGain = 1 / 6;
@@ -1225,6 +1246,14 @@ function createCandidate(
       supportName = support.name;
       supportWorthUsing = null;
     }
+  }
+  if (action === "advanced") {
+    expectedMaterials = addAdvancedTemperingMaterials(
+      { ...expectedMaterials },
+      piece,
+      piece.advancedRefiningLevel,
+      piece.advancedRefiningLevel + 1
+    );
   }
   const levelGain = action === "normal" ? 5 / 6 : 1 / 6;
   const notes = [
@@ -1622,6 +1651,8 @@ export function makeEmptyPlannerState(): GrowthPlannerState {
       upheavalMetallurgyBook19: 0,
       enhancedUpheavalTailoringBook19: 0,
       enhancedUpheavalMetallurgyBook19: 0,
+      agrisScales: 0,
+      lightningHorns: 0,
       graceFragments: 0,
       gold: 0,
       boundGold: 0,
@@ -1793,6 +1824,8 @@ export function estimateGrowthPlan(input: GrowthPlannerState): GrowthEstimate {
       upheavalMetallurgyBook19: round(requiredMaterials.upheavalMetallurgyBook19),
       enhancedUpheavalTailoringBook19: round(requiredMaterials.enhancedUpheavalTailoringBook19),
       enhancedUpheavalMetallurgyBook19: round(requiredMaterials.enhancedUpheavalMetallurgyBook19),
+      agrisScales: round(requiredMaterials.agrisScales),
+      lightningHorns: round(requiredMaterials.lightningHorns),
     },
     routeSteps: route.steps,
     additionalWeeklyGold,

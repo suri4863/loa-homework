@@ -73,6 +73,26 @@ function getAdditionalPrice(
   );
 }
 
+function applyIncreasedAncestorTurnGain(result: {
+  paidNormalTry: number;
+  freeNormalTry: number;
+  bonusTry: number;
+  enhancedBonusTry: number;
+}) {
+  const bonusIncrease = result.bonusTry + result.enhancedBonusTry;
+  let remainingNormalReduction = bonusIncrease;
+  const paidNormalTry = Math.max(0, result.paidNormalTry - remainingNormalReduction);
+  remainingNormalReduction = Math.max(0, remainingNormalReduction - result.paidNormalTry);
+  const freeNormalTry = Math.max(0, result.freeNormalTry - remainingNormalReduction);
+
+  return {
+    paidNormalTry,
+    freeNormalTry,
+    bonusTry: result.bonusTry * 2,
+    enhancedBonusTry: result.enhancedBonusTry * 2,
+  };
+}
+
 export function getReport(
   refineTable: AdvancedRefineTable | null | undefined,
   priceTable: Record<string, number>
@@ -158,11 +178,12 @@ export function getReport(
                 );
               }
 
+              const adjustedData = applyIncreasedAncestorTurnGain(data);
               const expectedTryCount =
-                data.paidNormalTry +
-                data.freeNormalTry +
-                data.bonusTry +
-                data.enhancedBonusTry;
+                adjustedData.paidNormalTry +
+                adjustedData.freeNormalTry +
+                adjustedData.bonusTry +
+                adjustedData.enhancedBonusTry;
 
               const expectedMaterials = [
                 ...Object.entries(refineTable.amount).map(([name, amount]) => ({
@@ -179,9 +200,9 @@ export function getReport(
                   return {
                     name: x?.name ?? "",
                     amount:
-                      normalAmount * (data.freeNormalTry + data.paidNormalTry) +
-                      bonusAmount * data.bonusTry +
-                      enhancedBonusAmount * data.enhancedBonusTry,
+                      normalAmount * (adjustedData.freeNormalTry + adjustedData.paidNormalTry) +
+                      bonusAmount * adjustedData.bonusTry +
+                      enhancedBonusAmount * adjustedData.enhancedBonusTry,
                   };
                 }),
                 ...(book
@@ -189,19 +210,19 @@ export function getReport(
                       {
                         name: book.name,
                         amount:
-                          normalBook * (data.freeNormalTry + data.paidNormalTry) +
-                          bonusBook * data.bonusTry +
-                          enhancedBonusBook * data.enhancedBonusTry,
+                          normalBook * (adjustedData.freeNormalTry + adjustedData.paidNormalTry) +
+                          bonusBook * adjustedData.bonusTry +
+                          enhancedBonusBook * adjustedData.enhancedBonusTry,
                       },
                     ]
                   : []),
               ].filter((material) => material.name && Number.isFinite(material.amount));
 
               const expectedPrice =
-                paidNormalPrice * data.paidNormalTry +
-                freeNormalPrice * data.freeNormalTry +
-                bonusPrice * data.bonusTry +
-                enhancedBonusPrice * data.enhancedBonusTry;
+                paidNormalPrice * adjustedData.paidNormalTry +
+                freeNormalPrice * adjustedData.freeNormalTry +
+                bonusPrice * adjustedData.bonusTry +
+                enhancedBonusPrice * adjustedData.enhancedBonusTry;
 
               result.push({
                 hasEnhancedBonus: refineTable.hasEnhancedBonus,
@@ -219,7 +240,7 @@ export function getReport(
                   ...(enhancedBonusBook ? [book!.name] : [])
                 ],
 
-                ...data,
+                ...adjustedData,
 
                 paidNormalPrice,
                 freeNormalPrice,

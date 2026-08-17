@@ -49,6 +49,8 @@ import {
 
 // ✅ 계정 요일별 콘텐츠 (06:00 리셋 기준)
 const getAccountDailyKey = (tableId: string) => `loa-account-daily:v1:${tableId}`;
+const getAccountWeeklyKey = (tableId: string) => `loa-account-weekly:v1:${tableId}`;
+const KONI_WEEKLY_MAX = 3;
 
 
 // 0=일,1=월,...6=토
@@ -64,6 +66,140 @@ const WEEKLY_ACCOUNT_CONTENT: Record<number, { id: string; label: string }[]> = 
   5: [{ id: "FBOSS", label: "필보" }],
   6: [{ id: "CAGE", label: "카게" }],
 };
+
+type GemDropReward = {
+  minIlvl: number;
+  label: string;
+  levelOneGems: number;
+  gemLevel?: number;
+  gemCount?: number;
+  provisional?: boolean;
+  heroGems?: number;
+  rareGems?: number;
+  uncommonGems?: number;
+};
+
+const GUARDIAN_GEM_REWARDS: GemDropReward[] = [
+  { minIlvl: 1640, label: "아게오로스", levelOneGems: 2.8 },
+  { minIlvl: 1680, label: "스콜라키아", levelOneGems: 4.1 },
+  { minIlvl: 1700, label: "드랙탈라스", levelOneGems: 4.7, heroGems: 0.075, rareGems: 0.225, uncommonGems: 1.2 },
+  { minIlvl: 1720, label: "크라티오스", levelOneGems: 6.3, heroGems: 0.175, rareGems: 0.525, uncommonGems: 2.8 },
+  { minIlvl: 1730, label: "가디언의 잔영 I", levelOneGems: 10.7, heroGems: 0.15, rareGems: 0.5, uncommonGems: 3 },
+  { minIlvl: 1750, label: "가디언의 잔영 II", levelOneGems: 11 },
+  { minIlvl: 1770, label: "가디언의 잔영 III", levelOneGems: 16.5, gemLevel: 2, gemCount: 5.5 },
+];
+
+const SANDGLASS_GEM_REWARDS: GemDropReward[] = [
+  { minIlvl: 1730, label: "모래시계 1", levelOneGems: 45, gemLevel: 2, gemCount: 15 },
+  { minIlvl: 1750, label: "모래시계 2", levelOneGems: 54, gemLevel: 3, gemCount: 6 },
+  { minIlvl: 1770, label: "모래시계 3", levelOneGems: 63, gemLevel: 3, gemCount: 7 },
+];
+
+function getGemRewardByIlvl(rewards: GemDropReward[], ilvl: number) {
+  if (!Number.isFinite(ilvl)) return null;
+  return [...rewards].reverse().find((reward) => ilvl >= reward.minIlvl) ?? null;
+}
+
+function formatGemCount(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "0";
+  const rounded = Math.round(value * 10) / 10;
+  return Number.isInteger(rounded) ? rounded.toLocaleString() : rounded.toLocaleString(undefined, { maximumFractionDigits: 1 });
+}
+
+function composeGemLevels(levelOneGems: number, maxLevel = 10) {
+  const wholeGems = Math.max(0, Math.floor(Number.isFinite(levelOneGems) ? levelOneGems : 0));
+  const result: Array<{ level: number; count: number }> = [];
+  let remaining = wholeGems;
+
+  for (let level = maxLevel; level >= 1; level -= 1) {
+    const unit = Math.pow(3, level - 1);
+    const count = Math.floor(remaining / unit);
+    if (count > 0) {
+      result.push({ level, count });
+      remaining -= count * unit;
+    }
+  }
+
+  return result;
+}
+
+function formatGemComposition(levelOneGems: number) {
+  const rows = composeGemLevels(levelOneGems);
+  if (rows.length === 0) return "0개";
+  return rows.map((row) => `${row.level}레벨 x${row.count}`).join(", ");
+}
+
+function getRewardGemLevel(reward: GemDropReward) {
+  return Math.max(1, Math.floor(Number(reward.gemLevel ?? 1)));
+}
+
+function getRewardGemCount(reward: GemDropReward) {
+  return Number.isFinite(Number(reward.gemCount)) ? Number(reward.gemCount) : reward.levelOneGems / Math.pow(3, getRewardGemLevel(reward) - 1);
+}
+
+function formatGemLevelCount(level: number, count: number) {
+  return `${level}레벨 보석 ${formatGemCount(count)}개`;
+}
+
+function formatGemLevelComposition(items: Array<{ level: number; count: number }>) {
+  const byLevel = new Map<number, number>();
+  for (const item of items) {
+    if (!Number.isFinite(item.count) || item.count <= 0) continue;
+    byLevel.set(item.level, (byLevel.get(item.level) ?? 0) + item.count);
+  }
+
+  const rows = Array.from(byLevel.entries())
+    .sort(([a], [b]) => b - a)
+    .map(([level, count]) => `${level}레벨 x${formatGemCount(count)}`);
+
+  return rows.length ? rows.join(", ") : "0개";
+}
+
+function getWeeklyGuardianRewardMultiplier(restValue: number) {
+  const clampedRest = Math.max(0, Math.min(100, Number.isFinite(restValue) ? restValue : 0));
+  const restedRuns = Math.min(5, Math.floor(clampedRest / 20));
+  return 7 + restedRuns;
+}
+
+function getWeeklyGuardianThreeRestMultiplier(restValue: number) {
+  const startRest = Math.max(0, Math.min(100, Number.isFinite(restValue) ? restValue : 0));
+  let best = 0;
+
+  function walk(day: number, runsLeft: number, rest: number, multiplier: number) {
+    if (day >= 7) {
+      if (runsLeft === 0) best = Math.max(best, multiplier);
+      return;
+    }
+    if (7 - day < runsLeft) return;
+
+    if (runsLeft > 0) {
+      const rested = rest >= 20;
+      walk(day + 1, runsLeft - 1, rested ? rest - 20 : rest, multiplier + (rested ? 2 : 1));
+    }
+
+    walk(day + 1, runsLeft, Math.min(100, rest + 10), multiplier);
+  }
+
+  walk(0, 3, startRest, 0);
+  return best;
+}
+
+function parseGemMarketInput(value: string) {
+  const parsed = Number(String(value ?? "").replace(/,/g, "").replace(/[^\d.]/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getGemMarketValue(levelOneGems: number, baseLevel: number, baseGold: number) {
+  if (!Number.isFinite(levelOneGems) || levelOneGems <= 0) return 0;
+  if (!Number.isFinite(baseLevel) || baseLevel <= 0) return 0;
+  if (!Number.isFinite(baseGold) || baseGold <= 0) return 0;
+  return levelOneGems * (baseGold / Math.pow(3, baseLevel - 1));
+}
+
+function formatGoldValue(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "0 G";
+  return `${Math.round(value).toLocaleString()} G`;
+}
 
 
 function pad2(n: number) {
@@ -165,6 +301,10 @@ function isAzenaEndingSoon(expiresAt?: string | null) {
   const remain = getAzenaRemainingMs(expiresAt);
   if (remain == null) return false;
   return remain > 0 && remain <= AZENA_WARNING_MS;
+}
+
+function isHomeworkExcluded(ch: Pick<Character, "homeworkExcluded"> | null | undefined) {
+  return Boolean(ch?.homeworkExcluded);
 }
 
 
@@ -293,14 +433,15 @@ export default function TodoTracker() {
   //  친구/공유 (컴포넌트 스코프)
   // =========================
   const [raidLeftView, setRaidLeftView] = useState<"ME" | "FRIEND">("ME");
+  const [raidLeftShowExcluded, setRaidLeftShowExcluded] = useState(false);
   const [selectedFriendCode, setSelectedFriendCode] = useState<string>("");
   const [friendSnapshots, setFriendSnapshots] = useState<Record<string, any>>({});
   const [friendRaidPlans, setFriendRaidPlans] = useState<Record<string, any>>({});
 
   //  수동 깐부 조합 플래너
-  const [kkanbuLevelMin, setKkanbuLevelMin] = useState<string>("1700");
+  const [kkanbuLevelMin, setKkanbuLevelMin] = useState<string>("1720");
   const [kkanbuLevelMax, setKkanbuLevelMax] = useState<string>("1800");
-  const [kkanbuAvgPowerTarget, setKkanbuAvgPowerTarget] = useState<string>("3500");
+  const [kkanbuAvgPowerTarget, setKkanbuAvgPowerTarget] = useState<string>("4000");
 
   type ManualKkanbuPair = {
     myKey: string;
@@ -332,7 +473,7 @@ export default function TodoTracker() {
     Record<string, string[]>
   >({});
   const [recommendedSchedulePreferredDays, setRecommendedSchedulePreferredDays] = useState<WeeklyScheduleDay[]>([]);
-  const [recommendedScheduleMaxPerDay, setRecommendedScheduleMaxPerDay] = useState("6");
+  const [recommendedScheduleMaxPerDay, setRecommendedScheduleMaxPerDay] = useState("5");
   const [scheduleLevelFilterOpen, setScheduleLevelFilterOpen] = useState(false);
   const [scheduleLevelHighlightRanges, setScheduleLevelHighlightRanges] = useState<string[]>([]);
   const [scheduleLoading, setScheduleLoading] = useState(false);
@@ -2321,6 +2462,8 @@ export default function TodoTracker() {
     item: SharedWeeklyScheduleItem,
     raidName: string
   ) {
+    if (getWeeklyScheduleTimeState(schedule) !== "CURRENT") return false;
+
     // 로컬 캐릭터는 저장된 공유 완료값보다 현재 체크박스 상태를 우선한다.
     return getLocalScheduleCharKeysByItem(schedule, item).some((charKey) =>
       isLocalScheduleCharRaidCleared(charKey, raidName)
@@ -2365,10 +2508,17 @@ export default function TodoTracker() {
 
   function formatSharedScheduleRaidName(raidName: string, diff: DiffName) {
     const canonical = canonicalRaidName(raidName);
-    if (canonical === "4막") return diff === "하드" ? "4하" : "4노";
-    if (canonical === "종막") return diff === "하드" ? "종하" : "종노";
+    if (canonical === "4막") {
+      if (diff === "싱글") return "4싱글";
+      return diff === "하드" ? "4하" : "4노";
+    }
+    if (canonical === "종막") {
+      if (diff === "싱글") return "종싱글";
+      return diff === "하드" ? "종하" : "종노";
+    }
     if (canonical === "세르카") {
       if (diff === "나이트메어") return "세르카 나메";
+      if (diff === "매칭") return "세르카 매칭";
       return diff === "하드" ? "세하" : "세노";
     }
     if (canonical === "지평의 성당") return `성당 ${diff}`;
@@ -2759,11 +2909,13 @@ export default function TodoTracker() {
   }
 
   function isLevelInScheduleRange(level: number, range: string) {
-    if (range === "UNDER_1700") return level < 1710;
-    if (range === "1750_PLUS") return level >= 1750;
+    if (range === "UNDER_1720") return level < 1720;
+    if (range === "1720") return level >= 1720 && level < 1730;
+    if (range === "1730") return level >= 1730 && level < 1750;
+    if (range === "1750") return level >= 1750 && level < 1770;
+    if (range === "1770_PLUS") return level >= 1770;
 
-    const start = Number(range);
-    return Number.isFinite(start) && level >= start && level < start + 10;
+    return false;
   }
 
   function isScheduleItemMatchingLevelRanges(item: SharedWeeklyScheduleItem, ranges: string[]) {
@@ -3967,7 +4119,7 @@ export default function TodoTracker() {
       String(name ?? "")
         .replace(/\s+/g, " ")
         .trim()
-        .replace(/\s*(노말|하드|나이트메어|1단계|2단계|3단계)\s*$/g, "");
+        .replace(/\s*(노말|싱글|매칭|하드|나이트메어|1단계|2단계|3단계)\s*$/g, "");
 
     const normalizeRaidFullKey = (name: string) =>
       String(name ?? "").replace(/\s+/g, "").trim().toLowerCase();
@@ -7197,11 +7349,10 @@ export default function TodoTracker() {
               {scheduleLevelFilterOpen && (
                 <div className="weeklyScheduleLevelFilters">
                   {[
-                    { id: "UNDER_1700", label: "1700이하" },
-                    { id: "1710", label: "1710" },
                     { id: "1720", label: "1720" },
                     { id: "1730", label: "1730" },
-                    { id: "1750_PLUS", label: "1750+" },
+                    { id: "1750", label: "1750" },
+                    { id: "1770_PLUS", label: "1770+" },
                   ].map((option) => (
                     <label key={option.id} className="weeklyScheduleLevelFilter">
                       <input
@@ -8310,7 +8461,9 @@ export default function TodoTracker() {
 
               <div className="recommendedScheduleBody">
                 <div className="manualKkanbuHint">
-                  완료된 일정은 현재 요일에 고정하고, 남은 레이드만 기준으로 추천 배치해.
+                  {schedulePlanningMode === "NEXT_RESET"
+                    ? "다음 주 초기화 기준에서는 현재 완료 체크를 무시하고, 모든 배정 일정을 남은 일정으로 추천 배치해."
+                    : "완료된 일정은 현재 요일에 고정하고, 남은 레이드만 기준으로 추천 배치해."}
                 </div>
                 <div className="recommendedScheduleField">
                   <div className="manualKkanbuLabel">제외하는 요일</div>
@@ -8363,10 +8516,10 @@ export default function TodoTracker() {
                             }`}
                           >
                             {[
-                              { id: "1710", label: "1710" },
                               { id: "1720", label: "1720" },
                               { id: "1730", label: "1730" },
-                              { id: "1750_PLUS", label: "1750+" },
+                              { id: "1750", label: "1750" },
+                              { id: "1770_PLUS", label: "1770+" },
                             ].map((option) => (
                               <label key={option.id} className="recommendedPreferredRange">
                                 <input
@@ -8395,7 +8548,7 @@ export default function TodoTracker() {
                     setRecommendedScheduleExcludedDays([WEEK_DAYS[1], WEEK_DAYS[6]]);
                     setRecommendedSchedulePreferredDayRanges({});
                     setRecommendedSchedulePreferredDays([]);
-                    setRecommendedScheduleMaxPerDay("6");
+                    setRecommendedScheduleMaxPerDay("5");
                   }}
                 >
                   기본값
@@ -8902,9 +9055,9 @@ export default function TodoTracker() {
     setSelectedFriendCode(testCode);
     setRaidLeftView("FRIEND");
     setFriendsDockOpen(true);
-    setKkanbuLevelMin("1700");
+    setKkanbuLevelMin("1720");
     setKkanbuLevelMax("1800");
-    setKkanbuAvgPowerTarget("3000");
+    setKkanbuAvgPowerTarget("4000");
   }
 
   useEffect(() => {
@@ -8959,13 +9112,46 @@ export default function TodoTracker() {
     tableName: string;
     charId?: string;
     charName?: string;
+    homeworkExcluded?: boolean;
     tasks: TodayMustDoTaskEntry[];
   };
 
   // ✅ 계정 콘텐츠 체크(카게/필보): tableId별로 저장/로드 (06:00 리셋 기준)
   const [accountChecksByTable, setAccountChecksByTable] = useState<Record<string, Record<string, boolean>>>({});
+  const [accountWeeklyByTable, setAccountWeeklyByTable] = useState<Record<string, { koniCount: number }>>({});
   const [todayMustDoOpen, setTodayMustDoOpen] = useState(false);
   const [weeklyMustDoOpen, setWeeklyMustDoOpen] = useState(false);
+  const [gemIncomeOpen, setGemIncomeOpen] = useState(false);
+  const [gemIncomeDetailsOpen, setGemIncomeDetailsOpen] = useState(false);
+  const [gemIncomeVisible, setGemIncomeVisible] = useState(() => {
+    try {
+      const saved = localStorage.getItem("loa-homework-gem-placement:v1");
+      return saved !== "HIDDEN";
+    } catch {
+      return true;
+    }
+  });
+  const [gemMarketLevel, setGemMarketLevel] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("loa-homework-gem-market:v1") ?? "{}");
+      return String(saved.level ?? "3");
+    } catch {
+      return "3";
+    }
+  });
+  const [gemMarketGold, setGemMarketGold] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("loa-homework-gem-market:v1") ?? "{}");
+      return String(saved.gold ?? "");
+    } catch {
+      return "";
+    }
+  });
+  const [todayMustDoShowExcluded, setTodayMustDoShowExcluded] = useState(false);
+  const [weeklyMustDoShowExcluded, setWeeklyMustDoShowExcluded] = useState(false);
+  const [gemIncomeIncludeExcluded, setGemIncomeIncludeExcluded] = useState(false);
+  const [gemIncomeRestedOnly, setGemIncomeRestedOnly] = useState(false);
+  const [gemIncomeWeeklyThreeRestMode, setGemIncomeWeeklyThreeRestMode] = useState(false);
 
 
   const [todayMustDoSettings, setTodayMustDoSettings] = useState<TodayMustDoSettings>(() => {
@@ -9004,6 +9190,25 @@ export default function TodoTracker() {
     }
   }, [weeklyMustDoSettings]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "loa-homework-gem-market:v1",
+        JSON.stringify({ level: gemMarketLevel, gold: gemMarketGold })
+      );
+    } catch {
+      // ignore
+    }
+  }, [gemMarketLevel, gemMarketGold]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("loa-homework-gem-placement:v1", gemIncomeVisible ? "COMMON" : "HIDDEN");
+    } catch {
+      // ignore
+    }
+  }, [gemIncomeVisible]);
+
   type WeeklyMustDoTaskEntry = {
     label: string;
     reasons: string[];
@@ -9015,7 +9220,49 @@ export default function TodoTracker() {
     tableName: string;
     charId: string;
     charName: string;
+    homeworkExcluded?: boolean;
     tasks: WeeklyMustDoTaskEntry[];
+  };
+
+  type HomeworkGemIncomeRow = {
+    key: string;
+    tableName: string;
+    charName: string;
+    source: "guardian" | "sandglass";
+    sourceLabel: string;
+    rewardLabel: string;
+    ilvl: number;
+    levelOneGems: number;
+    gemLevel: number;
+    gemCount: number;
+    multiplier: number;
+    restValue?: number;
+    weeklyLevelOneGems: number;
+    provisional?: boolean;
+    homeworkExcluded?: boolean;
+  };
+
+  type HomeworkGemIncomeSummary = {
+    remainingLevelOneGems: number;
+    weeklyLevelOneGems: number;
+    remainingGuardianLevelOneGems: number;
+    remainingSandglassLevelOneGems: number;
+    weeklyGuardianLevelOneGems: number;
+    weeklyThreeRestGuardianLevelOneGems: number;
+    weeklySandglassLevelOneGems: number;
+    remainingRestedGuardianLevelOneGems: number;
+    remainingGuardianCount: number;
+    remainingRestedGuardianCount: number;
+    remainingSandglassCount: number;
+    weeklyGuardianCount: number;
+    weeklyThreeRestGuardianCount: number;
+    weeklySandglassCount: number;
+    hasProvisionalReward: boolean;
+    remainingSandglassGemText: string;
+    weeklySandglassGemText: string;
+    guardianRows: HomeworkGemIncomeRow[];
+    sandglassRows: HomeworkGemIncomeRow[];
+    rows: HomeworkGemIncomeRow[];
   };
 
   const TASK_MIN_ILVL: Record<string, number> = {
@@ -9068,6 +9315,20 @@ export default function TodoTracker() {
     }
   };
 
+  const homeworkExcludedCharacters = useMemo(() => {
+    return state.tables.flatMap((table) =>
+      table.characters
+        .filter((ch) => isHomeworkExcluded(ch))
+        .map((ch) => ({
+          key: `${table.id}:${ch.id}`,
+          tableId: table.id,
+          tableName: table.name ?? "표",
+          charId: ch.id,
+          charName: ch.name,
+        }))
+    );
+  }, [state.tables]);
+
   const weeklyMustDoItems = useMemo<WeeklyMustDoItem[]>(() => {
     const result: WeeklyMustDoItem[] = [];
 
@@ -9096,6 +9357,9 @@ export default function TodoTracker() {
 
     for (const table of state.tables) {
       for (const ch of table.characters) {
+        const homeworkExcluded = isHomeworkExcluded(ch);
+        if (homeworkExcluded && !weeklyMustDoShowExcluded) continue;
+
         const tasks: WeeklyMustDoTaskEntry[] = [];
         const ilvl = getCharIlvl(ch as any);
 
@@ -9114,7 +9378,11 @@ export default function TodoTracker() {
           if (!checked) {
             tasks.push({
               label: target.title,
-              reasons: [target.reason],
+              reasons: [
+                target.title === "할의 모래시계" && ilvl >= 1770
+                  ? "제3단계 보상 구간"
+                  : target.reason,
+              ],
             });
           }
         }
@@ -9126,6 +9394,7 @@ export default function TodoTracker() {
             tableName: table.name ?? "표",
             charId: ch.id,
             charName: ch.name,
+            homeworkExcluded,
             tasks,
           });
         }
@@ -9133,7 +9402,195 @@ export default function TodoTracker() {
     }
 
     return result;
-  }, [state, weeklyMustDoSettings]);
+  }, [state, weeklyMustDoSettings, weeklyMustDoShowExcluded]);
+
+  const homeworkGemIncome = useMemo<HomeworkGemIncomeSummary>(() => {
+    const guardianTask = state.tasks.find(
+      (t) => t.period === "DAILY" && (t.title ?? "").trim() === "가디언 토벌"
+    );
+    const sandglassTask = state.tasks.find(
+      (t) => t.period === "WEEKLY" && (t.title ?? "").trim() === "할의 모래시계"
+    );
+
+    const guardianRows: HomeworkGemIncomeRow[] = [];
+    const sandglassRows: HomeworkGemIncomeRow[] = [];
+    let weeklyGuardianLevelOneGems = 0;
+    let weeklyThreeRestGuardianLevelOneGems = 0;
+    let weeklySandglassLevelOneGems = 0;
+    let weeklyGuardianCount = 0;
+    let weeklyThreeRestGuardianCount = 0;
+    let weeklySandglassCount = 0;
+    let hasProvisionalReward = false;
+    const weeklySandglassGemItems: Array<{ level: number; count: number }> = [];
+
+    for (const table of state.tables) {
+      for (const ch of table.characters as any[]) {
+        const homeworkExcluded = isHomeworkExcluded(ch);
+        if (homeworkExcluded && !gemIncomeIncludeExcluded) continue;
+
+        const ilvl = getCharIlvl(ch);
+        if (!Number.isFinite(ilvl) || ilvl <= 0) continue;
+
+        if (guardianTask) {
+          const guardianCell = getCellByTableId(state, table.id, guardianTask.id, ch.id);
+          const guardianDone =
+            guardianCell?.type === "CHECK"
+              ? !!guardianCell.checked
+              : guardianCell?.type === "COUNTER"
+                ? Number(guardianCell.count ?? 0) >= 1
+                : false;
+          const reward = getGemRewardByIlvl(GUARDIAN_GEM_REWARDS, ilvl);
+
+          if (reward) {
+            const currentGuardianRest = Number(table.restGauges?.[ch.id]?.guardian ?? 0);
+            const weeklyMultiplier = getWeeklyGuardianRewardMultiplier(currentGuardianRest);
+            const weeklyThreeRestMultiplier = getWeeklyGuardianThreeRestMultiplier(currentGuardianRest);
+            weeklyGuardianLevelOneGems += reward.levelOneGems * weeklyMultiplier;
+            weeklyThreeRestGuardianLevelOneGems += reward.levelOneGems * weeklyThreeRestMultiplier;
+            weeklyGuardianCount += 7;
+            weeklyThreeRestGuardianCount += 3;
+            if (reward.provisional) hasProvisionalReward = true;
+          }
+
+          if (reward && !guardianDone) {
+            const restValue = Number(table.restGauges?.[ch.id]?.guardian ?? 0);
+            const multiplier = restValue >= 20 ? 2 : 1;
+            const gemLevel = getRewardGemLevel(reward);
+            const gemCount = getRewardGemCount(reward) * multiplier;
+            guardianRows.push({
+              key: `${table.id}:${ch.id}:guardian`,
+              tableName: table.name ?? "표",
+              charName: ch.name,
+              source: "guardian",
+              sourceLabel: "가디언 토벌",
+              rewardLabel: reward.label,
+              ilvl,
+              levelOneGems: reward.levelOneGems * multiplier,
+              gemLevel,
+              gemCount,
+              multiplier,
+              restValue,
+              weeklyLevelOneGems: reward.levelOneGems * getWeeklyGuardianRewardMultiplier(restValue),
+              provisional: reward.provisional,
+              homeworkExcluded,
+            });
+          }
+        }
+
+        const sandglassReward = getGemRewardByIlvl(SANDGLASS_GEM_REWARDS, ilvl);
+        if (sandglassReward) {
+          weeklySandglassLevelOneGems += sandglassReward.levelOneGems;
+          weeklySandglassCount += 1;
+          weeklySandglassGemItems.push({
+            level: getRewardGemLevel(sandglassReward),
+            count: getRewardGemCount(sandglassReward),
+          });
+          if (sandglassReward.provisional) hasProvisionalReward = true;
+        }
+
+        if (sandglassTask) {
+          const sandglassCell = getCellByTableId(state, table.id, sandglassTask.id, ch.id);
+          const sandglassDone = !!(sandglassCell && sandglassCell.type === "CHECK" && sandglassCell.checked);
+          const reward = sandglassReward;
+
+          if (reward && !sandglassDone) {
+            const gemLevel = getRewardGemLevel(reward);
+            const gemCount = getRewardGemCount(reward);
+            sandglassRows.push({
+              key: `${table.id}:${ch.id}:sandglass`,
+              tableName: table.name ?? "표",
+              charName: ch.name,
+              source: "sandglass",
+              sourceLabel: "할의 모래시계",
+              rewardLabel: reward.label,
+              ilvl,
+              levelOneGems: reward.levelOneGems,
+              gemLevel,
+              gemCount,
+              multiplier: 1,
+              weeklyLevelOneGems: reward.levelOneGems,
+              provisional: reward.provisional,
+              homeworkExcluded,
+            });
+          }
+        }
+      }
+    }
+
+    const rows = [...guardianRows, ...sandglassRows];
+    const remainingLevelOneGems = rows.reduce((sum, row) => sum + row.levelOneGems, 0);
+    const remainingGuardianLevelOneGems = guardianRows.reduce((sum, row) => sum + row.levelOneGems, 0);
+    const remainingRestedGuardianRows = guardianRows.filter((row) => Number(row.restValue ?? 0) >= 20);
+    const remainingRestedGuardianLevelOneGems = remainingRestedGuardianRows.reduce((sum, row) => sum + row.levelOneGems, 0);
+    const remainingSandglassLevelOneGems = sandglassRows.reduce((sum, row) => sum + row.levelOneGems, 0);
+    const weeklyLevelOneGems = weeklyGuardianLevelOneGems + weeklySandglassLevelOneGems;
+    const remainingGuardianCount = guardianRows.length;
+    const remainingRestedGuardianCount = remainingRestedGuardianRows.length;
+    const remainingSandglassCount = sandglassRows.length;
+    const remainingSandglassGemText = formatGemLevelComposition(
+      sandglassRows.map((row) => ({ level: row.gemLevel, count: row.gemCount }))
+    );
+    const weeklySandglassGemText = formatGemLevelComposition(weeklySandglassGemItems);
+
+    return {
+      remainingLevelOneGems,
+      weeklyLevelOneGems,
+      remainingGuardianLevelOneGems,
+      remainingSandglassLevelOneGems,
+      weeklyGuardianLevelOneGems,
+      weeklyThreeRestGuardianLevelOneGems,
+      weeklySandglassLevelOneGems,
+      remainingRestedGuardianLevelOneGems,
+      remainingGuardianCount,
+      remainingRestedGuardianCount,
+      remainingSandglassCount,
+      weeklyGuardianCount,
+      weeklyThreeRestGuardianCount,
+      weeklySandglassCount,
+      hasProvisionalReward,
+      remainingSandglassGemText,
+      weeklySandglassGemText,
+      guardianRows,
+      sandglassRows,
+      rows,
+    };
+  }, [state, gemIncomeIncludeExcluded]);
+
+  const gemMarketLevelNumber = Math.max(1, Math.floor(parseGemMarketInput(gemMarketLevel) || 3));
+  const gemMarketGoldNumber = parseGemMarketInput(gemMarketGold);
+  const displayedRemainingGuardianLevelOneGems = gemIncomeRestedOnly
+    ? homeworkGemIncome.remainingRestedGuardianLevelOneGems
+    : homeworkGemIncome.remainingGuardianLevelOneGems;
+  const displayedRemainingGuardianCount = gemIncomeRestedOnly
+    ? homeworkGemIncome.remainingRestedGuardianCount
+    : homeworkGemIncome.remainingGuardianCount;
+  const displayedWeeklyGuardianLevelOneGems = gemIncomeWeeklyThreeRestMode
+    ? homeworkGemIncome.weeklyThreeRestGuardianLevelOneGems
+    : homeworkGemIncome.weeklyGuardianLevelOneGems;
+  const displayedWeeklyGuardianCount = gemIncomeWeeklyThreeRestMode
+    ? homeworkGemIncome.weeklyThreeRestGuardianCount
+    : homeworkGemIncome.weeklyGuardianCount;
+  const displayedWeeklyTotalLevelOneGems = displayedWeeklyGuardianLevelOneGems + homeworkGemIncome.weeklySandglassLevelOneGems;
+  const remainingGuardianMarketValue = getGemMarketValue(
+    displayedRemainingGuardianLevelOneGems,
+    gemMarketLevelNumber,
+    gemMarketGoldNumber
+  );
+  const weeklyGuardianMarketValue = getGemMarketValue(
+    displayedWeeklyGuardianLevelOneGems,
+    gemMarketLevelNumber,
+    gemMarketGoldNumber
+  );
+  const weeklySandglassMarketValue = getGemMarketValue(
+    homeworkGemIncome.weeklySandglassLevelOneGems,
+    gemMarketLevelNumber,
+    gemMarketGoldNumber
+  );
+  const weeklyTotalMarketValue = getGemMarketValue(
+    displayedWeeklyTotalLevelOneGems,
+    gemMarketLevelNumber,
+    gemMarketGoldNumber
+  );
 
 
   function readAccountChecks(tableId: string): Record<string, boolean> {
@@ -9156,6 +9613,34 @@ export default function TodoTracker() {
     }
   }
 
+  const accountWeeklyResetKey = String(state.reset?.lastWeeklyResetAt ?? 0);
+
+  function readAccountWeekly(tableId: string): { koniCount: number } {
+    try {
+      const raw = localStorage.getItem(getAccountWeeklyKey(tableId));
+      if (!raw) return { koniCount: 0 };
+      const parsed = JSON.parse(raw) as { resetKey?: string; koniCount?: number };
+      if (parsed?.resetKey !== accountWeeklyResetKey) return { koniCount: 0 };
+      return { koniCount: clampInt(Number(parsed.koniCount ?? 0), 0, KONI_WEEKLY_MAX) };
+    } catch {
+      return { koniCount: 0 };
+    }
+  }
+
+  function writeAccountWeekly(tableId: string, progress: { koniCount: number }) {
+    try {
+      localStorage.setItem(
+        getAccountWeeklyKey(tableId),
+        JSON.stringify({
+          resetKey: accountWeeklyResetKey,
+          koniCount: clampInt(Number(progress.koniCount ?? 0), 0, KONI_WEEKLY_MAX),
+        })
+      );
+    } catch {
+      // ignore
+    }
+  }
+
   // ✅ 전체 표의 계정 콘텐츠 체크를 로드
   useEffect(() => {
     const ids = state.tables.map((t) => t.id);
@@ -9166,6 +9651,15 @@ export default function TodoTracker() {
     });
   }, [loaDateKey, state.tables]);
 
+  useEffect(() => {
+    const ids = state.tables.map((t) => t.id);
+    setAccountWeeklyByTable(() => {
+      const next: Record<string, { koniCount: number }> = {};
+      for (const id of ids) next[id] = readAccountWeekly(id);
+      return next;
+    });
+  }, [accountWeeklyResetKey, state.tables]);
+
   function onToggleAccountCheck(tableId: string, id: string, checked: boolean) {
     setAccountChecksByTable((prev) => {
       const current = prev[tableId] ?? {};
@@ -9174,6 +9668,17 @@ export default function TodoTracker() {
       // ✅ 클릭 순간 즉시 저장
       writeAccountChecks(tableId, nextChecks);
       return next;
+    });
+  }
+
+  function onCycleKoniWeekly(tableId: string) {
+    setAccountWeeklyByTable((prev) => {
+      const current = prev[tableId] ?? readAccountWeekly(tableId);
+      const nextProgress = {
+        koniCount: (clampInt(Number(current.koniCount ?? 0), 0, KONI_WEEKLY_MAX) + 1) % (KONI_WEEKLY_MAX + 1),
+      };
+      writeAccountWeekly(tableId, nextProgress);
+      return { ...prev, [tableId]: nextProgress };
     });
   }
 
@@ -9194,6 +9699,10 @@ export default function TodoTracker() {
     [normalizeRaidName("세노")]: "세르카 노말",
     [normalizeRaidName("세하")]: "세르카 하드",
     [normalizeRaidName("세르카나메")]: "세르카 나이트메어",
+    [normalizeRaidName("벨가")]: "벨가르딘",
+    [normalizeRaidName("벨노")]: "벨가르딘 노말",
+    [normalizeRaidName("벨하")]: "벨가르딘 하드",
+    [normalizeRaidName("벨가르딘나메")]: "벨가르딘 나이트메어",
     [normalizeRaidName("성당1단계")]: "지평의 성당 1단계",
     [normalizeRaidName("성당2단계")]: "지평의 성당 2단계",
     [normalizeRaidName("성당3단계")]: "지평의 성당 3단계",
@@ -9211,7 +9720,7 @@ export default function TodoTracker() {
     for (const [aliasKey, targetName] of Object.entries(RAID_NAME_ALIASES)) {
       if (normalized === aliasKey) return targetName;
 
-      const diffName = ["노말", "하드", "나이트메어", "1단계", "2단계", "3단계"].find(
+      const diffName = ["노말", "싱글", "매칭", "하드", "나이트메어", "1단계", "2단계", "3단계"].find(
         (diff) => normalized === `${aliasKey}${normalizeRaidName(diff)}`
       );
       if (diffName) return `${targetName} ${diffName}`;
@@ -9235,6 +9744,7 @@ export default function TodoTracker() {
         tableName: string;
         charId?: string;
         charName?: string;
+        homeworkExcluded?: boolean;
         taskMap: Map<string, Set<string>>;
       }
     >();
@@ -9283,6 +9793,7 @@ export default function TodoTracker() {
     for (const table of state.tables) {
       const tableName = table.name ?? "표";
       const accountChecks = accountChecksByTable[table.id] ?? readAccountChecks(table.id);
+      const hasRewardTier1770 = table.characters.some((ch) => getCharIlvl(ch as any) >= 1770);
 
       // 1) 계정 콘텐츠 (카게/필보) - 표 단위 그룹
       if (todayMustDoSettings.accountContent) {
@@ -9296,7 +9807,7 @@ export default function TodoTracker() {
                 tableName,
               },
               content.label,
-              `${tableName}에서 아직 체크 안 됨`
+              hasRewardTier1770 ? `${tableName} · 1770+ 보상 구간` : `${tableName}에서 아직 체크 안 됨`
             );
           }
         }
@@ -9304,6 +9815,9 @@ export default function TodoTracker() {
 
       // 2) 캐릭터별 검사 - 캐릭 단위 그룹
       for (const ch of table.characters as any[]) {
+        const homeworkExcluded = isHomeworkExcluded(ch);
+        if (homeworkExcluded && !todayMustDoShowExcluded) continue;
+
         const ilvl = getCharIlvl(ch);
         const coreChecked = isCheckedCell(table.id, CORE_DAILY_TASK_ID, ch.id);
         const guardianChecked = guardianTask ? isCheckedCell(table.id, guardianTask.id, ch.id) : false;
@@ -9317,6 +9831,7 @@ export default function TodoTracker() {
           tableName,
           charId: ch.id,
           charName: ch.name,
+          homeworkExcluded,
         };
 
         if (todayMustDoSettings.coreDaily1730 && ilvl >= 1730 && !coreChecked) {
@@ -9355,12 +9870,13 @@ export default function TodoTracker() {
       tableName: group.tableName,
       charId: group.charId,
       charName: group.charName,
+      homeworkExcluded: group.homeworkExcluded,
       tasks: Array.from(group.taskMap.entries()).map(([label, reasonSet]) => ({
         label,
         reasons: Array.from(reasonSet),
       })),
     }));
-  }, [state, accountChecksByTable, todayAccountContents, todayMustDoSettings]);
+  }, [state, accountChecksByTable, todayAccountContents, todayMustDoSettings, todayMustDoShowExcluded]);
 
   //생명의 기운(생기)(생기)
   const LIFE_MAX = 10500;
@@ -9578,6 +10094,19 @@ export default function TodoTracker() {
         </div>
 
         {/* ✅ 요일별(카게/필보) */}
+        <div className="accountWeeklyEventBox">
+          <button
+            type="button"
+            className={`accountWeeklyCounter ${(accountWeeklyByTable[tableId]?.koniCount ?? 0) >= KONI_WEEKLY_MAX ? "done" : ""}`}
+            onClick={() => onCycleKoniWeekly(tableId)}
+            title="우당탕! 수박 대소동 주간 입장 횟수"
+          >
+            <span>수박 대소동</span>
+            <b>{accountWeeklyByTable[tableId]?.koniCount ?? 0}/{KONI_WEEKLY_MAX}</b>
+          </button>
+          <span className="accountWeeklyHint">주간 3회 · 수요일 06시 초기화</span>
+        </div>
+
         {todayAccountContents.length > 0 ? (
           <div className="accountDailyItems">
             {todayAccountContents.map((c) => (
@@ -9871,6 +10400,21 @@ export default function TodoTracker() {
         nextPower
       )
     );
+  }
+
+  function toggleCharacterHomeworkExcluded(tableId: string, charId: string, excluded: boolean) {
+    setState((prev) => {
+      const table = getTableById(prev, tableId);
+      const nextChars: Character[] = table.characters.map((c) =>
+        c.id === charId ? { ...c, homeworkExcluded: excluded } : c
+      );
+      const nextTable: TodoTable = { ...table, characters: nextChars };
+
+      return {
+        ...prev,
+        tables: prev.tables.map((t) => (t.id === nextTable.id ? nextTable : t)),
+      };
+    });
   }
 
   async function syncCharacterFromOfficial(tableId: string, ch: Character) {
@@ -10344,12 +10888,18 @@ export default function TodoTracker() {
     "2막": { medal: 2300, normal: splitGold(8250, 8250), hard: splitGold(11500, 11500) },
     "3막": { medal: 2700, normal: splitGold(10500, 10500), hard: splitGold(13500, 13500) },
 
-    "4막": { normal: splitGold(16500, 16500), hard: tradableOnlyGold(42000) },
-    "종막": { normal: splitGold(20000, 20000), hard: tradableOnlyGold(52000) },
+    "4막": { medal: 3100, normal: splitGold(13500, 13500), hard: tradableOnlyGold(38000) },
+    "종막": { medal: 3400, normal: splitGold(16000, 16000), hard: tradableOnlyGold(48000) },
     "세르카": {
-      normal: splitGold(17500, 17500),
+      medal: 3400,
+      normal: splitGold(16000, 16000),
       hard: tradableOnlyGold(44000),
       nightmare: tradableOnlyGold(54000),
+    },
+    "벨가르딘": {
+      normal: tradableOnlyGold(50000),
+      hard: tradableOnlyGold(62000),
+      nightmare: tradableOnlyGold(75000),
     },
     "지평의 성당": {
       stage1: boundOnlyGold(30000),
@@ -10369,7 +10919,7 @@ export default function TodoTracker() {
     },
   };
 
-  type DiffName = "노말" | "하드" | "나이트메어" | "1단계" | "2단계" | "3단계";
+  type DiffName = "노말" | "싱글" | "매칭" | "하드" | "나이트메어" | "1단계" | "2단계" | "3단계";
 
   type RaidPopup = { title: string; x: number; y: number } | null;
 
@@ -10815,6 +11365,11 @@ export default function TodoTracker() {
       startsAt: Date.parse("2026-05-20T06:00:00+09:00"),
       endsAt: Date.parse("2026-06-17T06:00:00+09:00"),
     },
+    {
+      name: "벨가르딘",
+      startsAt: Date.parse("2026-08-05T06:00:00+09:00"),
+      endsAt: Number.POSITIVE_INFINITY,
+    },
   ];
 
   function getExtremeWeeklyRaidWindow(raidName: string) {
@@ -10842,7 +11397,7 @@ export default function TodoTracker() {
 
     const title = (task.title ?? "").trim();
     const normalizedTitle = normalizeRaidName(title).replace(
-      /(노말|하드|나이트메어|1단계|2단계|3단계)$/,
+      /(노말|싱글|매칭|하드|나이트메어|1단계|2단계|3단계)$/,
       ""
     );
 
@@ -10896,9 +11451,10 @@ export default function TodoTracker() {
     "4막": 14,
     "종막": 15,
     "세르카": 16,
-    "지평의 성당": 17,
-    "1막 익스트림": 18, // 4/24 익스트림 추가
-    "2막 익스트림": 19, // 4/24 익스트림 추가
+    "벨가르딘": 17,
+    "지평의 성당": 18,
+    "1막 익스트림": 19, // 4/24 익스트림 추가
+    "2막 익스트림": 20, // 4/24 익스트림 추가
   };
 
   const groupedTasks = useMemo(() => {
@@ -10982,6 +11538,7 @@ export default function TodoTracker() {
                 "4막",
                 "종막",
                 "세르카",
+                "벨가르딘",
                 "지평의 성당",
                 "1막 익스트림",
                 "2막 익스트림",
@@ -11060,7 +11617,7 @@ export default function TodoTracker() {
     diffs: RaidDifficulty[];
   };
 
-  const RAID_CATALOG: RaidDef[] = ([
+  const RAID_CATALOG_ALL: RaidDef[] = ([
     {
       key: "VALTAN",
       name: "발탄",
@@ -11127,10 +11684,11 @@ export default function TodoTracker() {
     { key: "ACT1", name: "1막", diffs: [{ name: "노말", minIlvl: 1660, gold: getSplitTotal(RAID_REWARD_INFO["1막"].normal) }, { name: "하드", minIlvl: 1680, gold: getSplitTotal(RAID_REWARD_INFO["1막"].hard) }] },
     { key: "ACT2", name: "2막", diffs: [{ name: "노말", minIlvl: 1670, gold: getSplitTotal(RAID_REWARD_INFO["2막"].normal) }, { name: "하드", minIlvl: 1690, gold: getSplitTotal(RAID_REWARD_INFO["2막"].hard) }] },
     { key: "ACT3", name: "3막", diffs: [{ name: "노말", minIlvl: 1680, gold: getSplitTotal(RAID_REWARD_INFO["3막"].normal) }, { name: "하드", minIlvl: 1700, gold: getSplitTotal(RAID_REWARD_INFO["3막"].hard) }] },
-    { key: "ACT4", name: "4막", diffs: [{ name: "노말", minIlvl: 1700, gold: getSplitTotal(RAID_REWARD_INFO["4막"].normal) }, { name: "하드", minIlvl: 1720, gold: getSplitTotal(RAID_REWARD_INFO["4막"].hard) }] },
-    { key: "FINAL", name: "종막", diffs: [{ name: "노말", minIlvl: 1710, gold: getSplitTotal(RAID_REWARD_INFO["종막"].normal) }, { name: "하드", minIlvl: 1730, gold: getSplitTotal(RAID_REWARD_INFO["종막"].hard) }] },
-    { key: "SERKA", name: "세르카", diffs: [{ name: "노말", minIlvl: 1710, gold: getSplitTotal(RAID_REWARD_INFO["세르카"].normal) }, { name: "하드", minIlvl: 1730, gold: getSplitTotal(RAID_REWARD_INFO["세르카"].hard) }, { name: "나이트메어", minIlvl: 1740, gold: getSplitTotal(RAID_REWARD_INFO["세르카"].nightmare) }] },
+    { key: "ACT4", name: "4막", diffs: [{ name: "노말", minIlvl: 1700, gold: getSplitTotal(RAID_REWARD_INFO["4막"].normal) }, { name: "싱글", minIlvl: 1700, gold: getSplitTotal(RAID_REWARD_INFO["4막"].normal) }, { name: "하드", minIlvl: 1720, gold: getSplitTotal(RAID_REWARD_INFO["4막"].hard) }] },
+    { key: "FINAL", name: "종막", diffs: [{ name: "노말", minIlvl: 1710, gold: getSplitTotal(RAID_REWARD_INFO["종막"].normal) }, { name: "싱글", minIlvl: 1710, gold: getSplitTotal(RAID_REWARD_INFO["종막"].normal) }, { name: "하드", minIlvl: 1730, gold: getSplitTotal(RAID_REWARD_INFO["종막"].hard) }] },
+    { key: "SERKA", name: "세르카", diffs: [{ name: "노말", minIlvl: 1710, gold: getSplitTotal(RAID_REWARD_INFO["세르카"].normal) }, { name: "매칭", minIlvl: 1710, gold: getSplitTotal(RAID_REWARD_INFO["세르카"].normal) }, { name: "하드", minIlvl: 1730, gold: getSplitTotal(RAID_REWARD_INFO["세르카"].hard) }, { name: "나이트메어", minIlvl: 1740, gold: getSplitTotal(RAID_REWARD_INFO["세르카"].nightmare) }] },
     { key: "ABYSS1", name: "지평의 성당", diffs: [{ name: "1단계", minIlvl: 1700, gold: getSplitTotal(RAID_REWARD_INFO["지평의 성당"].stage1) }, { name: "2단계", minIlvl: 1720, gold: getSplitTotal(RAID_REWARD_INFO["지평의 성당"].stage2) }, { name: "3단계", minIlvl: 1750, gold: getSplitTotal(RAID_REWARD_INFO["지평의 성당"].stage3) }] },
+    { key: "BELGARDIN", name: "벨가르딘", diffs: [{ name: "노말", minIlvl: 1750, gold: getSplitTotal(RAID_REWARD_INFO["벨가르딘"].normal) }, { name: "하드", minIlvl: 1770, gold: getSplitTotal(RAID_REWARD_INFO["벨가르딘"].hard) }, { name: "나이트메어", minIlvl: 1780, gold: getSplitTotal(RAID_REWARD_INFO["벨가르딘"].nightmare) }] },
 
     {
       key: "EXT_ACT1", name: "1막 익스트림", diffs: [ // 4/24 익스트림 추가
@@ -11146,7 +11704,9 @@ export default function TodoTracker() {
         { name: "나이트메어", minIlvl: 1770, gold: getSplitTotal(RAID_REWARD_INFO["2막 익스트림"].nightmare) },
       ]
     },
-  ] as RaidDef[]).filter((raid) => isWeeklyRaidCurrentlyActive(raid.name));
+  ] as RaidDef[]);
+
+  const RAID_CATALOG: RaidDef[] = RAID_CATALOG_ALL.filter((raid) => isWeeklyRaidCurrentlyActive(raid.name));
 
   const RAID_REWARD_DIFFS = [
     { key: "normal", label: "노말" },
@@ -11168,6 +11728,11 @@ export default function TodoTracker() {
     expectedValue?: string;
     efficiency?: string;
     priceParts?: Array<{ marketKey: string; quantity: number; probability?: number; bundleSize?: number }>;
+  };
+  type RaidModeInfo = {
+    label: string;
+    minIlvl: number;
+    note: string;
   };
 
   function getRaidRewardMarketPrice(marketKey?: string) {
@@ -11213,13 +11778,21 @@ export default function TodoTracker() {
   }
 
   function getRaidExchangeCurrency(raidName: string, diffLabel: string) {
+    if (raidName === "벨가르딘") {
+      if (diffLabel === "노말") {
+        return { name: "사령의 잔영", amount: 30, note: "1관문 12개 + 2관문 18개" };
+      }
+      if (diffLabel === "하드" || diffLabel === "나이트메어") {
+        return { name: "죽음의 손", amount: 30, note: "1관문 12개 + 2관문 18개" };
+      }
+    }
     if (raidName === "2막 익스트림") {
       if (diffLabel === "노말") return { name: "불과 얼음의 주화", amount: 150 };
       if (diffLabel === "하드" || diffLabel === "나이트메어") return { name: "불과 얼음의 주화", amount: 200 };
     }
     if (raidName === "세르카") {
       if (diffLabel === "하드" || diffLabel === "나이트메어") return { name: "고통의 가시", amount: 25 };
-      if (diffLabel === "노말") return { name: "고통의 가시", amount: 0 };
+      if (diffLabel === "노말") return { name: "고통의 가시", amount: 10, note: "1관문 4개 + 2관문 6개 · 더보기 시 10개 추가" };
     }
     if (raidName === "지평의 성당") {
       if (diffLabel === "1단계") return { name: "은총의 파편", amount: 10 };
@@ -11227,6 +11800,19 @@ export default function TodoTracker() {
       if (diffLabel === "3단계") return { name: "은총의 파편", amount: 60 };
     }
     return null;
+  }
+
+  function getRaidModeInfo(raidName: string): RaidModeInfo[] {
+    if (raidName === "4막") {
+      return [{ label: "싱글 모드", minIlvl: 1700, note: "노말과 입장 레벨 동일 · 획득 골드 50% 캐릭터 귀속" }];
+    }
+    if (raidName === "종막") {
+      return [{ label: "싱글 모드", minIlvl: 1710, note: "노말과 입장 레벨 동일 · 획득 골드 50% 캐릭터 귀속" }];
+    }
+    if (raidName === "세르카") {
+      return [{ label: "매칭 모드", minIlvl: 1710, note: "노말 보상과 동일 · 더보기 가능 · 전리품 경매/에스더의 기운 없음" }];
+    }
+    return [];
   }
 
   function getRaidRewardRows(raidName: string) {
@@ -11389,10 +11975,13 @@ export default function TodoTracker() {
     return [];
   }
 
-  const raidRewardInfoItems = RAID_CATALOG.map((raid) => ({
+  const raidRewardInfoItems = RAID_CATALOG_ALL.filter(
+    (raid) => isWeeklyRaidCurrentlyActive(raid.name) || normalizeRaidName(raid.name) === normalizeRaidName("벨가르딘")
+  ).map((raid) => ({
     name: raid.name,
     rows: getRaidRewardRows(raid.name),
     exchangeItems: getRaidExchangeItems(raid.name),
+    modeInfo: getRaidModeInfo(raid.name),
   }));
   const visibleRaidRewardInfoItems = raidRewardInfoItems.filter((raid) =>
     raidRewardLineTab === "legacy"
@@ -12078,7 +12667,7 @@ body.pip-dark .pip-select option{
     const g = RAID_REWARD_INFO[canonicalRaidName(raidName)];
     if (!g) return EMPTY_GOLD_SPLIT;
 
-    if (diff === "노말") return g.normal ?? EMPTY_GOLD_SPLIT;
+    if (diff === "노말" || diff === "싱글" || diff === "매칭") return g.normal ?? EMPTY_GOLD_SPLIT;
     if (diff === "하드") return g.hard ?? EMPTY_GOLD_SPLIT;
     if (diff === "나이트메어") return g.nightmare ?? EMPTY_GOLD_SPLIT;
     if (diff === "1단계") return g.stage1 ?? EMPTY_GOLD_SPLIT;
@@ -12203,6 +12792,8 @@ body.pip-dark .pip-select option{
 
     for (const tbl of state.tables) {
       for (const ch of tbl.characters as any[]) {
+        if (isHomeworkExcluded(ch)) continue;
+
         const ilvl = getCharIlvl(ch);
         if (!Number.isFinite(ilvl) || ilvl <= 0) continue;
 
@@ -12342,6 +12933,8 @@ body.pip-dark .pip-select option{
 
     // 2) 선택한 주간 레이드 중 아직 완료 체크가 남은 캐릭터만 노출
     const visibleCols = allCols.filter(({ tableId, ch }) => {
+      if (isHomeworkExcluded(ch) && !raidLeftShowExcluded) return false;
+
       const ilvl = getCharIlvl(ch);
       if (!Number.isFinite(ilvl) || ilvl <= 0) return false;
 
@@ -12515,6 +13108,17 @@ body.pip-dark .pip-select option{
                             <>
                               <button className="mini" onClick={() => editCharacter(ch)}>수정</button>
                               <button className="mini" onClick={() => deleteCharacter(ch)}>삭제</button>
+                              <label
+                                className={`char-exclude-toggle ${isHomeworkExcluded(ch) ? "active" : ""}`}
+                                title="체크하면 오늘/주간 해야할 일과 주간 레이드 골드 합산에서 제외돼."
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isHomeworkExcluded(ch)}
+                                  onChange={(e) => toggleCharacterHomeworkExcluded(tableId, ch.id, e.target.checked)}
+                                />
+                                <span>제외</span>
+                              </label>
                             </>
                           )}
                         </div>
@@ -12671,6 +13275,212 @@ body.pip-dark .pip-select option{
             </tbody>
           </table>
         </div>
+      </div>
+    );
+  }
+
+
+  function renderHomeworkGemPanel() {
+    return (
+      <div className={`homeworkGemPanel ${gemIncomeOpen ? "is-open" : ""}`}>
+        <div
+          className="homeworkGemHeader"
+          onClick={() => setGemIncomeOpen((v) => !v)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setGemIncomeOpen((v) => !v);
+            }
+          }}
+        >
+          <div>
+            <div className="homeworkGemTitle">숙제 보석 예상</div>
+            <div className="homeworkGemSub">
+              가디언 토벌과 할의 모래시계 기준 · 가디언 휴식 20 이상은 2배 적용
+            </div>
+          </div>
+          <button
+            className="btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              setGemIncomeOpen((v) => !v);
+            }}
+          >
+            {gemIncomeOpen ? "접기" : "보기"}
+          </button>
+        </div>
+
+        {gemIncomeOpen && (
+          <>
+            <div className="homeworkGemSummaryGrid">
+              <div className="homeworkGemStat homeworkGemStatWide">
+                <div className="homeworkGemStatHeader">
+                  <span>가토 다 했을 때 기대치</span>
+                  <label className="homeworkGemOptionToggle" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={gemIncomeRestedOnly}
+                      onChange={(e) => setGemIncomeRestedOnly(e.target.checked)}
+                    />
+                    <span>휴게만</span>
+                  </label>
+                </div>
+                <div className="homeworkGemSummaryLines">
+                  <div>
+                    <span>가토</span>
+                    <b>{formatGemComposition(displayedRemainingGuardianLevelOneGems)}</b>
+                  </div>
+                  {gemMarketGoldNumber > 0 ? (
+                    <div>
+                      <span>가치</span>
+                      <b>{formatGoldValue(remainingGuardianMarketValue)}</b>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+              <div className="homeworkGemStat homeworkGemStatWide">
+                <div className="homeworkGemStatHeader">
+                  <span>주간 가토 기대치</span>
+                  <label className="homeworkGemOptionToggle" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={gemIncomeWeeklyThreeRestMode}
+                      onChange={(e) => setGemIncomeWeeklyThreeRestMode(e.target.checked)}
+                    />
+                    <span>주 3회 휴게</span>
+                  </label>
+                </div>
+                <div className="homeworkGemSummaryLines">
+                  <div>
+                    <span>가토</span>
+                    <b>{formatGemComposition(displayedWeeklyGuardianLevelOneGems)}</b>
+                  </div>
+                  {gemMarketGoldNumber > 0 ? (
+                    <div>
+                      <span>가치</span>
+                      <b>{formatGoldValue(weeklyGuardianMarketValue)}</b>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+              <div className="homeworkGemStat homeworkGemStatWide">
+                <span>할의 모래시계</span>
+                <div className="homeworkGemSummaryLines">
+                  <div>
+                    <span>할모시</span>
+                    <b>{homeworkGemIncome.weeklySandglassGemText}</b>
+                  </div>
+                  {gemMarketGoldNumber > 0 ? (
+                    <div>
+                      <span>가치</span>
+                      <b>{formatGoldValue(weeklySandglassMarketValue)}</b>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+              <div className="homeworkGemStat homeworkGemStatWide homeworkGemTotalStat">
+                <div className="homeworkGemStatHeader">
+                  <span>총합</span>
+                  <div className="homeworkGemMarketInputs" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      value={gemMarketLevel}
+                      onChange={(e) => setGemMarketLevel(e.target.value)}
+                      inputMode="numeric"
+                      aria-label="보석 레벨"
+                    />
+                    <span>레벨 보석 가격 =</span>
+                    <input
+                      value={gemMarketGold}
+                      onChange={(e) => setGemMarketGold(e.target.value)}
+                      inputMode="numeric"
+                      placeholder="1500"
+                      aria-label="보석 가격"
+                    />
+                    <span>G</span>
+                  </div>
+                </div>
+                <div className="homeworkGemSummaryLines">
+                  <div>
+                    <span>가토</span>
+                    <b>{formatGemComposition(displayedWeeklyGuardianLevelOneGems)}</b>
+                  </div>
+                  <div>
+                    <span>할모시</span>
+                    <b>{homeworkGemIncome.weeklySandglassGemText}</b>
+                  </div>
+                  <div>
+                    <span>합계</span>
+                    <b>{formatGemComposition(displayedWeeklyTotalLevelOneGems)}</b>
+                  </div>
+                  {gemMarketGoldNumber > 0 ? (
+                    <div>
+                      <span>가치</span>
+                      <b>{formatGoldValue(weeklyTotalMarketValue)}</b>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            <div className="homeworkGemBreakdown">
+              <span>{gemIncomeRestedOnly ? "휴게 가디언" : "남은 가디언"} {displayedRemainingGuardianCount.toLocaleString()}개</span>
+              <span>남은 할모시 {homeworkGemIncome.remainingSandglassCount.toLocaleString()}개</span>
+              <span>{gemIncomeWeeklyThreeRestMode ? "주 3회 휴식 가디언" : "주간 가디언"} {displayedWeeklyGuardianCount.toLocaleString()}개</span>
+              <span>주간 할모시 {homeworkGemIncome.weeklySandglassCount.toLocaleString()}개</span>
+              {homeworkExcludedCharacters.length > 0 ? (
+                <label className="homeworkGemIncludeExcluded">
+                  <input
+                    type="checkbox"
+                    checked={gemIncomeIncludeExcluded}
+                    onChange={(e) => setGemIncomeIncludeExcluded(e.target.checked)}
+                  />
+                  <span>제외 캐릭터 포함</span>
+                </label>
+              ) : null}
+            </div>
+
+            <div className="homeworkGemDetailToggleRow">
+              <button className="btn mini" onClick={() => setGemIncomeDetailsOpen((v) => !v)}>
+                {gemIncomeDetailsOpen ? "상세 닫기" : `상세 ${homeworkGemIncome.rows.length.toLocaleString()}개`}
+              </button>
+            </div>
+
+            {gemIncomeDetailsOpen && (
+              <div className="homeworkGemDetails">
+                {homeworkGemIncome.rows.length === 0 ? (
+                  <div className="homeworkGemEmpty">남은 가디언/할의 모래시계 보석 수급이 없어.</div>
+                ) : (
+                  homeworkGemIncome.rows.map((row) => (
+                    <div key={row.key} className="homeworkGemRow">
+                      <div className="homeworkGemRowMain">
+                        <span className="todayMustDoBadge">{row.tableName}</span>
+                        <b>{row.charName}</b>
+                        {row.homeworkExcluded ? <span className="todayMustDoExcludedBadge">제외</span> : null}
+                        <span className="homeworkGemMuted">Lv. {Number.isFinite(row.ilvl) ? row.ilvl.toLocaleString() : "-"}</span>
+                      </div>
+                      <div className="homeworkGemRowContent">
+                        <span>{row.sourceLabel}</span>
+                        <span>{row.rewardLabel}</span>
+                        {row.multiplier > 1 ? <span className="homeworkGemRest">휴식 {row.restValue} · 2배</span> : null}
+                        <b>{formatGemLevelCount(row.gemLevel, row.gemCount)}</b>
+                        {row.provisional ? <span className="homeworkGemRest">수량 확인 필요</span> : null}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            <div className="homeworkGemFootnote">
+              가디언은 gcalc 현재 보상표, 할모시는 강화 없이 0단계 기본 보상 기준이야. 주간 기대치는 가디언 7회에 현재 휴식게이지 보너스를 반영하고, 주 3회 휴식 가토는 일주일 안에서 휴식 보상을 최대한 쓰는 3회 기준이야.
+              {homeworkGemIncome.hasProvisionalReward
+                ? " 1770+ 할의 모래시계 3단계는 공식에서 보석 증가만 확인되고 정확한 수량표는 아직 없어 2단계 수치로 임시 계산 중이야."
+                : ""}
+            </div>
+          </>
+        )}
       </div>
     );
   }
@@ -12880,6 +13690,17 @@ body.pip-dark .pip-select option{
                                 <>
                                   <button className="mini" onClick={() => editCharacter(ch)}>수정</button>
                                   <button className="mini" onClick={() => deleteCharacter(ch)}>삭제</button>
+                                  <label
+                                    className={`char-exclude-toggle ${isHomeworkExcluded(ch) ? "active" : ""}`}
+                                    title="체크하면 오늘/주간 해야할 일과 주간 레이드 골드 합산에서 제외돼."
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isHomeworkExcluded(ch)}
+                                      onChange={(e) => toggleCharacterHomeworkExcluded(tableId, ch.id, e.target.checked)}
+                                    />
+                                    <span>제외</span>
+                                  </label>
                                 </>
                               )}
                             </div>
@@ -13440,28 +14261,46 @@ body.pip-dark .pip-select option{
                       </summary>
                       <div className="raidRewardItemBody">
                         {page === "rewards" ? (
-                          <div className="raidRewardRows">
-                            {raid.rows.map((row) => (
-                              <div key={`${raid.name}-${String(row.key)}`} className="raidRewardRow">
-                                <div className="raidRewardDiff">{row.label}</div>
-                                <div className="raidRewardNumbers">
-                                  <span>유통 {row.tradable.toLocaleString()}</span>
-                                  <span>귀속 {row.bound.toLocaleString()}</span>
-                                  <span>합계 {row.total.toLocaleString()} G</span>
-                                  {row.currency ? (
-                                    <span>
-                                      {row.currency.name} {row.currency.amount.toLocaleString()}개
-                                    </span>
-                                  ) : null}
-                                  {row.medal != null ? (
-                                    <span>클리어메달 {row.medal.toLocaleString()}</span>
-                                  ) : (
-                                    <span className="muted">클리어메달 없음</span>
-                                  )}
-                                </div>
+                          <>
+                            {raid.modeInfo.length > 0 ? (
+                              <div className="raidModeInfoList">
+                                {raid.modeInfo.map((mode) => (
+                                  <div key={`${raid.name}-${mode.label}`} className="raidModeInfo">
+                                    <span className="raidModeBadge">{mode.label}</span>
+                                    <span>입장 Lv. {mode.minIlvl.toLocaleString()}</span>
+                                    <span className="muted">{mode.note}</span>
+                                  </div>
+                                ))}
                               </div>
-                            ))}
-                          </div>
+                            ) : null}
+                            <div className="raidRewardRows">
+                              {raid.rows.map((row) => (
+                                <div key={`${raid.name}-${String(row.key)}`} className="raidRewardRow">
+                                  <div className="raidRewardDiff">{row.label}</div>
+                                  <div className="raidRewardNumbers">
+                                    <span>유통 {row.tradable.toLocaleString()}</span>
+                                    <span>귀속 {row.bound.toLocaleString()}</span>
+                                    <span>합계 {row.total.toLocaleString()} G</span>
+                                    {row.currency ? (
+                                      <>
+                                        <span>
+                                          {row.currency.name} {row.currency.amount.toLocaleString()}개
+                                        </span>
+                                        {"note" in row.currency && row.currency.note ? (
+                                          <span className="raidRewardNote">{row.currency.note}</span>
+                                        ) : null}
+                                      </>
+                                    ) : null}
+                                    {row.medal != null ? (
+                                      <span>클리어메달 {row.medal.toLocaleString()}</span>
+                                    ) : (
+                                      <span className="muted">클리어메달 없음</span>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </>
                         ) : (
                           <div className="raidExchangeList">
                             {raid.exchangeItems.map((item) => {
@@ -13599,6 +14438,14 @@ body.pip-dark .pip-select option{
           </div>
 
           <div className="topbar-center">
+            <label className="homeworkGemVisibilityToggle">
+              <input
+                type="checkbox"
+                checked={gemIncomeVisible}
+                onChange={(e) => setGemIncomeVisible(e.target.checked)}
+              />
+              <span>숙제 보석 예상 표시</span>
+            </label>
             {/* ✅ 주간 레이드 골드 진행률(Top3 합산) */}
             <div className="weeklyGoldSummary" title="모든 표/모든 캐릭터의 주간 레이드 Top3(아이템레벨 기준) 합산">
               <div className="weeklyGoldTitle">주간 레이드 골드</div>
@@ -14084,6 +14931,16 @@ body.pip-dark .pip-select option{
               <option value="ME">내 남은 레이드</option>
               <option value="FRIEND">친구 남은 레이드</option>
             </select>
+            {raidLeftView === "ME" && homeworkExcludedCharacters.length > 0 && (
+              <label className="raidLeftShowExcludedToggle">
+                <input
+                  type="checkbox"
+                  checked={raidLeftShowExcluded}
+                  onChange={(e) => setRaidLeftShowExcluded(e.target.checked)}
+                />
+                <span>제외 캐릭터 보기</span>
+              </label>
+            )}
           </div>
         )}
 
@@ -14164,15 +15021,35 @@ body.pip-dark .pip-select option{
             </label>
           </div>
 
+          {homeworkExcludedCharacters.length > 0 && (
+            <div className="todayMustDoMetaBar">
+              <div>
+                숙제 제외 {homeworkExcludedCharacters.length}명
+                <span className="todayMustDoExcludedNames">
+                  {homeworkExcludedCharacters.map((ch) => ch.charName).join(", ")}
+                </span>
+              </div>
+              <label className="todayMustDoCheck compact">
+                <input
+                  type="checkbox"
+                  checked={todayMustDoShowExcluded}
+                  onChange={(e) => setTodayMustDoShowExcluded(e.target.checked)}
+                />
+                <span>제외 캐릭터도 보기</span>
+              </label>
+            </div>
+          )}
+
           {todayMustDoItems.length === 0 ? (
             <div className="todayMustDoEmpty">오늘 꼭 해야 하는 항목이 없어!</div>
           ) : (
             <div className="todayMustDoList">
               {todayMustDoItems.map((item) => (
-                <div key={item.key} className="todayMustDoItem">
+                <div key={item.key} className={`todayMustDoItem ${item.homeworkExcluded ? "is-excluded" : ""}`}>
                   <div className="todayMustDoItemTop">
                     <span className="todayMustDoBadge">{item.tableName}</span>
                     {item.charName ? <span className="todayMustDoChar">{item.charName}</span> : null}
+                    {item.homeworkExcluded ? <span className="todayMustDoExcludedBadge">제외</span> : null}
                   </div>
 
                   <div className="todayMustDoTaskList">
@@ -14251,15 +15128,35 @@ body.pip-dark .pip-select option{
             </label>
           </div>
 
+          {homeworkExcludedCharacters.length > 0 && (
+            <div className="todayMustDoMetaBar">
+              <div>
+                숙제 제외 {homeworkExcludedCharacters.length}명
+                <span className="todayMustDoExcludedNames">
+                  {homeworkExcludedCharacters.map((ch) => ch.charName).join(", ")}
+                </span>
+              </div>
+              <label className="todayMustDoCheck compact">
+                <input
+                  type="checkbox"
+                  checked={weeklyMustDoShowExcluded}
+                  onChange={(e) => setWeeklyMustDoShowExcluded(e.target.checked)}
+                />
+                <span>제외 캐릭터도 보기</span>
+              </label>
+            </div>
+          )}
+
           {weeklyMustDoItems.length === 0 ? (
             <div className="todayMustDoEmpty">주간 해야할 일이 없어!</div>
           ) : (
             <div className="todayMustDoList">
               {weeklyMustDoItems.map((item) => (
-                <div key={item.key} className="todayMustDoItem">
+                <div key={item.key} className={`todayMustDoItem ${item.homeworkExcluded ? "is-excluded" : ""}`}>
                   <div className="todayMustDoItemTop">
                     <span className="todayMustDoBadge">{item.tableName}</span>
                     <span className="todayMustDoChar">{item.charName}</span>
+                    {item.homeworkExcluded ? <span className="todayMustDoExcludedBadge">제외</span> : null}
                   </div>
 
                   <div className="todayMustDoTaskList">
@@ -14274,6 +15171,12 @@ body.pip-dark .pip-select option{
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {gemIncomeVisible && (periodTab === "ALL" || periodTab === "DAILY") && (
+        <div className="homeworkGemCommonArea">
+          {renderHomeworkGemPanel()}
         </div>
       )}
 

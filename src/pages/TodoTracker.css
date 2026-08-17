@@ -19,6 +19,11 @@
   --primary: #3b82f6;
   --primary-soft: rgba(59, 130, 246, 0.16);
 
+  --danger: #dc2626;
+  --danger-soft: rgba(220, 38, 38, 0.10);
+  --danger-border: rgba(220, 38, 38, 0.28);
+  --danger-text: #991b1b;
+
   --warning: #f59e0b;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 
@@ -49,6 +54,11 @@ html[data-theme="dark"] {
 
   --primary: #60a5fa;
   --primary-soft: rgba(96, 165, 250, 0.18);
+
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.14);
+  --danger-border: rgba(248, 113, 113, 0.34);
+  --danger-text: #fecaca;
 
   --warning: #fbbf24;
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
@@ -642,13 +652,51 @@ body {
   white-space: nowrap;
 }
 
+.char-exclude-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  background: var(--card);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 18px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.char-exclude-toggle input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: var(--danger);
+}
+
+.char-exclude-toggle.active {
+  border-color: var(--danger-border);
+  color: var(--danger-text);
+  background: var(--danger-soft);
+}
+
+.char-head:has(.char-exclude-toggle.active) .char-name,
+.char-head:has(.char-exclude-toggle.active) .char-meta,
+.char-head:has(.char-exclude-toggle.active) .char-roleRow {
+  opacity: 0.56;
+}
+
 .char-actions {
   display: flex;
   gap: 6px;
   margin-top: 6px;
-  height: 28px;
-  /* ✅ min-height 말고 height로 고정 */
+  min-height: 28px;
   align-items: center;
+  justify-content: center;
+  flex-wrap: nowrap;
 }
 
 /* Cells */
@@ -1477,6 +1525,54 @@ html[data-theme="dark"] .rest-input {
   flex-wrap: wrap;
 }
 
+.accountWeeklyEventBox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--soft-2);
+}
+
+.accountWeeklyCounter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 180px;
+  min-height: 38px;
+  border: 1px solid var(--primary);
+  border-radius: 999px;
+  background: var(--soft);
+  color: var(--text);
+  padding: 7px 12px;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.accountWeeklyCounter:hover {
+  border-color: var(--primary-2);
+  background: color-mix(in srgb, var(--primary) 18%, var(--soft));
+}
+
+.accountWeeklyCounter.done {
+  border-color: rgba(34, 197, 94, 0.72);
+  background: rgba(34, 197, 94, 0.14);
+}
+
+.accountWeeklyCounter b {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.accountWeeklyHint {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .accountDailyItem {
   display: flex;
   align-items: center;
@@ -1735,6 +1831,31 @@ html[data-theme="dark"] .rest-input {
 .friendSelect {
   background: var(--card);
   color: var(--text);
+}
+
+.raidLeftToolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.raidLeftShowExcludedToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--soft);
+  color: var(--text);
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.raidLeftShowExcludedToggle input {
+  margin: 0;
 }
 
 /* 남은 레이드 자동 업로드 UI (정식 스타일은 하단 friendRow 섹션에 있음) */
@@ -1998,7 +2119,8 @@ body,
   /* ✅ left/top 적용되게 */
   z-index: 9999;
   /* ✅ 다른 UI 위로 */
-  width: 360px;
+  width: 390px;
+  box-sizing: border-box;
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--card);
@@ -2066,16 +2188,22 @@ body,
 
 .weekly-top3-row {
   display: grid;
-  grid-template-columns: minmax(110px, auto) 1fr auto;
+  grid-template-columns: minmax(0, 1fr) minmax(124px, auto);
   align-items: center;
-  gap: 8px;
+  column-gap: 16px;
+  row-gap: 8px;
   padding: 8px 10px;
   border-radius: 12px;
   background: var(--soft);
   border: 1px solid var(--border);
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
 }
 
 .weekly-top3-raid {
+  grid-column: 1;
+  grid-row: 1;
   font-weight: 800;
   min-width: 0;
 }
@@ -2084,12 +2212,14 @@ body,
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  white-space: nowrap;
+  min-width: 0;
 }
 
 .raid-row-check span {
-  white-space: nowrap;
+  min-width: 0;
+  white-space: normal;
   word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 .raid-row-check input[type="checkbox"] {
@@ -2097,9 +2227,14 @@ body,
 }
 
 .weekly-top3-diffs {
-  display: flex;
+  display: grid;
+  grid-column: 1;
+  grid-row: 2;
+  grid-template-columns: repeat(2, 82px);
   gap: 6px;
-  flex-wrap: wrap;
+  justify-content: start;
+  align-items: center;
+  min-width: 0;
 }
 
 .diff-btn {
@@ -2112,12 +2247,14 @@ body,
   padding: 4px 10px;
   cursor: pointer;
   font-size: 12px;
+  box-sizing: border-box;
 
   white-space: nowrap;
   /* 4/24 나이트메어 줄바꿈 방지 */
   word-break: keep-all;
   line-height: 1.2;
-  flex: 0 0 auto;
+  width: 82px;
+  min-width: 82px;
 }
 
 .diff-btn:hover {
@@ -2141,16 +2278,26 @@ body,
 }
 
 .weekly-top3-gold-actions {
-  display: inline-flex;
-  align-items: center;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 3px;
+  min-width: 0;
+  padding-left: 4px;
 }
 
 .weekly-top3-gold {
   font-variant-numeric: tabular-nums;
   font-weight: 800;
   white-space: nowrap;
+}
+
+.weekly-top3-gold-sub {
+  max-width: 100%;
+  text-align: right;
 }
 
 .weekly-top3-task-check {
@@ -2370,6 +2517,29 @@ body,
 
 .topbar-center .todo-actions {
   justify-content: center;
+}
+
+.homeworkGemVisibilityToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--soft);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.homeworkGemVisibilityToggle input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--primary);
 }
 
 
@@ -2870,24 +3040,55 @@ body.pip-dark .pip-cube.is-pressed {
   height: 14px;
 }
 
+.todayMustDoCheck.compact {
+  font-weight: 800;
+}
+
+.todayMustDoMetaBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -4px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--danger-border);
+  border-radius: 12px;
+  color: var(--muted);
+  background: var(--danger-soft);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.todayMustDoExcludedNames {
+  display: inline;
+  margin-left: 8px;
+  color: var(--text);
+  font-weight: 800;
+}
+
 .todayMustDoList {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 260px));
+  grid-template-columns: repeat(auto-fill, minmax(210px, 220px));
   gap: 12px;
   align-items: start;
   justify-content: start;
 }
 
 .todayMustDoItem {
-  width: 260px;
-  min-height: 180px;
-  /* 필요 없으면 빼도 됨 */
+  width: 220px;
+  min-height: 150px;
   box-sizing: border-box;
 
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--soft-2);
   padding: 12px 14px;
+}
+
+.todayMustDoItem.is-excluded {
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+  opacity: 0.82;
 }
 
 .todayMustDoItemTop {
@@ -2915,6 +3116,19 @@ body.pip-dark .pip-cube.is-pressed {
   font-size: 14px;
   font-weight: 800;
   color: var(--text);
+}
+
+.todayMustDoExcludedBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  color: var(--danger-text);
+  background: var(--danger-soft);
+  border: 1px solid var(--danger-border);
+  font-size: 11px;
+  font-weight: 900;
 }
 
 .todayMustDoTaskList {
@@ -2945,6 +3159,329 @@ body.pip-dark .pip-cube.is-pressed {
   border-radius: 12px;
   color: var(--muted);
   text-align: center;
+}
+
+.homeworkGemPanel {
+  margin: 10px 0 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+.homeworkGemCommonArea {
+  width: min(100%, 1600px);
+  margin: 0 auto 14px;
+}
+
+.homeworkGemCommonArea .homeworkGemPanel {
+  margin: 0;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.homeworkGemCommonArea .homeworkGemSummaryGrid {
+  grid-template-columns: repeat(4, minmax(230px, 1fr));
+}
+
+.homeworkGemHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 0;
+  cursor: pointer;
+}
+
+.homeworkGemPanel.is-open .homeworkGemHeader {
+  margin-bottom: 12px;
+}
+
+.homeworkGemTitle {
+  font-size: 16px;
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+
+.homeworkGemSub,
+.homeworkGemFootnote,
+.homeworkGemMuted {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.homeworkGemSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(230px, 1fr));
+  gap: 10px;
+  align-items: stretch;
+}
+
+.homeworkGemStat {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--soft);
+  padding: 10px 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.homeworkGemStatWide {
+  min-height: 86px;
+}
+
+.homeworkGemStatHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.homeworkGemOptionToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.homeworkGemOptionToggle input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: var(--primary);
+}
+
+.homeworkGemOptionToggle:has(input:checked) {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.homeworkGemTotalStat {
+  border-color: color-mix(in srgb, var(--primary) 34%, var(--border));
+}
+
+.homeworkGemMarketInputs {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.homeworkGemMarketInputs input {
+  width: 64px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  padding: 0 8px;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+
+.homeworkGemMarketInputs input:first-child {
+  width: 42px;
+}
+
+.homeworkGemMarketInputs input::placeholder {
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+.homeworkGemMarketInputs input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+
+.homeworkGemStat span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.homeworkGemStat b {
+  color: var(--text);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  word-break: keep-all;
+  line-height: 1.5;
+}
+
+.homeworkGemStat em {
+  color: var(--primary);
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.homeworkGemSummaryLines {
+  display: grid;
+  gap: 7px;
+}
+
+.homeworkGemSummaryLines div {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.homeworkGemSummaryLines span {
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.homeworkGemSummaryLines b {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.homeworkGemBreakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.homeworkGemBreakdown span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--soft);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.homeworkGemIncludeExcluded {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--danger-border);
+  border-radius: 999px;
+  background: var(--danger-soft);
+  color: var(--danger-text);
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.homeworkGemIncludeExcluded input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: var(--danger);
+}
+
+.homeworkGemDetailToggleRow {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.homeworkGemDetails {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+.homeworkGemRow,
+.homeworkGemEmpty {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--soft-2);
+  padding: 10px 12px;
+}
+
+.homeworkGemRow {
+  display: grid;
+  gap: 8px;
+}
+
+.homeworkGemRowMain,
+.homeworkGemRowContent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.homeworkGemRowMain b,
+.homeworkGemRowContent b {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.homeworkGemRowContent {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.homeworkGemRest {
+  color: var(--primary);
+  font-weight: 800;
+}
+
+.homeworkGemFootnote {
+  margin-top: 10px;
+  line-height: 1.45;
+}
+
+@media (max-width: 1280px) {
+  .homeworkGemSummaryGrid {
+    grid-template-columns: repeat(2, minmax(240px, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .homeworkGemSummaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .homeworkGemHeader {
+    align-items: stretch;
+  }
+
+  .homeworkGemStatHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .homeworkGemMarketInputs {
+    justify-content: flex-start;
+  }
 }
 
 /* 역할 선택 */
@@ -3210,9 +3747,9 @@ html[data-theme="dark"] .raid-pick-btn.manual.active {
   gap: 4px;
   padding: 4px 8px;
   border-radius: 999px;
-  background: var(--soft);
-  border: 1px solid var(--border);
-  color: var(--text);
+  background: rgba(96, 165, 250, 0.12);
+  border: 1px solid rgba(96, 165, 250, 0.36);
+  color: #bfdbfe;
   font-size: 12px;
   font-weight: 700;
 }
@@ -3276,25 +3813,24 @@ html[data-theme="dark"] .raid-pick-btn.manual.active {
 }
 
 .manualRemainItem.is-schedule-full {
-  opacity: 0.78;
+  opacity: 1;
 }
 
 .manualRemainName.is-schedule-full,
 .manualRemainName.is-schedule-full .manualRemainMeta {
-  color: var(--muted);
-  filter: grayscale(1);
+  color: inherit;
+  filter: none;
 }
 
 .manualRaidChip.is-schedule-full {
-  background: transparent;
-  border-color: var(--border);
-  color: var(--muted);
-  filter: grayscale(1);
-  opacity: 0.7;
+  background: rgba(96, 165, 250, 0.12);
+  border-color: rgba(96, 165, 250, 0.36);
+  color: #bfdbfe;
+  filter: none;
+  opacity: 1;
 }
 
-html[data-theme="dark"] .manualRaidChip.is-scheduled,
-html[data-theme="dark"] .manualRaidChip.is-schedule-full {
+html[data-theme="dark"] .manualRaidChip.is-scheduled {
   background: rgba(255, 255, 255, 0.03);
   border-color: #44536f;
   color: #8b97ab;
@@ -3302,7 +3838,7 @@ html[data-theme="dark"] .manualRaidChip.is-schedule-full {
 
 html[data-theme="dark"] .manualRemainName.is-schedule-full,
 html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
-  color: #8b97ab;
+  color: inherit;
 }
 
 .manualRemainMeta {
@@ -3422,6 +3958,9 @@ html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
   display: grid;
   gap: 8px;
   border: 1px solid var(--border);
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
   border-radius: 12px;
   background: var(--soft);
   padding: 12px;
@@ -4523,7 +5062,8 @@ html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
 .accountPanel {
   display: grid;
   gap: 10px;
-  width: 360px;
+  width: 390px;
+  box-sizing: border-box;
   max-width: 100%;
   min-width: 0;
   padding: 12px;
@@ -4795,6 +5335,38 @@ html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
   padding: 0 8px 8px;
 }
 
+.raidModeInfoList {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.raidModeInfo {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.raidModeBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 900;
+}
+
 .raidRewardItemBody {
   display: block;
   min-width: 0;
@@ -4821,6 +5393,11 @@ html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
 }
 
 .raidRewardNumbers .muted {
+  color: var(--muted);
+}
+
+.raidRewardNote {
+  grid-column: 1 / -1;
   color: var(--muted);
 }
 

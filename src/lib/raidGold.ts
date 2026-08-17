@@ -1,4 +1,4 @@
-export type RaidDiffName = "노말" | "하드" | "나이트메어" | "1단계" | "2단계" | "3단계";
+export type RaidDiffName = "노말" | "싱글" | "매칭" | "하드" | "나이트메어" | "1단계" | "2단계" | "3단계";
 
 export type GoldSplit = {
   tradable: number;
@@ -25,6 +25,12 @@ type RaidDef = {
   key: string;
   name: string;
   diffs: RaidDifficulty[];
+};
+
+const WEEKLY_RAID_ACTIVE_WINDOWS: Record<string, { startsAt: number; endsAt?: number }> = {
+  "1막 익스트림": { startsAt: 0, endsAt: Date.parse("2026-05-20T06:00:00+09:00") },
+  "2막 익스트림": { startsAt: Date.parse("2026-05-20T06:00:00+09:00"), endsAt: Date.parse("2026-06-17T06:00:00+09:00") },
+  벨가르딘: { startsAt: Date.parse("2026-08-05T06:00:00+09:00") },
 };
 
 export type WeeklyRaidPick = {
@@ -69,6 +75,14 @@ function getSplitTotal(split?: GoldSplit) {
 
 const EMPTY_GOLD_SPLIT: GoldSplit = { tradable: 0, bound: 0 };
 
+function isRaidCurrentlyActive(raidName: string) {
+  const normalized = normalizeRaidName(raidName);
+  const window = Object.entries(WEEKLY_RAID_ACTIVE_WINDOWS).find(([name]) => normalizeRaidName(name) === normalized)?.[1];
+  if (!window) return true;
+  const now = Date.now();
+  return now >= window.startsAt && (window.endsAt == null || now < window.endsAt);
+}
+
 export const RAID_REWARD_INFO: Record<string, RaidRewardInfo> = {
   발탄: { medal: 120, normal: halfGold(1200), hard: halfGold(1800) },
   비아키스: { medal: 160, normal: halfGold(1600), hard: halfGold(2400) },
@@ -84,15 +98,16 @@ export const RAID_REWARD_INFO: Record<string, RaidRewardInfo> = {
   "1막": { medal: 1900, normal: splitGold(5750, 5750), hard: splitGold(9000, 9000) },
   "2막": { medal: 2300, normal: splitGold(8250, 8250), hard: splitGold(11500, 11500) },
   "3막": { medal: 2700, normal: splitGold(10500, 10500), hard: splitGold(13500, 13500) },
-  "4막": { normal: splitGold(16500, 16500), hard: tradableOnlyGold(42000) },
-  종막: { normal: splitGold(20000, 20000), hard: tradableOnlyGold(52000) },
-  세르카: { normal: splitGold(17500, 17500), hard: tradableOnlyGold(44000), nightmare: tradableOnlyGold(54000) },
+  "4막": { medal: 3100, normal: splitGold(13500, 13500), hard: tradableOnlyGold(38000) },
+  종막: { medal: 3400, normal: splitGold(16000, 16000), hard: tradableOnlyGold(48000) },
+  세르카: { medal: 3400, normal: splitGold(16000, 16000), hard: tradableOnlyGold(44000), nightmare: tradableOnlyGold(54000) },
+  벨가르딘: { normal: tradableOnlyGold(50000), hard: tradableOnlyGold(62000), nightmare: tradableOnlyGold(75000) },
   "지평의 성당": { stage1: boundOnlyGold(30000), stage2: boundOnlyGold(40000), stage3: boundOnlyGold(50000) },
   "1막 익스트림": { normal: tradableOnlyGold(20000), hard: tradableOnlyGold(45000), nightmare: tradableOnlyGold(45000) },
   "2막 익스트림": { normal: tradableOnlyGold(20000), hard: tradableOnlyGold(45000), nightmare: tradableOnlyGold(45000) },
 };
 
-const DEFAULT_EXTREME_WEEKLY_RAID_TITLES = new Set(["1막 익스트림", "2막 익스트림"]);
+const DEFAULT_EXTREME_WEEKLY_RAID_TITLES = new Set(["1막 익스트림", "2막 익스트림"].filter(isRaidCurrentlyActive));
 const RAID_NAME_ALIASES: Record<string, string> = {
   에키드나: "서막",
 };
@@ -111,10 +126,11 @@ export const RAID_CATALOG: RaidDef[] = [
   { key: "ACT1", name: "1막", diffs: [{ name: "노말", minIlvl: 1660, gold: getSplitTotal(RAID_REWARD_INFO["1막"].normal) }, { name: "하드", minIlvl: 1680, gold: getSplitTotal(RAID_REWARD_INFO["1막"].hard) }] },
   { key: "ACT2", name: "2막", diffs: [{ name: "노말", minIlvl: 1670, gold: getSplitTotal(RAID_REWARD_INFO["2막"].normal) }, { name: "하드", minIlvl: 1690, gold: getSplitTotal(RAID_REWARD_INFO["2막"].hard) }] },
   { key: "ACT3", name: "3막", diffs: [{ name: "노말", minIlvl: 1680, gold: getSplitTotal(RAID_REWARD_INFO["3막"].normal) }, { name: "하드", minIlvl: 1700, gold: getSplitTotal(RAID_REWARD_INFO["3막"].hard) }] },
-  { key: "ACT4", name: "4막", diffs: [{ name: "노말", minIlvl: 1700, gold: getSplitTotal(RAID_REWARD_INFO["4막"].normal) }, { name: "하드", minIlvl: 1720, gold: getSplitTotal(RAID_REWARD_INFO["4막"].hard) }] },
-  { key: "FINAL", name: "종막", diffs: [{ name: "노말", minIlvl: 1710, gold: getSplitTotal(RAID_REWARD_INFO["종막"].normal) }, { name: "하드", minIlvl: 1730, gold: getSplitTotal(RAID_REWARD_INFO["종막"].hard) }] },
-  { key: "SERKA", name: "세르카", diffs: [{ name: "노말", minIlvl: 1710, gold: getSplitTotal(RAID_REWARD_INFO["세르카"].normal) }, { name: "하드", minIlvl: 1730, gold: getSplitTotal(RAID_REWARD_INFO["세르카"].hard) }, { name: "나이트메어", minIlvl: 1750, gold: getSplitTotal(RAID_REWARD_INFO["세르카"].nightmare) }] },
+  { key: "ACT4", name: "4막", diffs: [{ name: "노말", minIlvl: 1700, gold: getSplitTotal(RAID_REWARD_INFO["4막"].normal) }, { name: "싱글", minIlvl: 1700, gold: getSplitTotal(RAID_REWARD_INFO["4막"].normal) }, { name: "하드", minIlvl: 1720, gold: getSplitTotal(RAID_REWARD_INFO["4막"].hard) }] },
+  { key: "FINAL", name: "종막", diffs: [{ name: "노말", minIlvl: 1710, gold: getSplitTotal(RAID_REWARD_INFO["종막"].normal) }, { name: "싱글", minIlvl: 1710, gold: getSplitTotal(RAID_REWARD_INFO["종막"].normal) }, { name: "하드", minIlvl: 1730, gold: getSplitTotal(RAID_REWARD_INFO["종막"].hard) }] },
+  { key: "SERKA", name: "세르카", diffs: [{ name: "노말", minIlvl: 1710, gold: getSplitTotal(RAID_REWARD_INFO["세르카"].normal) }, { name: "매칭", minIlvl: 1710, gold: getSplitTotal(RAID_REWARD_INFO["세르카"].normal) }, { name: "하드", minIlvl: 1730, gold: getSplitTotal(RAID_REWARD_INFO["세르카"].hard) }, { name: "나이트메어", minIlvl: 1740, gold: getSplitTotal(RAID_REWARD_INFO["세르카"].nightmare) }] },
   { key: "ABYSS1", name: "지평의 성당", diffs: [{ name: "1단계", minIlvl: 1700, gold: getSplitTotal(RAID_REWARD_INFO["지평의 성당"].stage1) }, { name: "2단계", minIlvl: 1720, gold: getSplitTotal(RAID_REWARD_INFO["지평의 성당"].stage2) }, { name: "3단계", minIlvl: 1750, gold: getSplitTotal(RAID_REWARD_INFO["지평의 성당"].stage3) }] },
+  { key: "BELGARDIN", name: "벨가르딘", diffs: [{ name: "노말", minIlvl: 1750, gold: getSplitTotal(RAID_REWARD_INFO["벨가르딘"].normal) }, { name: "하드", minIlvl: 1770, gold: getSplitTotal(RAID_REWARD_INFO["벨가르딘"].hard) }, { name: "나이트메어", minIlvl: 1780, gold: getSplitTotal(RAID_REWARD_INFO["벨가르딘"].nightmare) }] },
   { key: "EXT_ACT1", name: "1막 익스트림", diffs: [{ name: "노말", minIlvl: 1720, gold: getSplitTotal(RAID_REWARD_INFO["1막 익스트림"].normal) }, { name: "하드", minIlvl: 1750, gold: getSplitTotal(RAID_REWARD_INFO["1막 익스트림"].hard) }, { name: "나이트메어", minIlvl: 1770, gold: getSplitTotal(RAID_REWARD_INFO["1막 익스트림"].nightmare) }] },
   { key: "EXT_ACT2", name: "2막 익스트림", diffs: [{ name: "노말", minIlvl: 1720, gold: getSplitTotal(RAID_REWARD_INFO["2막 익스트림"].normal) }, { name: "하드", minIlvl: 1750, gold: getSplitTotal(RAID_REWARD_INFO["2막 익스트림"].hard) }, { name: "나이트메어", minIlvl: 1770, gold: getSplitTotal(RAID_REWARD_INFO["2막 익스트림"].nightmare) }] },
 ];
@@ -163,14 +179,14 @@ function pickBestDiff(ilvl: number, raid: RaidDef, basis: PlannerGoldBasis = "to
 export function availableDiffNames(ilvl: number, raidName: string): RaidDiffName[] {
   const canonical = canonicalRaidName(raidName);
   const def = RAID_CATALOG.find((raid) => normalizeRaidName(raid.name) === normalizeRaidName(canonical));
-  if (!def) return [];
+  if (!def || !isRaidCurrentlyActive(def.name)) return [];
   return def.diffs.filter((diff) => ilvl >= diff.minIlvl).map((diff) => diff.name);
 }
 
 function getGoldSplitByDiffName(raidName: string, diff: RaidDiffName): GoldSplit {
   const reward = RAID_REWARD_INFO[canonicalRaidName(raidName)];
   if (!reward) return EMPTY_GOLD_SPLIT;
-  if (diff === "노말") return reward.normal ?? EMPTY_GOLD_SPLIT;
+  if (diff === "노말" || diff === "싱글" || diff === "매칭") return reward.normal ?? EMPTY_GOLD_SPLIT;
   if (diff === "하드") return reward.hard ?? EMPTY_GOLD_SPLIT;
   if (diff === "나이트메어") return reward.nightmare ?? EMPTY_GOLD_SPLIT;
   if (diff === "1단계") return reward.stage1 ?? EMPTY_GOLD_SPLIT;
@@ -181,6 +197,7 @@ function getGoldSplitByDiffName(raidName: string, diff: RaidDiffName): GoldSplit
 
 export function calcWeeklyTop3Gold(ilvl: number, basis: PlannerGoldBasis = "total") {
   const candidates = RAID_CATALOG
+    .filter((raid) => isRaidCurrentlyActive(raid.name))
     .filter((raid) => !DEFAULT_EXTREME_WEEKLY_RAID_TITLES.has(raid.name))
     .map((raid) => {
       const best = pickBestDiff(ilvl, raid, basis);

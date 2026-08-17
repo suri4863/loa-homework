@@ -19,6 +19,7 @@ export type Character = {
   // (확장 필드) 아제나 만료 자동해제용
   azenaEnabled?: boolean;
   azenaExpiresAt?: string | null;
+  homeworkExcluded?: boolean;
 };
 
 export type TaskRow = {
@@ -255,6 +256,7 @@ const DEFAULT_PERSISTED_TASK_KEYS = new Set<string>([
   defaultTaskKey({ title: "4막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
   defaultTaskKey({ title: "종막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
   defaultTaskKey({ title: "세르카", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
+  defaultTaskKey({ title: "벨가르딘", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
   defaultTaskKey({ title: "1막 익스트림", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
   defaultTaskKey({ title: "2막 익스트림", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
 ]);
@@ -296,9 +298,23 @@ const WEEKLY_RAID_MIN_ILVL: Record<string, number> = {
   "지평의 성당": 1700,
   "종막": 1710,
   "세르카": 1710,
+  "벨가르딘": 1750,
   "1막 익스트림": 1720, // 4/24 카제로스 익스트림 추가
   "2막 익스트림": 1720, // 4/24 카제로스 익스트림 추가
 };
+
+const WEEKLY_RAID_RELEASE_WINDOWS: Record<string, { startsAt: number; endsAt?: number }> = {
+  "1막 익스트림": { startsAt: 0, endsAt: Date.parse("2026-05-20T06:00:00+09:00") },
+  "2막 익스트림": { startsAt: Date.parse("2026-05-20T06:00:00+09:00"), endsAt: Date.parse("2026-06-17T06:00:00+09:00") },
+  "벨가르딘": { startsAt: Date.parse("2026-08-05T06:00:00+09:00") },
+};
+
+function isWeeklyRaidReleased(raidName: string) {
+  const window = WEEKLY_RAID_RELEASE_WINDOWS[normalizeWeeklyRaidTitle(raidName)];
+  if (!window) return true;
+  const now = Date.now();
+  return now >= window.startsAt && (window.endsAt == null || now < window.endsAt);
+}
 
 function normalizeWeeklyRaidTitle(s: string) {
   return String(s ?? "")
@@ -314,6 +330,7 @@ function getEligibleWeeklyRaidTitles(
   return weeklyRaidTasks
     .map((task) => normalizeWeeklyRaidTitle(String(task.title ?? "")))
     .filter(Boolean)
+    .filter((raid) => isWeeklyRaidReleased(raid))
     .filter((raid, index, arr) => arr.indexOf(raid) === index)
     .filter((raid) => {
       const minIlvl = WEEKLY_RAID_MIN_ILVL[raid];
@@ -341,7 +358,9 @@ function getSelectedWeeklyRaidTitles(
       : [];
 
   if (pickedRaids.length > 0) {
-    return pickedRaids.filter((raid, index, arr) => arr.indexOf(raid) === index);
+    return pickedRaids
+      .filter((raid) => isWeeklyRaidReleased(raid))
+      .filter((raid, index, arr) => arr.indexOf(raid) === index);
   }
 
   // 레이드 팝업 선택값이 아직 없는 구버전/초기 캐릭터는 "가능한 주간 레이드 전체"를
@@ -374,9 +393,10 @@ function getRaidDiffMinIlvl(raid: string, diff: string): number | null {
     "1막": { "노말": 1660, "하드": 1680 },
     "2막": { "노말": 1670, "하드": 1690 },
     "3막": { "노말": 1680, "하드": 1700 },
-    "4막": { "노말": 1700, "하드": 1720 },
-    "종막": { "노말": 1710, "하드": 1730 },
-    "세르카": { "노말": 1710, "하드": 1730, "나이트메어": 1740 },
+    "4막": { "노말": 1700, "싱글": 1700, "하드": 1720 },
+    "종막": { "노말": 1710, "싱글": 1710, "하드": 1730 },
+    "세르카": { "노말": 1710, "매칭": 1710, "하드": 1730, "나이트메어": 1740 },
+    "벨가르딘": { "노말": 1750, "하드": 1770, "나이트메어": 1780 },
     "지평의 성당": { "1단계": 1700, "2단계": 1720, "3단계": 1750 },
     "1막 익스트림": { "노말": 1720, "하드": 1750, "나이트메어": 1770 },
     "2막 익스트림": { "노말": 1720, "하드": 1750, "나이트메어": 1770 },
@@ -389,7 +409,7 @@ function withDiff(raid: string, ilvl: number, selectedDiff?: string): string {
 
   if (!name) return "";
 
-  if (/(노말|하드|나이트메어|1단계|2단계|3단계)$/.test(name)) {
+  if (/(노말|싱글|매칭|하드|나이트메어|1단계|2단계|3단계)$/.test(name)) {
     return name;
   }
 
@@ -501,6 +521,13 @@ function withDiff(raid: string, ilvl: number, selectedDiff?: string): string {
     return "종막";
   }
 
+  if (name === "벨가르딘") {
+    if (ilvl >= 1780) return "벨가르딘 나이트메어";
+    if (ilvl >= 1770) return "벨가르딘 하드";
+    if (ilvl >= 1750) return "벨가르딘 노말";
+    return "벨가르딘";
+  }
+
   if (name === "지평의 성당") {
     if (ilvl >= 1750) return "지평의 성당 3단계";
     if (ilvl >= 1720) return "지평의 성당 2단계";
@@ -515,6 +542,7 @@ export function createCharacter(input: {
   itemLevel?: string;
   power?: string;
   role?: CharacterRole;
+  homeworkExcluded?: boolean;
 }): Character {
   return {
     id: uid("ch"),
@@ -522,6 +550,7 @@ export function createCharacter(input: {
     itemLevel: input.itemLevel ?? "",
     power: input.power ?? "",
     role: input.role ?? "DEALER",
+    homeworkExcluded: input.homeworkExcluded ?? false,
   };
 }
 
@@ -701,6 +730,7 @@ function makeDefaultState(): TodoState {
     createTask({ title: "천상", period: "WEEKLY", cellType: "CHECK", section: "주간 교환", order: baseOrder + 100 }),
     createTask({ title: "혈석 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환", order: baseOrder + 101 }),
     createTask({ title: "클리어메달 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환", order: baseOrder + 102 }),
+    createTask({ title: "할의 모래시계", period: "WEEKLY", cellType: "CHECK", section: "주간 교환", order: baseOrder + 103 }),
     // createTask({ title: "해적주화 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환", order: baseOrder + 103 }),
     createTask({ title: "메모", period: "WEEKLY", cellType: "TEXT", section: "주간 교환", order: baseOrder + 104 }),
 
@@ -721,8 +751,9 @@ function makeDefaultState(): TodoState {
     createTask({ title: "4막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 414 }),
     createTask({ title: "종막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 415 }),
     createTask({ title: "세르카", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 416 }),
-    createTask({ title: "1막 익스트림", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 417 }), // 4/24 카제로스 익스트림 추가
-    createTask({ title: "2막 익스트림", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 418 }), // 4/24 카제로스 익스트림 추가
+    createTask({ title: "벨가르딘", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 417 }),
+    createTask({ title: "1막 익스트림", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 418 }), // 4/24 카제로스 익스트림 추가
+    createTask({ title: "2막 익스트림", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드", order: 419 }), // 4/24 카제로스 익스트림 추가
 
 
     // 기타 (원하는 순서: 4해금 → 3해금 → 2해금 → 1해금 → 낙원트리)
@@ -862,6 +893,7 @@ function normalizeState(parsed: any): TodoState {
     ensureTask({ title: "천상", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" });
     ensureTask({ title: "혈석 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" });
     ensureTask({ title: "클리어메달 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" });
+    ensureTask({ title: "할의 모래시계", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" });
     // ensureTask({ title: "해적주화 교환", period: "WEEKLY", cellType: "CHECK", section: "주간 교환" });
     ensureTask({ title: "메모", period: "WEEKLY", cellType: "TEXT", section: "주간 교환" });
 
@@ -893,6 +925,7 @@ function normalizeState(parsed: any): TodoState {
     ensureTask({ title: "4막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
     ensureTask({ title: "종막", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
     ensureTask({ title: "세르카", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
+    ensureTask({ title: "벨가르딘", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" });
     ensureTask({ title: "1막 익스트림", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }); // 4/24 카제로스 익스트림 추가
     ensureTask({ title: "2막 익스트림", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }); // 4/24 카제로스 익스트림 추가
 
@@ -917,15 +950,17 @@ function normalizeState(parsed: any): TodoState {
     setOrder("4막", "WEEKLY", "주간 레이드", 414);
     setOrder("종막", "WEEKLY", "주간 레이드", 415);
     setOrder("세르카", "WEEKLY", "주간 레이드", 416);
-    setOrder("1막 익스트림", "WEEKLY", "주간 레이드", 417); // 4/24 카제로스 익스트림 추가
-    setOrder("2막 익스트림", "WEEKLY", "주간 레이드", 418); // 4/24 카제로스 익스트림 추가
+    setOrder("벨가르딘", "WEEKLY", "주간 레이드", 417);
+    setOrder("1막 익스트림", "WEEKLY", "주간 레이드", 418); // 4/24 카제로스 익스트림 추가
+    setOrder("2막 익스트림", "WEEKLY", "주간 레이드", 419); // 4/24 카제로스 익스트림 추가
 
     // 주간 교환: 천상 → 혈석 → 클리어 → 해적 → 메모
     setOrder("천상", "WEEKLY", "주간 교환", base + 1);
     setOrder("혈석 교환", "WEEKLY", "주간 교환", base + 2);
     setOrder("클리어메달 교환", "WEEKLY", "주간 교환", base + 3);
+    setOrder("할의 모래시계", "WEEKLY", "주간 교환", base + 4);
     // setOrder("해적주화 교환", "WEEKLY", "주간 교환", base + 4);
-    setOrder("메모", "WEEKLY", "주간 교환", base + 5);
+    setOrder("메모", "WEEKLY", "주간 교환", base + 6);
 
     // 기타: 4해금 → 3해금 → 2해금 → 1해금 → 낙원 트리
     setOrder("4해금", "NONE", "기타", base + 21);

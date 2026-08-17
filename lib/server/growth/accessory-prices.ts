@@ -4,6 +4,27 @@ import path from "node:path";
 
 const LOSTARK_API_BASE = "https://developer-lostark.game.onstove.com";
 const ACCESSORY_PRICE_QUERY_VERSION = "buy-price-efficiency-candidates-v4";
+const ACCESSORY_CACHE_TTL_MS = 5 * 60 * 1000;
+const ACCESSORY_STALE_TTL_MS = 30 * 60 * 1000;
+const ACCESSORY_TARGET_DELAY_MS = 360;
+const ACCESSORY_PAGE_DELAY_MS = 220;
+
+type AccessoryPricePayload = {
+  ok: true;
+  source: string;
+  sourceUrl: string;
+  queryVersion: string;
+  fetchedAt: string;
+  minQuality: number;
+  pricesByPart: Record<string, number>;
+  targetsByPart: Record<string, AccessoryAuctionItem>;
+  candidatesByPart: Record<string, AccessoryAuctionItem[]>;
+  items: AccessoryAuctionItem[];
+  warnings: string[];
+  cache?: "fresh" | "stale";
+};
+
+const accessoryCache = new Map<string, { savedAt: number; payload: AccessoryPricePayload }>();
 
 type AccessoryPart = "목걸이" | "귀걸이" | "반지";
 
@@ -192,7 +213,7 @@ async function fetchAccessoryTargetPrice(
     const totalCount = Number(data?.TotalCount ?? data?.totalCount ?? 0);
     const pageSize = Math.max(1, Number(data?.PageSize ?? data?.pageSize ?? items.length) || 10);
     if (!items.length || pageNo * pageSize >= totalCount) break;
-    await delay(120);
+    await delay(ACCESSORY_PAGE_DELAY_MS);
   }
 
   const best = rows
@@ -231,6 +252,23 @@ function parseParts(input: unknown): AccessoryPart[] {
   return requested.length ? Array.from(new Set(requested)) : ["목걸이", "귀걸이", "반지"];
 }
 
+function makeAccessoryCacheKey(minQuality: number, parts: AccessoryPart[]) {
+  return JSON.stringify({ minQuality, parts: [...parts].sort() });
+}
+
+function readAccessoryCache(cacheKey: string, allowStale = false) {
+  const cached = accessoryCache.get(cacheKey);
+  if (!cached) return null;
+  const age = Date.now() - cached.savedAt;
+  if (age <= ACCESSORY_CACHE_TTL_MS) return { ...cached.payload, cache: "fresh" as const };
+  if (allowStale && age <= ACCESSORY_STALE_TTL_MS) return { ...cached.payload, cache: "stale" as const };
+  return null;
+}
+
+function saveAccessoryCache(cacheKey: string, payload: AccessoryPricePayload) {
+  accessoryCache.set(cacheKey, { savedAt: Date.now(), payload });
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Cache-Control", "s-maxage=60, stale-while-revalidate=300");
 
@@ -248,6 +286,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const minQuality = parseMinQuality(req.query.minQuality);
     const parts = parseParts(req.query.parts);
+    const cacheKey = makeAccessoryCacheKey(minQuality, parts);
+    const freshCached = readAccessoryCache(cacheKey);
+    if (freshCached) return res.status(200).json(freshCached);
+
     const items: AccessoryAuctionItem[] = [];
     const candidatesByPart: Record<string, AccessoryAuctionItem[]> = {};
     const warnings: string[] = [];
@@ -262,9 +304,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         } catch (error: any) {
           warnings.push(String(error?.message || error));
-          if (String(error?.message || "").includes("LOSTARK_API_429")) break;
+          if (String(error?.message || "").includes("LOSTARK_API_429")) {
+            const staleCached = readAccessoryCache(cacheKey, true);
+            if (staleCached) {
+              return res.status(200).json({
+                ...staleCached,
+                warnings: [...(staleCached.warnings ?? []), "LOSTARK_API_429_RATE_LIMITED_USING_STALE_CACHE"],
+              });
+            }
+            break;
+          }
         }
-        await delay(180);
+        await delay(ACCESSORY_TARGET_DELAY_MS);
       }
     }
 
@@ -277,7 +328,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       targetsByPart[part] = cheapest;
     }
 
-    return res.status(200).json({
+    const payload: AccessoryPricePayload = {
       ok: true,
       source: "lostark-openapi-auctions",
       sourceUrl: `${LOSTARK_API_BASE}/auctions/items`,
@@ -289,7 +340,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       candidatesByPart,
       items,
       warnings,
-    });
+    };
+    if (Object.values(candidatesByPart).some((rows) => rows.length > 0)) saveAccessoryCache(cacheKey, payload);
+
+    return res.status(200).json(payload);
   } catch (error: any) {
     return res.status(500).json({
       ok: false,
