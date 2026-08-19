@@ -49,9 +49,6 @@ import {
 
 // ✅ 계정 요일별 콘텐츠 (06:00 리셋 기준)
 const getAccountDailyKey = (tableId: string) => `loa-account-daily:v1:${tableId}`;
-const getAccountWeeklyKey = (tableId: string) => `loa-account-weekly:v1:${tableId}`;
-const KONI_WEEKLY_MAX = 3;
-
 
 // 0=일,1=월,...6=토
 const WEEKLY_ACCOUNT_CONTENT: Record<number, { id: string; label: string }[]> = {
@@ -9118,7 +9115,6 @@ export default function TodoTracker() {
 
   // ✅ 계정 콘텐츠 체크(카게/필보): tableId별로 저장/로드 (06:00 리셋 기준)
   const [accountChecksByTable, setAccountChecksByTable] = useState<Record<string, Record<string, boolean>>>({});
-  const [accountWeeklyByTable, setAccountWeeklyByTable] = useState<Record<string, { koniCount: number }>>({});
   const [todayMustDoOpen, setTodayMustDoOpen] = useState(false);
   const [weeklyMustDoOpen, setWeeklyMustDoOpen] = useState(false);
   const [gemIncomeOpen, setGemIncomeOpen] = useState(false);
@@ -9606,34 +9602,6 @@ export default function TodoTracker() {
     }
   }
 
-  const accountWeeklyResetKey = String(state.reset?.lastWeeklyResetAt ?? 0);
-
-  function readAccountWeekly(tableId: string): { koniCount: number } {
-    try {
-      const raw = localStorage.getItem(getAccountWeeklyKey(tableId));
-      if (!raw) return { koniCount: 0 };
-      const parsed = JSON.parse(raw) as { resetKey?: string; koniCount?: number };
-      if (parsed?.resetKey !== accountWeeklyResetKey) return { koniCount: 0 };
-      return { koniCount: clampInt(Number(parsed.koniCount ?? 0), 0, KONI_WEEKLY_MAX) };
-    } catch {
-      return { koniCount: 0 };
-    }
-  }
-
-  function writeAccountWeekly(tableId: string, progress: { koniCount: number }) {
-    try {
-      localStorage.setItem(
-        getAccountWeeklyKey(tableId),
-        JSON.stringify({
-          resetKey: accountWeeklyResetKey,
-          koniCount: clampInt(Number(progress.koniCount ?? 0), 0, KONI_WEEKLY_MAX),
-        })
-      );
-    } catch {
-      // ignore
-    }
-  }
-
   // ✅ 전체 표의 계정 콘텐츠 체크를 로드
   useEffect(() => {
     const ids = state.tables.map((t) => t.id);
@@ -9644,15 +9612,6 @@ export default function TodoTracker() {
     });
   }, [loaDateKey, state.tables]);
 
-  useEffect(() => {
-    const ids = state.tables.map((t) => t.id);
-    setAccountWeeklyByTable(() => {
-      const next: Record<string, { koniCount: number }> = {};
-      for (const id of ids) next[id] = readAccountWeekly(id);
-      return next;
-    });
-  }, [accountWeeklyResetKey, state.tables]);
-
   function onToggleAccountCheck(tableId: string, id: string, checked: boolean) {
     setAccountChecksByTable((prev) => {
       const current = prev[tableId] ?? {};
@@ -9661,17 +9620,6 @@ export default function TodoTracker() {
       // ✅ 클릭 순간 즉시 저장
       writeAccountChecks(tableId, nextChecks);
       return next;
-    });
-  }
-
-  function onCycleKoniWeekly(tableId: string) {
-    setAccountWeeklyByTable((prev) => {
-      const current = prev[tableId] ?? readAccountWeekly(tableId);
-      const nextProgress = {
-        koniCount: (clampInt(Number(current.koniCount ?? 0), 0, KONI_WEEKLY_MAX) + 1) % (KONI_WEEKLY_MAX + 1),
-      };
-      writeAccountWeekly(tableId, nextProgress);
-      return { ...prev, [tableId]: nextProgress };
     });
   }
 
@@ -10084,20 +10032,6 @@ export default function TodoTracker() {
               지금 기준
             </button>
           </div>
-        </div>
-
-        {/* ✅ 요일별(카게/필보) */}
-        <div className="accountWeeklyEventBox">
-          <button
-            type="button"
-            className={`accountWeeklyCounter ${(accountWeeklyByTable[tableId]?.koniCount ?? 0) >= KONI_WEEKLY_MAX ? "done" : ""}`}
-            onClick={() => onCycleKoniWeekly(tableId)}
-            title="우당탕! 수박 대소동 주간 입장 횟수"
-          >
-            <span>수박 대소동</span>
-            <b>{accountWeeklyByTable[tableId]?.koniCount ?? 0}/{KONI_WEEKLY_MAX}</b>
-          </button>
-          <span className="accountWeeklyHint">주간 3회 · 수요일 06시 초기화</span>
         </div>
 
         {todayAccountContents.length > 0 ? (
