@@ -744,6 +744,69 @@ body {
   border-radius: 7px;
 }
 
+.echo-raid-cell-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 92px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.echo-raid-cell-btn:hover {
+  border-color: rgba(59, 130, 246, 0.55);
+  background: var(--primary-soft);
+}
+
+.echo-raid-mode {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.echo-raid-mode.normal {
+  border: 1px solid rgba(59, 130, 246, 0.45);
+  background: rgba(59, 130, 246, 0.14);
+  color: #60a5fa;
+}
+
+.echo-raid-mode.hard {
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  background: rgba(248, 113, 113, 0.14);
+  color: #fca5a5;
+}
+
+.echo-raid-progress {
+  font-variant-numeric: tabular-nums;
+}
+
+.echo-raid-cell-locked {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  background: var(--soft);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .check.on {
   background: var(--primary);
   border-color: var(--primary);
@@ -1067,6 +1130,119 @@ html[data-theme="dark"] .rest-input {
   color: var(--text);
   display: grid;
   gap: 4px;
+}
+
+/* ---------- Echo raid progress modal ---------- */
+.echoRaidOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.echoRaidModal {
+  width: min(620px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+  color: var(--text);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.28);
+  padding: 14px;
+}
+
+.echoRaidHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.echoRaidTitle {
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.echoRaidMeta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.echoRaidNotice {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--soft);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.echoRaidStageList {
+  display: grid;
+  gap: 8px;
+}
+
+.echoRaidStage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--soft);
+}
+
+.echoRaidStage.is-locked {
+  opacity: 0.45;
+}
+
+.echoRaidStageTitle {
+  font-weight: 900;
+  word-break: keep-all;
+}
+
+.echoRaidStageSub {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.echoRaidCheck {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 72px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.echoRaidCheck input {
+  margin: 0;
+}
+
+.echoRaidLockedText {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 /* ---------- Gold sum (주간 골드) ---------- */
@@ -2087,6 +2263,9 @@ body,
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 8px;
+  cursor: move;
+  user-select: none;
+  touch-action: none;
 }
 
 .weekly-top3-head button {

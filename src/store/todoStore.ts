@@ -239,6 +239,7 @@ const DEFAULT_PERSISTED_TASK_KEYS = new Set<string>([
   defaultTaskKey({ title: "2해금", period: "NONE", cellType: "TEXT", section: "기타" }),
   defaultTaskKey({ title: "3해금", period: "NONE", cellType: "TEXT", section: "기타" }),
   defaultTaskKey({ title: "4해금", period: "NONE", cellType: "TEXT", section: "기타" }),
+  defaultTaskKey({ title: "종언의 잔영", period: "NONE", cellType: "CHECK", section: "기간제" }),
   defaultTaskKey({ title: "큐브", period: "NONE", cellType: "TEXT", section: "기타" }),
   defaultTaskKey({ title: "발탄", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
   defaultTaskKey({ title: "비아키스", period: "WEEKLY", cellType: "CHECK", section: "주간 레이드" }),
@@ -757,6 +758,7 @@ function makeDefaultState(): TodoState {
 
 
     // 기타 (원하는 순서: 4해금 → 3해금 → 2해금 → 1해금 → 낙원트리)
+    createTask({ title: "종언의 잔영", period: "NONE", cellType: "CHECK", section: "기간제", order: baseOrder + 190 }),
     createTask({ title: "4해금", period: "NONE", cellType: "TEXT", section: "기타", order: baseOrder + 200 }),
     createTask({ title: "3해금", period: "NONE", cellType: "TEXT", section: "기타", order: baseOrder + 201 }),
     createTask({ title: "2해금", period: "NONE", cellType: "TEXT", section: "기타", order: baseOrder + 202 }),
@@ -903,6 +905,7 @@ function normalizeState(parsed: any): TodoState {
     ensureTask({ title: "2해금", period: "NONE", cellType: "TEXT", section: "기타" });
     ensureTask({ title: "3해금", period: "NONE", cellType: "TEXT", section: "기타" });
     ensureTask({ title: "4해금", period: "NONE", cellType: "TEXT", section: "기타" });
+    ensureTask({ title: "종언의 잔영", period: "NONE", cellType: "CHECK", section: "기간제" });
 
     // (기존 유지) '기타 / 큐브' 없으면 추가 — UI에서 숨김 처리 중이라도 데이터 호환용으로 유지
     ensureTask({ title: "큐브", period: "NONE", cellType: "TEXT", section: "기타" });
@@ -961,6 +964,9 @@ function normalizeState(parsed: any): TodoState {
     setOrder("할의 모래시계", "WEEKLY", "주간 교환", base + 4);
     // setOrder("해적주화 교환", "WEEKLY", "주간 교환", base + 4);
     setOrder("메모", "WEEKLY", "주간 교환", base + 6);
+
+    // 기간제 이벤트: 주간 리셋 대상이 아닌 캐릭터별 진행도 관리
+    setOrder("종언의 잔영", "NONE", "기간제", base + 11);
 
     // 기타: 4해금 → 3해금 → 2해금 → 1해금 → 낙원 트리
     setOrder("4해금", "NONE", "기타", base + 21);

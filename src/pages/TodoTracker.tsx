@@ -198,6 +198,64 @@ function formatGoldValue(value: number) {
   return `${Math.round(value).toLocaleString()} G`;
 }
 
+const ECHO_RAID_TASK_TITLE = "종언의 잔영";
+const ECHO_RAID_PROGRESS_KEY = "loa-echo-raid-progress:v1";
+
+type EchoRaidDifficulty = "normal" | "hard";
+
+type EchoRaidStage = {
+  id: number;
+  title: string;
+  boss: string;
+  opensAt: string;
+};
+
+type EchoRaidProgressByChar = Record<
+  string,
+  Record<string, Partial<Record<EchoRaidDifficulty, boolean>>>
+>;
+
+const ECHO_RAID_STAGES: EchoRaidStage[] = [
+  { id: 1, title: "성역의 수호자", boss: "천공의 파수꾼", opensAt: "2026-08-26" },
+  { id: 2, title: "욕망의 속삭임", boss: "악몽의 모르페", opensAt: "2026-09-02" },
+  { id: 3, title: "악몽을 목도한 기사", boss: "프로켈", opensAt: "2026-09-09" },
+  { id: 4, title: "현실을 베는 달빛", boss: "아슈타로테", opensAt: "2026-09-16" },
+  { id: 5, title: "맹렬한 업화", boss: "파이어혼", opensAt: "2026-09-23" },
+  { id: 6, title: "영원을 짊어진 자", boss: "라우리엘", opensAt: "2026-09-30" },
+];
+
+function readEchoRaidProgress(): EchoRaidProgressByChar {
+  if (typeof window === "undefined") return {};
+  try {
+    const parsed = JSON.parse(localStorage.getItem(ECHO_RAID_PROGRESS_KEY) || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function isEchoRaidTask(task: TaskRow) {
+  return String(task.title ?? "").trim() === ECHO_RAID_TASK_TITLE;
+}
+
+function getEchoRaidMode(ilvl: number): EchoRaidDifficulty | null {
+  if (ilvl >= 1770) return "hard";
+  if (ilvl >= 1730) return "normal";
+  return null;
+}
+
+function isEchoRaidStageOpen(stage: EchoRaidStage) {
+  return Date.now() >= Date.parse(`${stage.opensAt}T06:00:00+09:00`);
+}
+
+function formatEchoRaidOpenDate(stage: EchoRaidStage) {
+  return `${stage.opensAt.replace(/-/g, ".")} 06:00`;
+}
+
+function getEchoRaidCharKey(tableId: string, charId: string) {
+  return `${tableId}:${charId}`;
+}
+
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");
@@ -218,7 +276,7 @@ function getLoaGameDate(resetHour: number) {
 }
 
 
-type Tab = "DAILY" | "WEEKLY" | "NONE" | "ALL" | "RAID_LEFT";
+type Tab = "DAILY" | "WEEKLY" | "NONE" | "ALL" | "EVENT" | "RAID_LEFT";
 
 function uid(prefix: string) {
   return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
@@ -9272,6 +9330,7 @@ export default function TodoTracker() {
     "지평의 성당": 1700,
     "1막 익스트림": 1720,
     "2막 익스트림": 1720,
+    "종언의 잔영": 1730,
     "1해금": 1640,
     "2해금": 1680,
     "3해금": 1700,
@@ -10886,6 +10945,66 @@ export default function TodoTracker() {
   const weeklyRaidPickRef = useRef<Record<string, WeeklyRaidPick>>({});
   const [weeklyTop3Popup, setWeeklyTop3Popup] = useState<WeeklyTop3Popup>(null);
   const [weeklyPopupRaidTab, setWeeklyPopupRaidTab] = useState<WeeklyPopupRaidTab>("current");
+  const [echoRaidProgressByChar, setEchoRaidProgressByChar] = useState<EchoRaidProgressByChar>(() => readEchoRaidProgress());
+  const [echoRaidPopup, setEchoRaidPopup] = useState<{
+    tableId: string;
+    charId: string;
+    charName: string;
+    ilvl: number;
+  } | null>(null);
+
+  function getWeeklyTop3PopupPosition(e: React.MouseEvent) {
+    const width = 390;
+    const height = Math.min(560, Math.max(240, window.innerHeight - 16));
+    const maxLeft = Math.max(8, window.innerWidth - width - 8);
+    const maxTop = Math.max(8, window.innerHeight - height - 8);
+
+    return {
+      x: Math.min(Math.max(8, e.clientX + 12), maxLeft),
+      y: Math.min(Math.max(8, e.clientY + 12), maxTop),
+    };
+  }
+
+  function handleWeeklyTop3PopupPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.button !== 0) return;
+    if ((e.target as HTMLElement | null)?.closest("button, input, label")) return;
+    if (!weeklyTop3Popup) return;
+
+    const popupEl = e.currentTarget.closest(".weekly-top3-pop") as HTMLElement | null;
+    const startLeft = weeklyTop3Popup.x;
+    const startTop = weeklyTop3Popup.y;
+    const offsetX = e.clientX - startLeft;
+    const offsetY = e.clientY - startTop;
+    const pointerId = e.pointerId;
+    e.currentTarget.setPointerCapture(pointerId);
+
+    const move = (event: PointerEvent) => {
+      const width = popupEl?.offsetWidth ?? 390;
+      const height = Math.min(popupEl?.offsetHeight ?? 560, window.innerHeight - 16);
+      const maxLeft = Math.max(8, window.innerWidth - width - 8);
+      const maxTop = Math.max(8, window.innerHeight - height - 8);
+
+      setWeeklyTop3Popup((prev) =>
+        prev
+          ? {
+            ...prev,
+            x: Math.min(Math.max(8, event.clientX - offsetX), maxLeft),
+            y: Math.min(Math.max(8, event.clientY - offsetY), maxTop),
+          }
+          : prev
+      );
+    };
+
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  }
 
   useEffect(() => {
     weeklyRaidPickRef.current = weeklyRaidPickByChar;
@@ -10896,6 +11015,77 @@ export default function TodoTracker() {
       setWeeklyPopupRaidTab("current");
     }
   }, [weeklyTop3Popup]);
+
+  useEffect(() => {
+    localStorage.setItem(ECHO_RAID_PROGRESS_KEY, JSON.stringify(echoRaidProgressByChar));
+  }, [echoRaidProgressByChar]);
+
+  function getEchoRaidProgress(tableId: string, charId: string) {
+    return echoRaidProgressByChar[getEchoRaidCharKey(tableId, charId)] ?? {};
+  }
+
+  function isEchoRaidStageChecked(tableId: string, charId: string, stageId: number, mode: EchoRaidDifficulty) {
+    const stageProgress = getEchoRaidProgress(tableId, charId)[String(stageId)] ?? {};
+    if (mode === "hard") return !!stageProgress.hard;
+    return !!stageProgress.normal || !!stageProgress.hard;
+  }
+
+  function countEchoRaidDone(tableId: string, charId: string, mode: EchoRaidDifficulty) {
+    return ECHO_RAID_STAGES.filter((stage) => isEchoRaidStageOpen(stage))
+      .filter((stage) => isEchoRaidStageChecked(tableId, charId, stage.id, mode))
+      .length;
+  }
+
+  function toggleEchoRaidStage(tableId: string, charId: string, stageId: number, mode: EchoRaidDifficulty, checked: boolean) {
+    setEchoRaidProgressByChar((prev) => {
+      const charKey = getEchoRaidCharKey(tableId, charId);
+      const charProgress = { ...(prev[charKey] ?? {}) };
+      const stageKey = String(stageId);
+      const stageProgress = { ...(charProgress[stageKey] ?? {}) };
+
+      if (mode === "hard") {
+        stageProgress.hard = checked;
+        stageProgress.normal = checked;
+      } else {
+        stageProgress.normal = checked;
+        if (!checked) stageProgress.hard = false;
+      }
+
+      charProgress[stageKey] = stageProgress;
+      return { ...prev, [charKey]: charProgress };
+    });
+  }
+
+  function renderEchoRaidCell(tableId: string, ch: Character) {
+    const ilvl = getCharIlvl(ch);
+    const mode = getEchoRaidMode(ilvl);
+
+    if (!mode) {
+      return (
+        <td key={ch.id} className="cell">
+          <span className="echo-raid-cell-locked">Lv. 1730+</span>
+        </td>
+      );
+    }
+
+    const openCount = ECHO_RAID_STAGES.filter((stage) => isEchoRaidStageOpen(stage)).length;
+    const doneCount = countEchoRaidDone(tableId, ch.id, mode);
+    const modeLabel = mode === "hard" ? "하드" : "노말";
+
+    return (
+      <td key={ch.id} className="cell">
+        <button
+          type="button"
+          className="echo-raid-cell-btn"
+          onClick={() => setEchoRaidPopup({ tableId, charId: ch.id, charName: ch.name, ilvl })}
+          title="종언의 잔영 단계 관리"
+        >
+          <span className={`echo-raid-mode ${mode}`}>{modeLabel}</span>
+          <span className="echo-raid-progress">{doneCount}/{openCount}</span>
+        </button>
+      </td>
+    );
+  }
 
   function handleRaidRewardDockPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
     if (e.button !== 0) return;
@@ -11350,7 +11540,14 @@ export default function TodoTracker() {
       );
     }
 
+    if (periodTab === "EVENT") {
+      return visibleTasks.filter((t) => t.period === "NONE" && (t.section ?? "").trim() === "기간제");
+    }
+
     if (periodTab === "ALL") return visibleTasks;
+    if (periodTab === "NONE") {
+      return visibleTasks.filter((t) => t.period === "NONE" && (t.section ?? "").trim() !== "기간제");
+    }
     return visibleTasks.filter((t) => t.period === periodTab);
   }, [periodTab, state.tasks]);
 
@@ -11358,6 +11555,7 @@ export default function TodoTracker() {
     "일일 숙제": 1,
     "주간 레이드": 2,
     "주간 교환": 3,
+    "기간제": 4,
   };
 
   const WEEKLY_RAID_ORDER: Record<string, number> = {
@@ -13082,7 +13280,12 @@ body.pip-dark .pip-select option{
                         <div className="task-left-inner">
                           <div className="task-title raid-title-click">{task.title}</div>
 
-                          <div className="pill weekly">주간</div>
+                          <div
+                            className={`pill ${task.period === "DAILY" ? "daily" : task.period === "WEEKLY" ? "weekly" : ""
+                              }`}
+                          >
+                            {LEVEL_PERIODS[task.period]}
+                          </div>
 
                           <div className="task-actions">
                             <button className="mini" onClick={() => editTask(task)}>수정</button>
@@ -13094,6 +13297,10 @@ body.pip-dark .pip-select option{
 
                       {visibleCols.map(({ tableId, ch }) => {
                         const cell = getCellByTableId(state, tableId, task.id, ch.id);
+
+                        if (isEchoRaidTask(task)) {
+                          return renderEchoRaidCell(tableId, ch);
+                        }
 
                         // ✅ 주간 레이드 Top3만 체크 노출(기존 로직 유지)
                         if (section === "주간 레이드" && isWeeklyRaidTaskTitle(task.title)) {
@@ -13178,13 +13385,14 @@ body.pip-dark .pip-select option{
                               className="goldbox goldbox-btn"
                               title={detail}
                               onClick={(e) => {
+                                const position = getWeeklyTop3PopupPosition(e);
                                 setWeeklyTop3Popup({
                                   tableId,
                                   charId: ch.id,
                                   charName: ch.name,
                                   ilvl,
-                                  x: e.clientX,
-                                  y: e.clientY,
+                                  x: position.x,
+                                  y: position.y,
                                 });
                               }}
                             >
@@ -13704,13 +13912,14 @@ body.pip-dark .pip-select option{
                                         className="goldbox goldbox-btn"
                                         title={detail}
                                         onClick={(e) => {
+                                          const position = getWeeklyTop3PopupPosition(e);
                                           setWeeklyTop3Popup({
                                             tableId,
                                             charId: ch.id,
                                             charName: ch.name,
                                             ilvl,
-                                            x: e.clientX,
-                                            y: e.clientY,
+                                            x: position.x,
+                                            y: position.y,
                                           });
                                         }}
                                       >
@@ -13787,6 +13996,10 @@ body.pip-dark .pip-select option{
                                     if (typeof min === "number") {
                                       const eligible = getCharIlvl(ch) >= min;
                                       if (!eligible) return <td key={ch.id} className="cell" />;
+                                    }
+
+                                    if (isEchoRaidTask(task)) {
+                                      return renderEchoRaidCell(tableId, ch);
                                     }
 
                                     if (task.cellType === "TEXT") {
@@ -14844,6 +15057,9 @@ body.pip-dark .pip-select option{
         <button className={`tab ${periodTab === "NONE" ? "active" : ""}`} onClick={() => setPeriodTab("NONE")}>
           기타
         </button>
+        <button className={`tab ${periodTab === "EVENT" ? "active" : ""}`} onClick={() => setPeriodTab("EVENT")}>
+          기간제 이벤트
+        </button>
         <button className={`tab ${periodTab === "RAID_LEFT" ? "active" : ""}`} onClick={() => setPeriodTab("RAID_LEFT")}>
           남은 레이드
         </button>
@@ -15148,6 +15364,83 @@ body.pip-dark .pip-select option{
         </ul>
       </div>
 
+      {echoRaidPopup && (() => {
+        const mode = getEchoRaidMode(echoRaidPopup.ilvl);
+        const modeLabel = mode === "hard" ? "하드" : "노말";
+        const openCount = ECHO_RAID_STAGES.filter((stage) => isEchoRaidStageOpen(stage)).length;
+        const doneCount = mode
+          ? countEchoRaidDone(echoRaidPopup.tableId, echoRaidPopup.charId, mode)
+          : 0;
+
+        return (
+          <div className="echoRaidOverlay" onClick={() => setEchoRaidPopup(null)} role="dialog" aria-modal="true">
+            <div className="echoRaidModal" onClick={(e) => e.stopPropagation()}>
+              <div className="echoRaidHead">
+                <div>
+                  <div className="echoRaidTitle">종언의 잔영 단계</div>
+                  <div className="echoRaidMeta">
+                    {echoRaidPopup.charName} · Lv. {formatGemCount(echoRaidPopup.ilvl)} · {modeLabel}
+                    {mode ? ` · ${doneCount}/${openCount}` : ""}
+                  </div>
+                </div>
+                <button type="button" className="btn mini" onClick={() => setEchoRaidPopup(null)}>
+                  닫기
+                </button>
+              </div>
+
+              <div className="echoRaidNotice">
+                캐릭터별 단계 최초 클리어 기록이야. 하드 클리어는 노말도 함께 클리어 처리돼.
+              </div>
+
+              <div className="echoRaidStageList">
+                {ECHO_RAID_STAGES.map((stage) => {
+                  const opened = isEchoRaidStageOpen(stage);
+                  const checked = mode
+                    ? isEchoRaidStageChecked(echoRaidPopup.tableId, echoRaidPopup.charId, stage.id, mode)
+                    : false;
+
+                  return (
+                    <div key={stage.id} className={`echoRaidStage ${opened ? "" : "is-locked"}`}>
+                      <div className="echoRaidStageInfo">
+                        <div className="echoRaidStageTitle">
+                          {stage.id}단계 {stage.title}
+                        </div>
+                        <div className="echoRaidStageSub">
+                          {stage.boss} · {formatEchoRaidOpenDate(stage)}
+                          {!opened ? " 개방" : ""}
+                        </div>
+                      </div>
+
+                      {mode ? (
+                        <label className="echoRaidCheck">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={!opened}
+                            onChange={(e) =>
+                              toggleEchoRaidStage(
+                                echoRaidPopup.tableId,
+                                echoRaidPopup.charId,
+                                stage.id,
+                                mode,
+                                e.target.checked
+                              )
+                            }
+                          />
+                          <span>{modeLabel}</span>
+                        </label>
+                      ) : (
+                        <span className="echoRaidLockedText">Lv. 1730+</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {raidGoldPopup && (
         <div
           className="raid-gold-pop"
@@ -15336,8 +15629,8 @@ body.pip-dark .pip-select option{
         }
 
         return (
-          <div className="weekly-top3-pop" style={{ left: popupX + 12, top: popupY + 12 }}>
-            <div className="weekly-top3-head">
+          <div className="weekly-top3-pop" style={{ left: popupX, top: popupY }}>
+            <div className="weekly-top3-head" onPointerDown={handleWeeklyTop3PopupPointerDown}>
               <b>{popupCharName} · 선택 레이드 골드</b>
               <button onClick={() => setWeeklyTop3Popup(null)}>닫기</button>
             </div>
