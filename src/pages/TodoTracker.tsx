@@ -45,6 +45,7 @@ import {
   normalizeFriendRaidSnapshotAfterWeeklyReset,
   exportFriendRaidPlan,
   importFriendRaidPlan,
+  getLatestWeeklyResetTime,
 } from "../store/todoStore";
 
 // ✅ 계정 요일별 콘텐츠 (06:00 리셋 기준)
@@ -91,6 +92,44 @@ const SANDGLASS_GEM_REWARDS: GemDropReward[] = [
   { minIlvl: 1750, label: "모래시계 2", levelOneGems: 54, gemLevel: 3, gemCount: 6 },
   { minIlvl: 1770, label: "모래시계 3", levelOneGems: 63, gemLevel: 3, gemCount: 7 },
 ];
+
+const TRIAL_SAND_RUNS_KEY = "loa-trial-sand-runs:v1";
+const TRIAL_SAND_OVERRIDE_KEY = "loa-trial-sand-override:v1";
+const TRIAL_SAND_RUNS_PER_SAND = 5;
+const TRIAL_SAND_MAX = 5;
+
+type TrialSandRunsStore = {
+  weeklyResetAt?: number;
+  runsByCharKey?: Record<string, number>;
+};
+
+type TrialSandOverrideStore = {
+  weeklyResetAt?: number;
+  value?: number | null;
+};
+
+function clampTrialSandCount(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(TRIAL_SAND_MAX, Math.floor(value)));
+}
+
+function getTrialSandCountFromRuns(runs: number) {
+  const safeRuns = Math.max(0, Math.floor(Number.isFinite(runs) ? runs : 0));
+  return clampTrialSandCount(Math.floor(safeRuns / TRIAL_SAND_RUNS_PER_SAND));
+}
+
+function getSandglassRewardWithSand(reward: GemDropReward, sandCount: number): GemDropReward {
+  const multiplier = clampTrialSandCount(sandCount) + 1;
+  return {
+    ...reward,
+    levelOneGems: reward.levelOneGems * multiplier,
+    gemCount: getRewardGemCount(reward) * multiplier,
+  };
+}
+
+function getTrialSandCharKey(tableId: string, charId: string) {
+  return `${tableId}:${charId}`;
+}
 
 function getGemRewardByIlvl(rewards: GemDropReward[], ilvl: number) {
   if (!Number.isFinite(ilvl)) return null;
@@ -318,7 +357,7 @@ function getAzenaRemainingMs(expiresAt?: string | null) {
 }
 
 const AZENA_WARNING_MS = 72 * 60 * 60 * 1000; // 3일
-const RAID_REWARD_DOCK_POS_KEY = "loa-raid-reward-dock-pos:v2";
+const RAID_REWARD_DOCK_POS_KEY = "loa-raid-reward-dock-pos:v3";
 const RAID_REWARD_DOCK_SIZE_KEY = "loa-raid-reward-dock-size:v1";
 
 function readRaidRewardDockPosition() {
@@ -9131,6 +9170,10 @@ export default function TodoTracker() {
   const loaDateKey = useMemo(() => formatLocalDateKey(loaGameDate), [loaGameDate]);
   const loaWeekday = useMemo(() => loaGameDate.getDay(), [loaGameDate]);
   const todayAccountContents = useMemo(() => WEEKLY_ACCOUNT_CONTENT[loaWeekday] ?? [], [loaWeekday]);
+  const currentWeeklyResetAt = useMemo(
+    () => getLatestWeeklyResetTime(state.reset?.weeklyResetWeekday ?? 3, state.reset?.dailyResetHour ?? 6),
+    [state.reset?.weeklyResetWeekday, state.reset?.dailyResetHour, tick]
+  );
 
   type TodayMustDoSettings = {
     coreDaily1730: boolean;
@@ -9212,6 +9255,9 @@ export default function TodoTracker() {
   const [gemIncomeIncludeExcluded, setGemIncomeIncludeExcluded] = useState(false);
   const [gemIncomeRestedOnly, setGemIncomeRestedOnly] = useState(false);
   const [gemIncomeWeeklyThreeRestMode, setGemIncomeWeeklyThreeRestMode] = useState(false);
+  const [trialSandRunsByChar, setTrialSandRunsByChar] = useState<Record<string, number>>({});
+  const [trialSandOverride, setTrialSandOverride] = useState<number | null>(null);
+  const [trialSandStorageReady, setTrialSandStorageReady] = useState(false);
   const [weeklySummaryOpen, setWeeklySummaryOpen] = useState<"homework" | "gold" | null>(null);
   const [weeklySummaryHideDone, setWeeklySummaryHideDone] = useState(() => {
     try {
@@ -9279,6 +9325,65 @@ export default function TodoTracker() {
     }
   }, [gemIncomeVisible]);
 
+  useEffect(() => {
+    setTrialSandStorageReady(false);
+    try {
+      const parsed = JSON.parse(localStorage.getItem(TRIAL_SAND_RUNS_KEY) ?? "{}") as TrialSandRunsStore;
+      if (parsed?.weeklyResetAt === currentWeeklyResetAt && parsed?.runsByCharKey) {
+        const next: Record<string, number> = {};
+        for (const [key, value] of Object.entries(parsed.runsByCharKey)) {
+          const runs = Math.max(0, Math.floor(Number(value) || 0));
+          if (runs > 0) next[key] = runs;
+        }
+        setTrialSandRunsByChar(next);
+      } else {
+        setTrialSandRunsByChar({});
+      }
+    } catch {
+      setTrialSandRunsByChar({});
+    }
+
+    try {
+      const parsed = JSON.parse(localStorage.getItem(TRIAL_SAND_OVERRIDE_KEY) ?? "{}") as TrialSandOverrideStore;
+      if (parsed?.weeklyResetAt === currentWeeklyResetAt && parsed.value != null) {
+        setTrialSandOverride(clampTrialSandCount(Number(parsed.value)));
+      } else {
+        setTrialSandOverride(null);
+      }
+    } catch {
+      setTrialSandOverride(null);
+    }
+    setTrialSandStorageReady(true);
+  }, [currentWeeklyResetAt]);
+
+  useEffect(() => {
+    if (!trialSandStorageReady) return;
+    try {
+      localStorage.setItem(
+        TRIAL_SAND_RUNS_KEY,
+        JSON.stringify({ weeklyResetAt: currentWeeklyResetAt, runsByCharKey: trialSandRunsByChar })
+      );
+    } catch {
+      // ignore
+    }
+  }, [currentWeeklyResetAt, trialSandRunsByChar, trialSandStorageReady]);
+
+  useEffect(() => {
+    if (!trialSandStorageReady) return;
+    try {
+      if (trialSandOverride == null) {
+        localStorage.removeItem(TRIAL_SAND_OVERRIDE_KEY);
+        return;
+      }
+      localStorage.setItem(
+        TRIAL_SAND_OVERRIDE_KEY,
+        JSON.stringify({ weeklyResetAt: currentWeeklyResetAt, value: clampTrialSandCount(trialSandOverride) })
+      );
+    } catch {
+      // ignore
+    }
+  }, [currentWeeklyResetAt, trialSandOverride, trialSandStorageReady]);
+
   type WeeklyMustDoTaskEntry = {
     label: string;
     reasons: string[];
@@ -9307,6 +9412,9 @@ export default function TodoTracker() {
     gemCount: number;
     multiplier: number;
     restValue?: number;
+    trialSandCount?: number;
+    trialSandRuns?: number;
+    trialSandOverride?: boolean;
     weeklyLevelOneGems: number;
     provisional?: boolean;
     homeworkExcluded?: boolean;
@@ -9359,6 +9467,23 @@ export default function TodoTracker() {
     if (cell.type === "CHECK") return !!cell.checked;
     if (cell.type === "COUNTER") return Number(cell.count ?? 0) >= 1;
     return false;
+  }
+
+  function getCoreDailyTrialSandRunUnits(table: TodoTable, ch: Character) {
+    const ilvl = getCharIlvl(ch as any);
+    if (!Number.isFinite(ilvl) || ilvl < 1730) return 0;
+    const restValue = Number(table.restGauges?.[ch.id]?.chaos ?? 0);
+    return restValue >= 100 ? 2 : 1;
+  }
+
+  function getTrialSandInfo(tableId: string, charId: string) {
+    const runs = trialSandRunsByChar[getTrialSandCharKey(tableId, charId)] ?? 0;
+    const count = trialSandOverride == null ? getTrialSandCountFromRuns(runs) : clampTrialSandCount(trialSandOverride);
+    return {
+      runs,
+      count,
+      isOverride: trialSandOverride != null,
+    };
   }
 
   function parseIlvl(raw?: string): number {
@@ -9541,7 +9666,11 @@ export default function TodoTracker() {
           }
         }
 
-        const sandglassReward = getGemRewardByIlvl(SANDGLASS_GEM_REWARDS, ilvl);
+        const sandglassBaseReward = getGemRewardByIlvl(SANDGLASS_GEM_REWARDS, ilvl);
+        const trialSandInfo = getTrialSandInfo(table.id, ch.id);
+        const sandglassReward = sandglassBaseReward
+          ? getSandglassRewardWithSand(sandglassBaseReward, trialSandInfo.count)
+          : null;
         if (sandglassReward) {
           weeklySandglassLevelOneGems += sandglassReward.levelOneGems;
           weeklySandglassCount += 1;
@@ -9566,12 +9695,15 @@ export default function TodoTracker() {
               charName: ch.name,
               source: "sandglass",
               sourceLabel: "할의 모래시계",
-              rewardLabel: reward.label,
+              rewardLabel: sandglassBaseReward?.label ?? reward.label,
               ilvl,
               levelOneGems: reward.levelOneGems,
               gemLevel,
               gemCount,
-              multiplier: 1,
+              multiplier: trialSandInfo.count + 1,
+              trialSandCount: trialSandInfo.count,
+              trialSandRuns: trialSandInfo.runs,
+              trialSandOverride: trialSandInfo.isOverride,
               weeklyLevelOneGems: reward.levelOneGems,
               provisional: reward.provisional,
               homeworkExcluded,
@@ -9618,7 +9750,7 @@ export default function TodoTracker() {
       sandglassRows,
       rows,
     };
-  }, [state, gemIncomeIncludeExcluded]);
+  }, [state, gemIncomeIncludeExcluded, trialSandRunsByChar, trialSandOverride]);
 
   const gemMarketLevelNumber = Math.max(1, Math.floor(parseGemMarketInput(gemMarketLevel) || 3));
   const gemMarketGoldNumber = parseGemMarketInput(gemMarketGold);
@@ -10722,12 +10854,32 @@ export default function TodoTracker() {
   function onCellClick(tableId: string, task: TaskRow, ch: Character) {
     const cellBefore = getCellByTableId(state, tableId, task.id, ch.id);
     const nextCheckedBefore = !(cellBefore?.type === "CHECK" ? cellBefore.checked : false);
+    const tableBefore = state.tables.find((table) => table.id === tableId);
     if (
       task.cellType === "CHECK" &&
       task.period === "WEEKLY" &&
       isWeeklyRaidTaskTitle(task.title)
     ) {
       syncManualWeeklyRaidCompletion(tableId, ch.id, task.title, nextCheckedBefore);
+    }
+
+    if (task.cellType === "COUNTER" && task.id === CORE_DAILY_TASK_ID && tableBefore) {
+      const max = Math.max(1, task.max ?? 1);
+      const cur = cellBefore?.type === "COUNTER" ? (cellBefore.count ?? 0) : 0;
+      const next = cur >= max ? 0 : cur + 1;
+      const trialSandRunUnits = getCoreDailyTrialSandRunUnits(tableBefore, ch);
+      if (trialSandRunUnits > 0 && (cur <= 0) !== (next <= 0)) {
+        const delta = next > 0 ? trialSandRunUnits : -trialSandRunUnits;
+        const trialSandCharKey = getTrialSandCharKey(tableId, ch.id);
+        setTrialSandRunsByChar((prevRuns) => {
+          const nextRuns = Math.max(0, Math.floor(Number(prevRuns[trialSandCharKey] ?? 0) + delta));
+          if (nextRuns <= 0) {
+            const { [trialSandCharKey]: _removed, ...rest } = prevRuns;
+            return rest;
+          }
+          return { ...prevRuns, [trialSandCharKey]: nextRuns };
+        });
+      }
     }
 
     setState((prev) => {
@@ -10840,6 +10992,8 @@ export default function TodoTracker() {
       setState((prev) => runDailyResetNow(prev, true));
       return;
     }
+    setTrialSandRunsByChar({});
+    setTrialSandOverride(null);
     setState((prev) => resetByPeriod(prev, "WEEKLY", true));
   }
 
@@ -11201,9 +11355,11 @@ export default function TodoTracker() {
 
     const placeDockBetweenTopbarCards = () => {
       const page = document.querySelector(".todo-page") as HTMLElement | null;
-      const summary = document.querySelector(".weeklySummaryGrid") as HTMLElement | null;
       const topbar = document.querySelector(".todo-topbar") as HTMLElement | null;
-      if (!page || !summary || !topbar) return;
+      const actions = document.querySelector(".topbar-center > .actions-row") as HTMLElement | null;
+      const anchor = document.querySelector(".raidRewardDockAnchor") as HTMLElement | null;
+      const topbarRight = document.querySelector(".topbar-right") as HTMLElement | null;
+      if (!page || !actions || !anchor || !topbar || !topbarRight) return;
 
       const offsetWithinPage = (node: HTMLElement) => {
         let left = 0;
@@ -11217,12 +11373,17 @@ export default function TodoTracker() {
         return { left, top };
       };
 
-      const summaryOffset = offsetWithinPage(summary);
-      const preferredWidth = 320;
+      const actionsOffset = offsetWithinPage(actions);
+      const anchorOffset = offsetWithinPage(anchor);
+      const topbarRightOffset = offsetWithinPage(topbarRight);
+      const preferredWidth = 340;
       const minWidth = 260;
-      const width = Math.min(preferredWidth, Math.max(minWidth, Math.min(summary.offsetWidth, topbar.offsetWidth - 28)));
-      const left = summaryOffset.left + Math.max(0, summary.offsetWidth - width);
-      const top = summaryOffset.top + Math.max(0, (summary.offsetHeight - 42) / 2);
+      const maxRight = topbarRightOffset.left - 12;
+      const desiredLeft = anchorOffset.left + 10;
+      const availableWidth = maxRight - desiredLeft;
+      const width = availableWidth >= minWidth ? Math.min(preferredWidth, availableWidth) : minWidth;
+      const left = availableWidth >= minWidth ? desiredLeft : Math.max(actionsOffset.left + actions.offsetWidth + 10, desiredLeft);
+      const top = actionsOffset.top + Math.max(0, (actions.offsetHeight - 42) / 2);
 
       dock.style.setProperty("--raid-dock-left", `${Math.max(0, left)}px`);
       dock.style.setProperty("--raid-dock-top", `${Math.max(0, top)}px`);
@@ -11235,6 +11396,10 @@ export default function TodoTracker() {
     observer?.observe(dock);
     const topbar = document.querySelector(".todo-topbar") as HTMLElement | null;
     if (topbar) observer?.observe(topbar);
+    const actions = document.querySelector(".topbar-center > .actions-row") as HTMLElement | null;
+    if (actions) observer?.observe(actions);
+    const anchor = document.querySelector(".raidRewardDockAnchor") as HTMLElement | null;
+    if (anchor) observer?.observe(anchor);
 
     return () => {
       window.removeEventListener("resize", placeDockBetweenTopbarCards);
@@ -13727,11 +13892,36 @@ body.pip-dark .pip-select option{
                 </div>
               </div>
               <div className="homeworkGemStat homeworkGemStatWide">
-                <span>할의 모래시계</span>
+                <div className="homeworkGemStatHeader">
+                  <span>할의 모래시계</span>
+                  <div className="trialSandControls" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      className={`trialSandButton ${trialSandOverride == null ? "active" : ""}`}
+                      onClick={() => setTrialSandOverride(null)}
+                    >
+                      자동
+                    </button>
+                    {[0, 1, 2, 3, 4, 5].map((count) => (
+                      <button
+                        key={count}
+                        type="button"
+                        className={`trialSandButton ${trialSandOverride === count ? "active" : ""}`}
+                        onClick={() => setTrialSandOverride(count)}
+                      >
+                        {count}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <div className="homeworkGemSummaryLines">
                   <div>
                     <span>할모시</span>
                     <b>{homeworkGemIncome.weeklySandglassGemText}</b>
+                  </div>
+                  <div>
+                    <span>모래</span>
+                    <b>{trialSandOverride == null ? "자동 · 전선 5회당 1개" : `전체 ${trialSandOverride}개 고정`}</b>
                   </div>
                   {gemMarketGoldNumber > 0 ? (
                     <div>
@@ -13790,6 +13980,7 @@ body.pip-dark .pip-select option{
               <span>남은 할모시 {homeworkGemIncome.remainingSandglassCount.toLocaleString()}개</span>
               <span>{gemIncomeWeeklyThreeRestMode ? "주 3회 휴식 가디언" : "주간 가디언"} {displayedWeeklyGuardianCount.toLocaleString()}개</span>
               <span>주간 할모시 {homeworkGemIncome.weeklySandglassCount.toLocaleString()}개</span>
+              <span>시련의 모래 {trialSandOverride == null ? "자동" : `${trialSandOverride}개 고정`}</span>
               {homeworkExcludedCharacters.length > 0 ? (
                 <label className="homeworkGemIncludeExcluded">
                   <input
@@ -13824,7 +14015,15 @@ body.pip-dark .pip-select option{
                       <div className="homeworkGemRowContent">
                         <span>{row.sourceLabel}</span>
                         <span>{row.rewardLabel}</span>
-                        {row.multiplier > 1 ? <span className="homeworkGemRest">휴식 {row.restValue} · 2배</span> : null}
+                        {row.source === "guardian" && row.multiplier > 1 ? (
+                          <span className="homeworkGemRest">휴식 {row.restValue} · 2배</span>
+                        ) : null}
+                        {row.source === "sandglass" && row.trialSandCount != null ? (
+                          <span className="homeworkGemRest">시련의 모래 {row.trialSandCount}개</span>
+                        ) : null}
+                        {row.source === "sandglass" && !row.trialSandOverride ? (
+                          <span className="homeworkGemMuted">전선 {row.trialSandRuns ?? 0}회</span>
+                        ) : null}
                         <b>{formatGemLevelCount(row.gemLevel, row.gemCount)}</b>
                         {row.provisional ? <span className="homeworkGemRest">수량 확인 필요</span> : null}
                       </div>
@@ -13835,7 +14034,7 @@ body.pip-dark .pip-select option{
             )}
 
             <div className="homeworkGemFootnote">
-              가디언은 gcalc 현재 보상표, 할모시는 강화 없이 0단계 기본 보상 기준이야. 주간 기대치는 가디언 7회에 현재 휴식게이지 보너스를 반영하고, 주 3회 휴식 가토는 일주일 안에서 휴식 보상을 최대한 쓰는 3회 기준이야.
+              가디언은 gcalc 현재 보상표 기준이야. 할모시는 기본 보상에 시련의 모래 예상/수동 배율을 반영하고, 자동 모래는 이번 주 혼돈의 균열 체크 회차 5회당 1개로 추정해 계산해. 주간 기대치는 가디언 7회에 현재 휴식게이지 보너스를 반영하고, 주 3회 휴식 가토는 일주일 안에서 휴식 보상을 최대한 쓰는 3회 기준이야.
               {homeworkGemIncome.hasProvisionalReward
                 ? " 1770+ 할의 모래시계 3단계는 공식에서 보석 증가만 확인되고 정확한 수량표는 아직 없어 2단계 수치로 임시 계산 중이야."
                 : ""}
@@ -14975,6 +15174,7 @@ body.pip-dark .pip-select option{
                 📝 메모장
               </button>
               <BidPopover />
+              <span className="raidRewardDockAnchor" aria-hidden="true" />
             </div>
           </div>
 

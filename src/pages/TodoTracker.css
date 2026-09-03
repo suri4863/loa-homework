@@ -189,6 +189,14 @@ body {
   align-items: center;
 }
 
+.raidRewardDockAnchor {
+  display: inline-block;
+  width: 0;
+  height: 42px;
+  flex: 0 0 0;
+  pointer-events: none;
+}
+
 /* 왼쪽 영역(제목/설명/표 선택)은 무조건 세로로 쌓이게 */
 .todo-title {
   display: flex;
@@ -201,7 +209,7 @@ body {
   margin-top: 10px;
 }
 
-/* 화면이 좁아지면 세로 스택 */
+/* 화면이 더 좁아지면 세로 스택 */
 @media (max-width: 980px) {
   .todo-topbar {
     grid-template-columns: 1fr;
@@ -215,12 +223,7 @@ body {
     justify-content: flex-start;
   }
 
-  .topbar-right {
-    justify-self: start;
-    align-items: stretch;
-    width: 100%;
-  }
-
+  .topbar-right,
   .topbar-cards {
     align-items: stretch;
     width: 100%;
@@ -242,12 +245,26 @@ body {
 
 /* 중앙 카드(주간 숙제/골드): topbar-center의 1행에 놓임 */
 .weeklySummaryGrid {
+  --weekly-summary-card-width: 240px;
+  --weekly-summary-gap: 10px;
   display: grid;
-  grid-template-columns: repeat(2, minmax(220px, 240px)) minmax(260px, 320px);
-  gap: 10px;
-  width: min(880px, 100%);
+  grid-template-columns: repeat(2, var(--weekly-summary-card-width));
+  gap: var(--weekly-summary-gap);
+  width: max-content;
+  max-width: 100%;
   box-sizing: border-box;
-  padding-left: 60px;
+  padding-left: 0;
+  transform: translateX(calc((var(--weekly-summary-card-width) + var(--weekly-summary-gap)) / -2));
+}
+
+@media (max-width: 1700px) {
+  .weeklySummaryGrid {
+    --weekly-summary-card-width: 230px;
+    grid-template-columns: repeat(2, var(--weekly-summary-card-width));
+    width: max-content;
+    max-width: 100%;
+    padding-left: 0;
+  }
 }
 
 .weeklyGoldSummary {
@@ -2815,12 +2832,11 @@ body,
   overflow-wrap: normal;
 }
 
-/* ✅ 1200px 근처 “어중간 창모드”에서는 3분할 유지보다 세로 스택이 더 깔끔함 */
-@media (max-width: 1220px) {
+/* ✅ 더 좁은 폭에서는 세로 스택 */
+@media (max-width: 980px) {
   .todo-topbar {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto auto;
-    align-items: start;
   }
 
   .topbar-left {
@@ -2842,14 +2858,11 @@ body,
   .topbar-right {
     grid-column: 1;
     grid-row: 3;
-    justify-self: start;
-    align-items: flex-start;
-    width: 100%;
+    align-items: stretch;
   }
 
   .topbar-cards {
-    align-items: flex-start;
-    width: 100%;
+    align-items: stretch;
   }
 
   .topbar-right .friendBoxTop,
@@ -2901,6 +2914,7 @@ body,
     grid-template-columns: 1fr;
     width: min(320px, 100%);
     padding-left: 0;
+    transform: none;
   }
 
   .weeklySummaryDetailPanel {
@@ -3624,6 +3638,35 @@ body.pip-dark .pip-cube.is-pressed {
 }
 
 .homeworkGemOptionToggle:has(input:checked) {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.trialSandControls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.trialSandButton {
+  min-width: 28px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.trialSandButton.active {
   border-color: var(--primary);
   background: var(--primary-soft);
   color: var(--primary);
