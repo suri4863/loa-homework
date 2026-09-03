@@ -20,6 +20,7 @@ export type Character = {
   azenaEnabled?: boolean;
   azenaExpiresAt?: string | null;
   homeworkExcluded?: boolean;
+  goldEarningEnabled?: boolean;
 };
 
 export type TaskRow = {
@@ -544,6 +545,7 @@ export function createCharacter(input: {
   power?: string;
   role?: CharacterRole;
   homeworkExcluded?: boolean;
+  goldEarningEnabled?: boolean;
 }): Character {
   return {
     id: uid("ch"),
@@ -552,6 +554,7 @@ export function createCharacter(input: {
     power: input.power ?? "",
     role: input.role ?? "DEALER",
     homeworkExcluded: input.homeworkExcluded ?? false,
+    goldEarningEnabled: input.goldEarningEnabled,
   };
 }
 
@@ -980,7 +983,13 @@ function normalizeState(parsed: any): TodoState {
     if (!st.activeTableId || !st.tables.some((t) => t.id === st.activeTableId)) st.activeTableId = st.tables[0].id;
 
     st.tables = st.tables.map((t) => {
-      const chars = Array.isArray(t.characters) ? t.characters : [];
+      const chars = Array.isArray(t.characters)
+        ? t.characters.map((ch: Character, index: number) => ({
+            ...ch,
+            goldEarningEnabled:
+              typeof ch.goldEarningEnabled === "boolean" ? ch.goldEarningEnabled : index < 6,
+          }))
+        : [];
       const values = t.values ?? {};
       const rg: RestGauges = { ...(t.restGauges ?? {}) };
 
@@ -1002,7 +1011,13 @@ function normalizeState(parsed: any): TodoState {
   }
 
   // ✅ 구 구조(단일표) -> 새 구조로 마이그레이션
-  const legacyCharacters = Array.isArray(parsed?.characters) ? parsed.characters : [];
+  const legacyCharacters = Array.isArray(parsed?.characters)
+    ? parsed.characters.map((ch: Character, index: number) => ({
+        ...ch,
+        goldEarningEnabled:
+          typeof ch.goldEarningEnabled === "boolean" ? ch.goldEarningEnabled : index < 6,
+      }))
+    : [];
   const legacyValues = parsed?.values ?? {};
   const legacyRestGauges = parsed?.restGauges ?? {};
 

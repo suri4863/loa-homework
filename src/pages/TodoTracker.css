@@ -115,7 +115,7 @@ body {
 .todo-topbar {
   display: grid;
   /* ✅ TSX 구조(topbar-left/center/right)에 맞춘 3분할 */
-  grid-template-columns: minmax(260px, 1fr) minmax(520px, 2fr) minmax(360px, 1fr);
+  grid-template-columns: minmax(260px, 1fr) minmax(780px, 2fr) minmax(360px, 1fr);
   column-gap: 16px;
   row-gap: 12px;
   align-items: start;
@@ -133,6 +133,7 @@ body {
 
 .topbar-center {
   min-width: 0;
+  position: relative;
   /* ✅ 주간 골드(위) + 버튼들(아래) 2줄 */
   display: grid;
   grid-template-rows: auto auto;
@@ -239,7 +240,16 @@ body {
 
 
 
-/* 중앙 카드(주간 골드): topbar-center의 1행에 놓임 */
+/* 중앙 카드(주간 숙제/골드): topbar-center의 1행에 놓임 */
+.weeklySummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 240px)) minmax(260px, 320px);
+  gap: 10px;
+  width: min(880px, 100%);
+  box-sizing: border-box;
+  padding-left: 60px;
+}
+
 .weeklyGoldSummary {
   position: static;
   /* ✅ absolute 제거(겹침 방지) */
@@ -248,12 +258,142 @@ body {
   transform: none;
   z-index: 1;
 
-  min-width: 260px;
+  min-width: 0;
   padding: 10px 16px;
 
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--soft);
+  text-align: center;
+}
+
+.weeklyGoldSummary.is-clickable {
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.weeklyGoldSummary.is-clickable:hover,
+.weeklyGoldSummary.is-clickable:focus-visible,
+.weeklyGoldSummary.is-active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  outline: none;
+}
+
+.weeklyGoldSummary.is-clickable:hover {
+  transform: translateY(-1px);
+}
+
+.weeklySummaryDetailPanel {
+  position: absolute;
+  top: 118px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, 100%);
+  max-height: 380px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  overscroll-behavior: contain;
+  z-index: 130;
+}
+
+.weeklySummaryDetailHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.weeklySummaryDetailHead strong {
+  font-size: 13px;
+}
+
+.weeklySummaryDetailActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.weeklySummaryDetailActions .mini.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--text);
+}
+
+.weeklySummaryDetailMeta {
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.weeklySummaryDetailList {
+  display: grid;
+  gap: 6px;
+  max-height: 306px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+}
+
+.weeklySummaryDetailItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--soft);
+}
+
+.weeklySummaryDetailItem.is-done {
+  filter: grayscale(1);
+  opacity: 0.45;
+}
+
+.weeklySummaryDetailText {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+
+.weeklySummaryDetailText strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weeklySummaryDetailText span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weeklySummaryDetailValue {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.weeklySummaryEmpty {
+  padding: 16px 0;
+  color: var(--muted);
+  font-size: 12px;
   text-align: center;
 }
 
@@ -298,6 +438,7 @@ body {
   margin-top: 4px;
   font-size: 11px;
   color: var(--muted);
+  min-height: 14px;
 }
 
 .weeklyGoldIncludeToggle {
@@ -652,6 +793,14 @@ body {
   white-space: nowrap;
 }
 
+.char-status-row {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
 .char-exclude-toggle {
   display: inline-flex;
   align-items: center;
@@ -681,6 +830,37 @@ body {
   border-color: var(--danger-border);
   color: var(--danger-text);
   background: var(--danger-soft);
+}
+
+.char-gold-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 24px;
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--card);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 16px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.char-gold-toggle input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: var(--primary);
+}
+
+.char-gold-toggle.active {
+  border-color: rgba(59, 130, 246, 0.45);
+  color: #60a5fa;
+  background: rgba(59, 130, 246, 0.12);
 }
 
 .char-head:has(.char-exclude-toggle.active) .char-name,
@@ -2289,6 +2469,28 @@ body,
   margin-bottom: 8px;
 }
 
+.weekly-top3-sum.gold-excluded {
+  position: relative;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--soft);
+  color: var(--muted);
+  filter: grayscale(1);
+}
+
+.weekly-top3-sum.gold-excluded b {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.weekly-top3-excluded-note {
+  display: inline-flex;
+  margin-left: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .weekly-top3-tabs {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -2418,6 +2620,16 @@ body,
   gap: 3px;
   min-width: 0;
   padding-left: 4px;
+}
+
+.weekly-top3-gold-actions.gold-excluded {
+  color: var(--muted);
+  filter: grayscale(1);
+}
+
+.weekly-top3-gold-actions.gold-excluded .weekly-top3-gold {
+  color: var(--muted);
+  text-decoration: line-through;
 }
 
 .weekly-top3-gold {
@@ -2566,7 +2778,7 @@ body,
   /* ✅ 창이 어중간하게 좁아질 때(센터 auto가 폭을 다 먹어버려 좌측 제목이 세로로 깨지는 문제 방지)
      - 좌/중/우 모두 최소 폭을 보장하는 minmax 사용
      - 가운데는 auto가 아니라 minmax로 제한해서 과도 확장 방지 */
-  grid-template-columns: minmax(260px, 1fr) minmax(520px, 2fr) minmax(360px, 1fr);
+  grid-template-columns: minmax(260px, 1fr) minmax(780px, 2fr) minmax(360px, 1fr);
   grid-template-rows: auto auto;
   column-gap: 16px;
   row-gap: 10px;
@@ -2582,6 +2794,7 @@ body,
 .topbar-center {
   grid-column: 2;
   grid-row: 1 / span 2;
+  position: relative;
   justify-self: center;
   align-self: start;
   /* 🔥 end → start 로 변경 */
@@ -2681,6 +2894,20 @@ body,
   top: auto !important;
   transform: none !important;
   margin: 0 !important;
+}
+
+@media (max-width: 720px) {
+  .weeklySummaryGrid {
+    grid-template-columns: 1fr;
+    width: min(320px, 100%);
+    padding-left: 0;
+  }
+
+  .weeklySummaryDetailPanel {
+    position: static;
+    transform: none;
+    width: min(320px, 100%);
+  }
 }
 
 .todo-topbar .divider {
@@ -5309,7 +5536,7 @@ html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
 }
 
 .raidRewardDock.is-docked.is-open {
-  width: var(--raid-dock-width, 360px) !important;
+  width: var(--raid-dock-width, 320px) !important;
   height: 520px !important;
 }
 

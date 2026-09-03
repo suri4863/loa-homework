@@ -362,6 +362,12 @@ function isHomeworkExcluded(ch: Pick<Character, "homeworkExcluded"> | null | und
   return Boolean(ch?.homeworkExcluded);
 }
 
+function isGoldEarningCharacter(table: TodoTable, ch: Character) {
+  if (typeof ch.goldEarningEnabled === "boolean") return ch.goldEarningEnabled;
+  const index = table.characters.findIndex((candidate) => candidate.id === ch.id);
+  return index >= 0 ? index < 6 : true;
+}
+
 
 function clearExpiredAzena(prev: TodoState): TodoState {
   const now = Date.now();
@@ -9206,6 +9212,16 @@ export default function TodoTracker() {
   const [gemIncomeIncludeExcluded, setGemIncomeIncludeExcluded] = useState(false);
   const [gemIncomeRestedOnly, setGemIncomeRestedOnly] = useState(false);
   const [gemIncomeWeeklyThreeRestMode, setGemIncomeWeeklyThreeRestMode] = useState(false);
+  const [weeklySummaryOpen, setWeeklySummaryOpen] = useState<"homework" | "gold" | null>(null);
+  const [weeklySummaryHideDone, setWeeklySummaryHideDone] = useState(() => {
+    try {
+      return localStorage.getItem("loa-weekly-summary-hide-done:v1") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const weeklySummaryGridRef = useRef<HTMLDivElement | null>(null);
+  const weeklySummaryDetailRef = useRef<HTMLDivElement | null>(null);
 
 
   const [todayMustDoSettings, setTodayMustDoSettings] = useState<TodayMustDoSettings>(() => {
@@ -10329,13 +10345,18 @@ export default function TodoTracker() {
 
     setState((prev) => {
       const table = getActiveTable(prev);
+      const nextWithGoldFlag: Character = {
+        ...next,
+        goldEarningEnabled:
+          typeof next.goldEarningEnabled === "boolean" ? next.goldEarningEnabled : table.characters.length < 6,
+      };
 
       const restGauges: RestGauges = { ...(table.restGauges ?? {}) };
-      restGauges[next.id] = { chaos: 0, guardian: 0 };
+      restGauges[nextWithGoldFlag.id] = { chaos: 0, guardian: 0 };
 
       const nextTable: TodoTable = {
         ...table,
-        characters: [...table.characters, next],
+        characters: [...table.characters, nextWithGoldFlag],
         restGauges,
       };
 
@@ -10393,6 +10414,31 @@ export default function TodoTracker() {
       const table = getTableById(prev, tableId);
       const nextChars: Character[] = table.characters.map((c) =>
         c.id === charId ? { ...c, homeworkExcluded: excluded } : c
+      );
+      const nextTable: TodoTable = { ...table, characters: nextChars };
+
+      return {
+        ...prev,
+        tables: prev.tables.map((t) => (t.id === nextTable.id ? nextTable : t)),
+      };
+    });
+  }
+
+  function toggleCharacterGoldEarning(tableId: string, charId: string, enabled: boolean) {
+    setState((prev) => {
+      const table = getTableById(prev, tableId);
+      if (enabled) {
+        const enabledCount = table.characters.filter(
+          (candidate) => candidate.id !== charId && isGoldEarningCharacter(table, candidate)
+        ).length;
+        if (enabledCount >= 6) {
+          alert("골드 획득 캐릭터는 표당 최대 6명까지 지정할 수 있어.");
+          return prev;
+        }
+      }
+
+      const nextChars: Character[] = table.characters.map((c) =>
+        c.id === charId ? { ...c, goldEarningEnabled: enabled } : c
       );
       const nextTable: TodoTable = { ...table, characters: nextChars };
 
@@ -11155,10 +11201,9 @@ export default function TodoTracker() {
 
     const placeDockBetweenTopbarCards = () => {
       const page = document.querySelector(".todo-page") as HTMLElement | null;
-      const gold = document.querySelector(".weeklyGoldSummary") as HTMLElement | null;
-      const friend = document.querySelector(".friendBoxTop") as HTMLElement | null;
+      const summary = document.querySelector(".weeklySummaryGrid") as HTMLElement | null;
       const topbar = document.querySelector(".todo-topbar") as HTMLElement | null;
-      if (!page || !gold || !friend || !topbar) return;
+      if (!page || !summary || !topbar) return;
 
       const offsetWithinPage = (node: HTMLElement) => {
         let left = 0;
@@ -11172,22 +11217,12 @@ export default function TodoTracker() {
         return { left, top };
       };
 
-      const goldOffset = offsetWithinPage(gold);
-      const friendOffset = offsetWithinPage(friend);
-      const topbarOffset = offsetWithinPage(topbar);
-      const goldRight = goldOffset.left + gold.offsetWidth;
-      const gap = friendOffset.left - goldRight;
-      const preferredWidth = 360;
-      const minWidth = 300;
-      const width = gap >= minWidth + 24
-        ? Math.min(preferredWidth, Math.max(minWidth, gap - 24))
-        : Math.min(preferredWidth, Math.max(minWidth, topbar.offsetWidth - 28));
-      const left = gap >= minWidth + 24
-        ? goldRight + Math.max(12, (gap - width) / 2)
-        : goldOffset.left;
-      const top = gap >= minWidth + 24
-        ? goldOffset.top + Math.max(0, (gold.offsetHeight - 42) / 2)
-        : goldOffset.top + gold.offsetHeight + 8;
+      const summaryOffset = offsetWithinPage(summary);
+      const preferredWidth = 320;
+      const minWidth = 260;
+      const width = Math.min(preferredWidth, Math.max(minWidth, Math.min(summary.offsetWidth, topbar.offsetWidth - 28)));
+      const left = summaryOffset.left + Math.max(0, summary.offsetWidth - width);
+      const top = summaryOffset.top + Math.max(0, (summary.offsetHeight - 42) / 2);
 
       dock.style.setProperty("--raid-dock-left", `${Math.max(0, left)}px`);
       dock.style.setProperty("--raid-dock-top", `${Math.max(0, top)}px`);
@@ -11712,6 +11747,8 @@ export default function TodoTracker() {
       if (task.cellType === "TEXT" || task.cellType === "SELECT") continue;
 
       for (const ch of activeCharacters) {
+        if (isHomeworkExcluded(ch)) continue;
+
         all += 1;
         const cell = getCellByTableId(state, state.activeTableId, task.id, ch.id);
         if (!cell) continue;
@@ -12911,6 +12948,55 @@ body.pip-dark .pip-select option{
     return map;
   }, [state.tasks]);
 
+  const weeklyHomeworkProgress = useMemo(() => {
+    let total = 0;
+    let done = 0;
+
+    const weeklyTasks = state.tasks.filter(
+      (task) =>
+        task.period === "WEEKLY" &&
+        task.cellType === "CHECK" &&
+        (task.section ?? "").trim() === "주간 레이드" &&
+        isWeeklyRaidTaskTitle(task.title) &&
+        !isDefaultHiddenWeeklyRaidTask(task) &&
+        !isInactiveExtremeWeeklyRaidTask(task)
+    );
+
+    for (const tbl of state.tables) {
+      for (const ch of tbl.characters) {
+        if (isHomeworkExcluded(ch)) continue;
+
+        const ilvl = getCharIlvl(ch);
+
+        for (const task of weeklyTasks) {
+          const minIlvl = TASK_MIN_ILVL[task.title];
+          if (typeof minIlvl === "number" && ilvl < minIlvl) continue;
+
+          const charKey = weeklyCharKey(tbl.id, ch.id);
+          const pick = sanitizeWeeklyRaidPick(
+            ilvl,
+            weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(ilvl)
+          );
+          const selectedSet = new Set(pick.raids.map((raid) => normalizeRaidName(raid)));
+
+          if (!selectedSet.has(normalizeRaidName(task.title))) continue;
+          if (shouldUsePopupWeeklyRaidCheckByRaid(task.title)) continue;
+
+          total += 1;
+          const cell = getCellByTableId(state, tbl.id, task.id, ch.id);
+          if (!cell) continue;
+
+          if (cell.type === "CHECK" && cell.checked) {
+            done += 1;
+          }
+        }
+      }
+    }
+
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    return { done, total, pct };
+  }, [state, weeklyRaidPickByChar]);
+
   const weeklyGoldProgress = useMemo(() => {
     let total = 0;
     let done = 0;
@@ -12918,6 +13004,7 @@ body.pip-dark .pip-select option{
     for (const tbl of state.tables) {
       for (const ch of tbl.characters as any[]) {
         if (isHomeworkExcluded(ch)) continue;
+        if (!isGoldEarningCharacter(tbl, ch)) continue;
 
         const ilvl = getCharIlvl(ch);
         if (!Number.isFinite(ilvl) || ilvl <= 0) continue;
@@ -12946,6 +13033,126 @@ body.pip-dark .pip-select option{
     return { total, done, pct };
   }, [state, weeklyRaidTaskIdByTitle, weeklyRaidPickByChar, includeBoundGold]);
 
+  const weeklySummaryDetails = useMemo(() => {
+    const homework: {
+      key: string;
+      title: string;
+      subtitle: string;
+      value: string;
+      done: boolean;
+    }[] = [];
+    const gold: {
+      key: string;
+      title: string;
+      subtitle: string;
+      value: string;
+      done: boolean;
+    }[] = [];
+
+    const weeklyTasks = state.tasks.filter(
+      (task) =>
+        task.period === "WEEKLY" &&
+        task.cellType === "CHECK" &&
+        (task.section ?? "").trim() === "주간 레이드" &&
+        isWeeklyRaidTaskTitle(task.title) &&
+        !isDefaultHiddenWeeklyRaidTask(task) &&
+        !isInactiveExtremeWeeklyRaidTask(task)
+    );
+
+    for (const tbl of state.tables) {
+      for (const ch of tbl.characters) {
+        if (isHomeworkExcluded(ch)) continue;
+        const ilvl = getCharIlvl(ch);
+        const charLabel = `${ch.name || "캐릭터"} Lv. ${Number.isFinite(ilvl) && ilvl > 0 ? ilvl.toLocaleString() : "-"}`;
+
+        for (const task of weeklyTasks) {
+          const minIlvl = TASK_MIN_ILVL[task.title];
+          if (typeof minIlvl === "number" && ilvl < minIlvl) continue;
+
+          const charKey = weeklyCharKey(tbl.id, ch.id);
+          const pick = sanitizeWeeklyRaidPick(
+            ilvl,
+            weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(ilvl)
+          );
+          const selectedSet = new Set(pick.raids.map((raid) => normalizeRaidName(raid)));
+
+          if (!selectedSet.has(normalizeRaidName(task.title))) continue;
+          if (shouldUsePopupWeeklyRaidCheckByRaid(task.title)) continue;
+
+          const cell = getCellByTableId(state, tbl.id, task.id, ch.id);
+          let done = false;
+          let value = "미완료";
+          if (cell?.type === "CHECK") {
+            done = !!cell.checked;
+            value = done ? "완료" : "미완료";
+          }
+
+          homework.push({
+            key: `homework-${tbl.id}-${ch.id}-${task.id}`,
+            title: `${ch.name || "캐릭터"} · ${task.title}`,
+            subtitle: `${tbl.name} · 주간 레이드 · ${charLabel}`,
+            value,
+            done,
+          });
+        }
+
+        if (!isGoldEarningCharacter(tbl, ch)) continue;
+        if (!Number.isFinite(ilvl) || ilvl <= 0) continue;
+
+        const charKey = weeklyCharKey(tbl.id, ch.id);
+        const pick = weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(ilvl);
+        const pickedResult = calcWeeklySelectedGold(ilvl, pick);
+
+        for (const row of pickedResult.rows) {
+          if (!row.checked) continue;
+
+          const taskId = weeklyRaidTaskIdByTitle.get(normalizeRaidName(row.raid ?? ""));
+          const cell = taskId ? getCellByTableId(state, tbl.id, taskId, ch.id) : null;
+          const done = !!(cell && cell.type === "CHECK" && cell.checked);
+
+          gold.push({
+            key: `gold-${tbl.id}-${ch.id}-${row.raid}`,
+            title: `${ch.name || "캐릭터"} · ${row.raid}`,
+            subtitle: `${tbl.name} · ${row.diff} · ${charLabel}`,
+            value: `${row.gold.toLocaleString()} G`,
+            done,
+          });
+        }
+      }
+    }
+
+    const sortItems = <T extends { done: boolean; title: string }>(items: T[]) =>
+      [...items].sort((a, b) => Number(a.done) - Number(b.done) || a.title.localeCompare(b.title, "ko"));
+
+    return {
+      homework: sortItems(homework),
+      gold: sortItems(gold),
+    };
+  }, [state, weeklyRaidTaskIdByTitle, weeklyRaidPickByChar, includeBoundGold]);
+
+  useEffect(() => {
+    if (!weeklySummaryOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (weeklySummaryGridRef.current?.contains(target)) return;
+      if (weeklySummaryDetailRef.current?.contains(target)) return;
+      setWeeklySummaryOpen(null);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [weeklySummaryOpen]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("loa-weekly-summary-hide-done:v1", weeklySummaryHideDone ? "1" : "0");
+    } catch {
+      // localStorage를 사용할 수 없는 환경에서는 현재 세션에서만 유지.
+    }
+  }, [weeklySummaryHideDone]);
+
   useEffect(() => {
     const existing = new Set(
       state.tasks
@@ -12961,6 +13168,8 @@ body.pip-dark .pip-select option{
     const missing: string[] = [];
     for (const tbl of state.tables) {
       for (const ch of tbl.characters as any[]) {
+        if (!isGoldEarningCharacter(tbl, ch)) continue;
+
         const ilvl = getCharIlvl(ch);
         if (!Number.isFinite(ilvl) || ilvl <= 0) continue;
 
@@ -13195,6 +13404,7 @@ body.pip-dark .pip-select option{
 
                           return (
                             <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+                              <div className="char-status-row">
                               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                                 <input
                                   type="checkbox"
@@ -13212,6 +13422,20 @@ body.pip-dark .pip-select option{
                                   </span>
                                 ) : null}
                               </label>
+                              {isActiveCol && (
+                                <label
+                                  className={`char-gold-toggle ${isGoldEarningCharacter(getTableById(state, tableId), ch) ? "active" : ""}`}
+                                  title="체크한 캐릭터만 주간 레이드 골드 합산에 포함돼."
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isGoldEarningCharacter(getTableById(state, tableId), ch)}
+                                    onChange={(e) => toggleCharacterGoldEarning(tableId, ch.id, e.target.checked)}
+                                  />
+                                  <span>골드</span>
+                                </label>
+                              )}
+                              </div>
                               <div
                                 style={{
                                   fontSize: 11,
@@ -13235,14 +13459,14 @@ body.pip-dark .pip-select option{
                               <button className="mini" onClick={() => deleteCharacter(ch)}>삭제</button>
                               <label
                                 className={`char-exclude-toggle ${isHomeworkExcluded(ch) ? "active" : ""}`}
-                                title="체크하면 오늘/주간 해야할 일과 주간 레이드 골드 합산에서 제외돼."
+                                title="체크하면 오늘/주간 해야할 일과 숙제 진행률에서 제외돼."
                               >
                                 <input
                                   type="checkbox"
                                   checked={isHomeworkExcluded(ch)}
                                   onChange={(e) => toggleCharacterHomeworkExcluded(tableId, ch.id, e.target.checked)}
                                 />
-                                <span>제외</span>
+                                <span>숙제 제외</span>
                               </label>
                             </>
                           )}
@@ -13356,6 +13580,7 @@ body.pip-dark .pip-select option{
                       </td>
 
                       {visibleCols.map(({ tableId, ch }) => {
+                        const targetTable = getTableById(state, tableId);
                         const ilvl = parseIlvl(ch.itemLevel);
 
                         if (!Number.isFinite(ilvl)) {
@@ -13369,6 +13594,7 @@ body.pip-dark .pip-select option{
                         const charKey = weeklyCharKey(tableId, ch.id);
                         const pick = weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(ilvl);
                         const pickedResult = calcWeeklySelectedGold(ilvl, pick);
+                        const goldEarning = isGoldEarningCharacter(targetTable, ch);
 
                         const detail = pickedResult.rows
                           .filter((x) => x.checked)
@@ -13382,7 +13608,7 @@ body.pip-dark .pip-select option{
                           <td key={ch.id} className="cell">
                             <button
                               type="button"
-                              className="goldbox goldbox-btn"
+                              className={`goldbox goldbox-btn ${goldEarning ? "" : "muted"}`}
                               title={detail}
                               onClick={(e) => {
                                 const position = getWeeklyTop3PopupPosition(e);
@@ -13396,7 +13622,7 @@ body.pip-dark .pip-select option{
                                 });
                               }}
                             >
-                              <div className="gold-sum">{pickedResult.sum.toLocaleString()} G</div>
+                              <div className="gold-sum">{goldEarning ? `${pickedResult.sum.toLocaleString()} G` : "골드 제외"}</div>
                               <div className="gold-detail">{pickedResult.rows.filter((x) => x.checked).slice(0, 3).map((x) => x.raid).join(" / ") || "-"}</div>
                             </button>
                           </td>
@@ -13784,6 +14010,7 @@ body.pip-dark .pip-select option{
 
                               return (
                                 <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+                                  <div className="char-status-row">
                                   <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                                     <input
                                       type="checkbox"
@@ -13803,6 +14030,20 @@ body.pip-dark .pip-select option{
                                       {endingSoon ? <span className="rest-alert">!</span> : null}
                                     </span>
                                   </label>
+                                  {isActivePane && (
+                                    <label
+                                      className={`char-gold-toggle ${isGoldEarningCharacter(table, ch) ? "active" : ""}`}
+                                      title="체크한 캐릭터만 주간 레이드 골드 합산에 포함돼."
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={isGoldEarningCharacter(table, ch)}
+                                        onChange={(e) => toggleCharacterGoldEarning(tableId, ch.id, e.target.checked)}
+                                      />
+                                      <span>골드</span>
+                                    </label>
+                                  )}
+                                  </div>
 
                                   <div
                                     style={{
@@ -13827,15 +14068,15 @@ body.pip-dark .pip-select option{
                                   <button className="mini" onClick={() => deleteCharacter(ch)}>삭제</button>
                                   <label
                                     className={`char-exclude-toggle ${isHomeworkExcluded(ch) ? "active" : ""}`}
-                                    title="체크하면 오늘/주간 해야할 일과 주간 레이드 골드 합산에서 제외돼."
+                                    title="체크하면 오늘/주간 해야할 일과 숙제 진행률에서 제외돼."
                                   >
-                                    <input
-                                      type="checkbox"
-                                      checked={isHomeworkExcluded(ch)}
-                                      onChange={(e) => toggleCharacterHomeworkExcluded(tableId, ch.id, e.target.checked)}
-                                    />
-                                    <span>제외</span>
-                                  </label>
+                                      <input
+                                        type="checkbox"
+                                        checked={isHomeworkExcluded(ch)}
+                                        onChange={(e) => toggleCharacterHomeworkExcluded(tableId, ch.id, e.target.checked)}
+                                      />
+                                      <span>숙제 제외</span>
+                                    </label>
                                 </>
                               )}
                             </div>
@@ -13898,6 +14139,7 @@ body.pip-dark .pip-select option{
                                   const charKey = weeklyCharKey(tableId, ch.id);
                                   const picked = weeklyRaidPickByChar[charKey] ?? getDefaultWeeklyRaidPick(ilvl);
                                   const pickedResult = calcWeeklySelectedGold(ilvl, picked);
+                                  const goldEarning = isGoldEarningCharacter(table, ch);
 
                                   const detail = pickedResult.rows
                                     .filter((x) => x.checked)
@@ -13909,7 +14151,7 @@ body.pip-dark .pip-select option{
                                     <td key={ch.id} className="cell">
                                       <button
                                         type="button"
-                                        className="goldbox goldbox-btn"
+                                        className={`goldbox goldbox-btn ${goldEarning ? "" : "muted"}`}
                                         title={detail}
                                         onClick={(e) => {
                                           const position = getWeeklyTop3PopupPosition(e);
@@ -13923,7 +14165,7 @@ body.pip-dark .pip-select option{
                                           });
                                         }}
                                       >
-                                        <div className="gold-sum">{pickedResult.sum.toLocaleString()} G</div>
+                                        <div className="gold-sum">{goldEarning ? `${pickedResult.sum.toLocaleString()} G` : "골드 제외"}</div>
                                         <div className="gold-detail">
                                           {pickedResult.rows.filter((x) => x.checked).slice(0, 3).map((x) => x.raid).join(" / ") || "-"}
                                         </div>
@@ -14586,34 +14828,134 @@ body.pip-dark .pip-select option{
               />
               <span>숙제 보석 예상 표시</span>
             </label>
-            {/* ✅ 주간 레이드 골드 진행률(Top3 합산) */}
-            <div className="weeklyGoldSummary" title="모든 표/모든 캐릭터의 주간 레이드 Top3(아이템레벨 기준) 합산">
-              <div className="weeklyGoldTitle">주간 레이드 골드</div>
+            <div className="weeklySummaryGrid" ref={weeklySummaryGridRef}>
+              <div
+                className={`weeklyGoldSummary is-clickable ${weeklySummaryOpen === "homework" ? "is-active" : ""}`}
+                title="눌러서 주간 레이드 남은 항목 보기"
+                role="button"
+                tabIndex={0}
+                onClick={() => setWeeklySummaryOpen((open) => (open === "homework" ? null : "homework"))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setWeeklySummaryOpen((open) => (open === "homework" ? null : "homework"));
+                  }
+                }}
+              >
+                <div className="weeklyGoldTitle">주간 레이드 진행률</div>
 
-              {weeklyGoldProgress.total > 0 ? (
-                <div className="weeklyGoldValue">
-                  <span className="weeklyGoldNum">{weeklyGoldProgress.done.toLocaleString()}</span>
-                  <span className="weeklyGoldSep">/</span>
-                  <span className="weeklyGoldNum">{weeklyGoldProgress.total.toLocaleString()}</span>
-                  <span className="weeklyGoldPct">({weeklyGoldProgress.pct}%)</span>
+                {weeklyHomeworkProgress.total > 0 ? (
+                  <div className="weeklyGoldValue">
+                    <span className="weeklyGoldNum">{weeklyHomeworkProgress.done.toLocaleString()}</span>
+                    <span className="weeklyGoldSep">/</span>
+                    <span className="weeklyGoldNum">{weeklyHomeworkProgress.total.toLocaleString()}</span>
+                    <span className="weeklyGoldPct">({weeklyHomeworkProgress.pct}%)</span>
+                  </div>
+                ) : (
+                  <div className="weeklyGoldValue muted">선택 레이드 없음</div>
+                )}
+
+                <div className="weeklyGoldHint">선택 레이드 기준 · 골드 체크와 무관</div>
+              </div>
+
+              {/* ✅ 주간 레이드 골드 진행률(Top3 합산) */}
+              <div
+                className={`weeklyGoldSummary is-clickable ${weeklySummaryOpen === "gold" ? "is-active" : ""}`}
+                title="눌러서 주간 레이드 골드 남은 항목 보기"
+                role="button"
+                tabIndex={0}
+                onClick={() => setWeeklySummaryOpen((open) => (open === "gold" ? null : "gold"))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setWeeklySummaryOpen((open) => (open === "gold" ? null : "gold"));
+                  }
+                }}
+              >
+                <div className="weeklyGoldTitle">주간 레이드 골드</div>
+
+                {weeklyGoldProgress.total > 0 ? (
+                  <div className="weeklyGoldValue">
+                    <span className="weeklyGoldNum">{weeklyGoldProgress.done.toLocaleString()}</span>
+                    <span className="weeklyGoldSep">/</span>
+                    <span className="weeklyGoldNum">{weeklyGoldProgress.total.toLocaleString()}</span>
+                    <span className="weeklyGoldPct">({weeklyGoldProgress.pct}%)</span>
+                  </div>
+                ) : (
+                  <div className="weeklyGoldValue muted">골드 캐릭터 없음</div>
+                )}
+
+                <label className="weeklyGoldIncludeToggle" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={includeBoundGold}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      setIncludeBoundGold(e.target.checked);
+                    }}
+                  />
+                  <span>귀속 골드 포함</span>
+                </label>
+
+                <div className="weeklyGoldHint">
+                  {includeBoundGold ? "유통 + 귀속 기준 · 체크하면 자동 합산" : "유통 골드만 기준 · 체크하면 자동 합산"}
                 </div>
-              ) : (
-                <div className="weeklyGoldValue muted">아이템레벨 입력 필요</div>
-              )}
-
-              <label className="weeklyGoldIncludeToggle">
-                <input
-                  type="checkbox"
-                  checked={includeBoundGold}
-                  onChange={(e) => setIncludeBoundGold(e.target.checked)}
-                />
-                <span>귀속 골드 포함</span>
-              </label>
-
-              <div className="weeklyGoldHint">
-                {includeBoundGold ? "유통 + 귀속 기준 · 체크하면 자동 합산" : "유통 골드만 기준 · 체크하면 자동 합산"}
               </div>
             </div>
+            {weeklySummaryOpen && (
+              <div
+                className="weeklySummaryDetailPanel"
+                ref={weeklySummaryDetailRef}
+                onWheel={(e) => e.stopPropagation()}
+                onTouchMove={(e) => e.stopPropagation()}
+              >
+                <div className="weeklySummaryDetailHead">
+                  <strong>{weeklySummaryOpen === "homework" ? "주간 레이드 상세" : "주간 레이드 골드 상세"}</strong>
+                  <div className="weeklySummaryDetailActions">
+                    <button
+                      className={`mini ${weeklySummaryHideDone ? "active" : ""}`}
+                      type="button"
+                      onClick={() => setWeeklySummaryHideDone((value) => !value)}
+                    >
+                      완료 미표기
+                    </button>
+                    <button className="mini" type="button" onClick={() => setWeeklySummaryOpen(null)}>
+                      닫기
+                    </button>
+                  </div>
+                </div>
+
+                {(() => {
+                  const items = weeklySummaryDetails[weeklySummaryOpen];
+                  const remaining = items.filter((item) => !item.done);
+                  const completed = items.filter((item) => item.done);
+                  const visibleItems = weeklySummaryHideDone ? remaining : [...remaining, ...completed];
+
+                  if (visibleItems.length === 0) {
+                    return <div className="weeklySummaryEmpty">{weeklySummaryHideDone ? "남은 항목이 없어." : "표시할 항목이 없어."}</div>;
+                  }
+
+                  return (
+                    <>
+                      <div className="weeklySummaryDetailMeta">
+                        남은 항목 {remaining.length.toLocaleString()}개 · 완료 {completed.length.toLocaleString()}개
+                      </div>
+                      <div className="weeklySummaryDetailList">
+                        {visibleItems.map((item) => (
+                          <div key={item.key} className={`weeklySummaryDetailItem ${item.done ? "is-done" : ""}`}>
+                            <div className="weeklySummaryDetailText">
+                              <strong>{item.title}</strong>
+                              <span>{item.subtitle}</span>
+                            </div>
+                            <div className="weeklySummaryDetailValue">{item.value}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
             <div className="todo-actions actions-row">
               <button className="btn" onClick={() => manualReset("DAILY")}>
                 일일 초기화
@@ -15506,6 +15848,9 @@ body.pip-dark .pip-select option{
         const popupX = popup.x;
         const popupY = popup.y;
         const popupCharName = popup.charName;
+        const popupTable = getTableById(state, tableId);
+        const popupChar = popupTable.characters.find((ch) => ch.id === charId) ?? null;
+        const popupGoldEarning = popupChar ? isGoldEarningCharacter(popupTable, popupChar) : true;
 
         const charKey = weeklyCharKey(tableId, charId);
         const picked = sanitizeWeeklyRaidPick(
@@ -15635,8 +15980,9 @@ body.pip-dark .pip-select option{
               <button onClick={() => setWeeklyTop3Popup(null)}>닫기</button>
             </div>
 
-            <div className="weekly-top3-sum">
+            <div className={`weekly-top3-sum ${popupGoldEarning ? "" : "gold-excluded"}`}>
               합계: <b>{pickedResult.sum.toLocaleString()} G</b>
+              {!popupGoldEarning ? <span className="weekly-top3-excluded-note">골드 합산 제외</span> : null}
               <div className="weekly-top3-sum-sub">
                 유통 {pickedResult.rows.filter((x) => x.checked).reduce((acc, cur) => acc + cur.tradable, 0).toLocaleString()}
                 {" / "}
@@ -15720,7 +16066,7 @@ body.pip-dark .pip-select option{
                     })}
                   </div>
 
-                  <div className="weekly-top3-gold-actions">
+                  <div className={`weekly-top3-gold-actions ${popupGoldEarning ? "" : "gold-excluded"}`}>
                     <div className="weekly-top3-gold">
                       {row.gold.toLocaleString()} G
                     </div>
