@@ -189,14 +189,6 @@ body {
   align-items: center;
 }
 
-.raidRewardDockAnchor {
-  display: inline-block;
-  width: 0;
-  height: 42px;
-  flex: 0 0 0;
-  pointer-events: none;
-}
-
 /* 왼쪽 영역(제목/설명/표 선택)은 무조건 세로로 쌓이게 */
 .todo-title {
   display: flex;
@@ -5558,6 +5550,7 @@ html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
   max-height: calc(100vh - 80px);
   min-width: min(300px, calc(100vw - 36px));
   color: var(--text);
+  overscroll-behavior: contain;
 }
 
 .raidRewardDock.is-floating {
@@ -5617,6 +5610,8 @@ html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
   overflow: auto;
   min-height: 0;
   height: calc(100% - 50px);
+  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
 }
 
 .raidRewardDockHead {
@@ -5693,7 +5688,7 @@ html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
 }
 
 .raidRewardDockList {
-  overflow: auto;
+  overflow: visible;
   padding: 8px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5714,6 +5709,7 @@ html[data-theme="dark"] .manualRemainName.is-schedule-full .manualRemainMeta {
 .raidRewardItem[open] {
   grid-column: 1 / -1;
   overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .raidRewardItem:not([open]) .raidRewardPager {

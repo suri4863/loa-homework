@@ -357,7 +357,7 @@ function getAzenaRemainingMs(expiresAt?: string | null) {
 }
 
 const AZENA_WARNING_MS = 72 * 60 * 60 * 1000; // 3일
-const RAID_REWARD_DOCK_POS_KEY = "loa-raid-reward-dock-pos:v3";
+const RAID_REWARD_DOCK_POS_KEY = "loa-raid-reward-dock-pos:v4";
 const RAID_REWARD_DOCK_SIZE_KEY = "loa-raid-reward-dock-size:v1";
 
 function readRaidRewardDockPosition() {
@@ -11357,33 +11357,40 @@ export default function TodoTracker() {
       const page = document.querySelector(".todo-page") as HTMLElement | null;
       const topbar = document.querySelector(".todo-topbar") as HTMLElement | null;
       const actions = document.querySelector(".topbar-center > .actions-row") as HTMLElement | null;
-      const anchor = document.querySelector(".raidRewardDockAnchor") as HTMLElement | null;
+      const goldCard = document.querySelector(".weeklySummaryGrid .weeklyGoldSummary:nth-child(2)") as HTMLElement | null;
       const topbarRight = document.querySelector(".topbar-right") as HTMLElement | null;
-      if (!page || !actions || !anchor || !topbar || !topbarRight) return;
+      if (!page || !actions || !goldCard || !topbar || !topbarRight) return;
 
-      const offsetWithinPage = (node: HTMLElement) => {
-        let left = 0;
-        let top = 0;
-        let current: HTMLElement | null = node;
-        while (current && current !== page) {
-          left += current.offsetLeft;
-          top += current.offsetTop;
-          current = current.offsetParent as HTMLElement | null;
-        }
-        return { left, top };
+      const rectWithinPage = (node: HTMLElement) => {
+        const pageRect = page.getBoundingClientRect();
+        const rect = node.getBoundingClientRect();
+        return {
+          left: rect.left - pageRect.left + page.scrollLeft,
+          top: rect.top - pageRect.top + page.scrollTop,
+          width: rect.width,
+          height: rect.height,
+        };
       };
 
-      const actionsOffset = offsetWithinPage(actions);
-      const anchorOffset = offsetWithinPage(anchor);
-      const topbarRightOffset = offsetWithinPage(topbarRight);
+      const actionsRect = rectWithinPage(actions);
+      const goldCardRect = rectWithinPage(goldCard);
+      const topbarRightRect = rectWithinPage(topbarRight);
       const preferredWidth = 340;
-      const minWidth = 260;
-      const maxRight = topbarRightOffset.left - 12;
-      const desiredLeft = anchorOffset.left + 10;
+      const minWidth = 300;
+      const sideGap = 12;
+      const maxRight = topbarRightRect.left - 12;
+      const desiredLeft = goldCardRect.left + goldCardRect.width + 12;
       const availableWidth = maxRight - desiredLeft;
-      const width = availableWidth >= minWidth ? Math.min(preferredWidth, availableWidth) : minWidth;
-      const left = availableWidth >= minWidth ? desiredLeft : Math.max(actionsOffset.left + actions.offsetWidth + 10, desiredLeft);
-      const top = actionsOffset.top + Math.max(0, (actions.offsetHeight - 42) / 2);
+      const hasSideRoom = availableWidth >= minWidth;
+      const width = hasSideRoom
+        ? Math.min(preferredWidth, availableWidth)
+        : Math.min(preferredWidth, Math.max(minWidth, topbar.offsetWidth - sideGap * 2));
+      const left = hasSideRoom
+        ? desiredLeft
+        : Math.max(sideGap, Math.min(goldCardRect.left, topbar.offsetWidth - width - sideGap));
+      const top = hasSideRoom
+        ? goldCardRect.top + Math.max(0, (goldCardRect.height - 42) / 2)
+        : actionsRect.top + actionsRect.height + 8;
 
       dock.style.setProperty("--raid-dock-left", `${Math.max(0, left)}px`);
       dock.style.setProperty("--raid-dock-top", `${Math.max(0, top)}px`);
@@ -11398,8 +11405,8 @@ export default function TodoTracker() {
     if (topbar) observer?.observe(topbar);
     const actions = document.querySelector(".topbar-center > .actions-row") as HTMLElement | null;
     if (actions) observer?.observe(actions);
-    const anchor = document.querySelector(".raidRewardDockAnchor") as HTMLElement | null;
-    if (anchor) observer?.observe(anchor);
+    const goldCard = document.querySelector(".weeklySummaryGrid .weeklyGoldSummary:nth-child(2)") as HTMLElement | null;
+    if (goldCard) observer?.observe(goldCard);
 
     return () => {
       window.removeEventListener("resize", placeDockBetweenTopbarCards);
@@ -14767,7 +14774,16 @@ body.pip-dark .pip-select option{
           </button>
 
           {raidRewardDockOpen && (
-            <div className="raidRewardDockPanel">
+            <div
+              className="raidRewardDockPanel"
+              onWheelCapture={(e) => {
+                const node = e.currentTarget;
+                if (node.scrollHeight <= node.clientHeight) return;
+                e.preventDefault();
+                e.stopPropagation();
+                node.scrollTop += e.deltaY;
+              }}
+            >
               <div className="raidRewardDockHead">
                 <strong>레이드 보상</strong>
                 <button
@@ -15174,7 +15190,6 @@ body.pip-dark .pip-select option{
                 📝 메모장
               </button>
               <BidPopover />
-              <span className="raidRewardDockAnchor" aria-hidden="true" />
             </div>
           </div>
 
